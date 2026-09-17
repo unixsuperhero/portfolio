@@ -114,7 +114,7 @@ function listItems(url, forced = {}) {
   if (pinned) where.push("items.pinned = 1");
   if (starred) where.push("items.starred = 1");
   if (type && ["document", "note", "link", "pr"].includes(type)) { where.push("items.type = ?"); params.push(type); }
-  return db.query(`SELECT DISTINCT items.* FROM items${join} WHERE ${where.join(" AND ")} ORDER BY items.pinned DESC, items.created_at DESC, items.id DESC`).all(...params);
+  return db.query(`SELECT DISTINCT items.* FROM items${join} WHERE ${where.join(" AND ")} ORDER BY items.pinned DESC, datetime(items.created_at) DESC, items.id DESC`).all(...params);
 }
 
 function libraryPage(url, options = {}) {
