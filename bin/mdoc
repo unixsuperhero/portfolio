@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SERVER="${MDOC_SERVER:-http://127.0.0.1:4387}"
+INPUT="" TITLE="" DESC="" TOC=true OPEN=true RECURSIVE=false REBUILD=false
+TEMP=""
+trap '[[ -n "$TEMP" ]] && rm -f "$TEMP"' EXIT
+
+usage() {
+  cat <<'EOF'
+mdoc — add Markdown to the local Portfolio server
+
+Usage:
+  mdoc <file.md> [-t|--title TITLE] [-d|--desc DESCRIPTION]
+  echo '# Hello' | mdoc - --title 'Piped input'
+
+Options:
+  -t, --title <text>  Override the first H1 title
+  -d, --desc <text>   Set a short description
+      --toc           Include a table of contents (default)
+      --no-toc        Omit the table of contents
+      --no-open       Do not open the saved item
+  -r, --recursive     Add transitively linked Markdown files
+      --no-date       Accepted for compatibility
+      --rebuild-index Verify the server and search index
+  -h, --help          Show this help
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help) usage; exit 0 ;;
+    -t|--title) TITLE="$2"; shift 2 ;;
+    -d|--desc) DESC="$2"; shift 2 ;;
+    --toc) TOC=true; shift ;;
+    --no-toc) TOC=false; shift ;;
+    --no-open) OPEN=false; shift ;;
+    -r|--recursive) RECURSIVE=true; shift ;;
+    --no-date) shift ;;
+    --rebuild-index) REBUILD=true; shift ;;
+    -*) echo "mdoc: unknown flag: $1" >&2; exit 1 ;;
+    *) INPUT="$1"; shift ;;
+  esac
+done
+
+if [[ "$REBUILD" == true ]]; then
+  curl --fail --silent --show-error "$SERVER/health"
+  echo
+  exit 0
+fi
+[[ -n "$INPUT" ]] || { usage >&2; exit 1; }
+
+if [[ "$INPUT" == "-" ]]; then
+  [[ "$RECURSIVE" == false ]] || { echo "mdoc: --recursive is not supported with stdin" >&2; exit 1; }
+  TEMP=$(mktemp -t mdoc-stdin-XXXXXX.md)
+  cat > "$TEMP"
+  INPUT="$TEMP"
+fi
+INPUT=$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$INPUT")
+[[ -f "$INPUT" ]] || { echo "mdoc: not found: $INPUT" >&2; exit 1; }
+
+add_file() {
+  file="$1" title="$2" desc="$3"
+  response=$(curl --fail --silent --show-error \
+    -F "file=@$file;type=text/markdown" \
+    -F "source_path=$file" \
+    -F "title=$title" \
+    -F "description=$desc" \
+    -F "toc=$TOC" \
+    "$SERVER/api/items")
+  python3 -c 'import json,sys; print(json.load(sys.stdin)["href"])' <<<"$response"
+}
+
+if [[ "$RECURSIVE" == true ]]; then
+  files=$(python3 - "$INPUT" <<'PY'
+import os,re,sys
+seen=set(); queue=[os.path.abspath(sys.argv[1])]
+while queue:
+    path=os.path.normpath(queue.pop(0))
+    if path in seen or not os.path.isfile(path): continue
+    seen.add(path); print(path)
+    text=open(path, errors='replace').read()
+    for match in re.finditer(r'\[[^\]]*\]\(([^)#\s]+\.md)(?:#[^)]*)?\)', text):
+        target=match.group(1)
+        if not target.startswith(('http://','https://','mailto:')):
+            queue.append(os.path.join(os.path.dirname(path), target))
+PY
+)
+  root_href=""
+  while IFS= read -r file; do
+    file_title=$(python3 - "$file" <<'PY'
+import os,re,sys
+text=open(sys.argv[1], errors='replace').read()
+match=re.search(r'^# (.+)$', text, re.M)
+print(match.group(1) if match else os.path.splitext(os.path.basename(sys.argv[1]))[0])
+PY
+)
+    file_desc=""
+    if [[ "$file" == "$INPUT" ]]; then
+      [[ -n "$TITLE" ]] && file_title="$TITLE"
+      file_desc="$DESC"
+    fi
+    href=$(add_file "$file" "$file_title" "$file_desc")
+    [[ "$file" == "$INPUT" ]] && root_href="$href"
+  done <<<"$files"
+  href="$root_href"
+else
+  href=$(add_file "$INPUT" "$TITLE" "$DESC")
+fi
+
+url="$SERVER$href"
+echo "mdoc: saved $url"
+[[ "$OPEN" == false ]] || open "$url"

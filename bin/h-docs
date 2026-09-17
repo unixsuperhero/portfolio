@@ -1,0 +1,186 @@
+#!/usr/bin/env ruby
+
+require 'hiiro'
+require 'json'
+require 'net/http'
+require 'uri'
+
+SERVER = ENV.fetch('HDOCS_SERVER', 'http://127.0.0.1:4387').sub(%r{/$}, '')
+DOCS_DIR = File.join(Dir.home, 'claude', 'docs')
+
+ls_opts = Hiiro::Options.setup {
+  flag(:html, short: :h, default: false, desc: 'show HTML-backed documents')
+  flag(:md, short: :m, default: false, desc: 'show Markdown-backed documents')
+  flag(:full, short: :f, default: false, desc: 'show API URLs and source paths')
+  option(:limit, short: :l, default: nil, desc: 'limit number of results')
+  flag(:files, default: false, desc: 'with rm, also delete the tracked source file')
+}
+
+open_opts = Hiiro::Options.setup {
+  flag(:html, short: :h, default: false, desc: 'consider HTML-backed documents')
+  flag(:md, short: :m, default: false, desc: 'consider Markdown-backed documents')
+  flag(:all, short: :a, default: false, desc: 'open all matches')
+}
+
+class PortfolioApi
+  def initialize(base_url)
+    @base = URI(base_url)
+  end
+
+  attr_reader :base
+
+  def items(filters = [], limit: nil)
+    query = {}
+    query['q'] = filters.join(' ') unless filters.empty?
+    query['limit'] = limit.to_i if limit
+    get('/api/items', query).fetch('items')
+  end
+
+  def health
+    get('/health')
+  end
+
+  def delete(id, files: false)
+    target = uri("/api/items/#{id}")
+    target.query = URI.encode_www_form(delete_files: 1) if files
+    request(Net::HTTP::Delete.new(target))
+    true
+  end
+
+  def absolute_url(path)
+    return path if path.to_s.match?(%r{\Ahttps?://})
+
+    URI.join("#{base}/", path.to_s.sub(%r{\A/}, '')).to_s
+  end
+
+  private
+
+  def get(path, query = {})
+    target = uri(path)
+    target.query = URI.encode_www_form(query) unless query.empty?
+    JSON.parse(request(Net::HTTP::Get.new(target)))
+  end
+
+  def uri(path)
+    URI.join("#{base}/", path.sub(%r{\A/}, ''))
+  end
+
+  def request(message)
+    response = Net::HTTP.start(message.uri.hostname, message.uri.port, open_timeout: 2, read_timeout: 15) { |http| http.request(message) }
+    raise "Portfolio API returned #{response.code}: #{response.body}" unless response.is_a?(Net::HTTPSuccess)
+
+    response.body
+  rescue Errno::ECONNREFUSED, SocketError => error
+    raise "Portfolio is unavailable at #{base}: #{error.message}"
+  end
+end
+
+API = PortfolioApi.new(SERVER)
+
+def source_kind?(item, opts)
+  return true unless opts.html || opts.md
+
+  path = item['source_path'].to_s
+  (opts.html && path.end_with?('.html')) || (opts.md && path.end_with?('.md'))
+end
+
+def matching_items(opts, limit: nil)
+  API.items(opts.args, limit: limit).select { |item| source_kind?(item, opts) }
+end
+
+def item_label(item)
+  "#{item['title']} [#{item['type']} ##{item['id']}]"
+end
+
+def pick_one(items)
+  return items.first if items.length == 1
+
+  labels = items.map { |item| item_label(item) }
+  choice = fuzzyfind(labels)
+  return nil if choice.nil? || choice.strip.empty?
+
+  items.find { |item| item_label(item) == choice.strip }
+end
+
+def open_item(item)
+  system('open', API.absolute_url(item['href']))
+end
+
+Hiiro.run(*ARGV, plugins: [Pins]) {
+  add_subcmd(:ls) { |*args|
+    opts = ls_opts.parse(args)
+    matching_items(opts, limit: opts.limit).each do |item|
+      if opts.full
+        puts [API.absolute_url(item['href']), item['source_path']].compact.join("\t")
+      else
+        puts item_label(item)
+      end
+    end
+  }
+
+  add_subcmd(:recent) { |*args|
+    opts = ls_opts.parse(args)
+    numeric = opts.args.find { |arg| arg.match?(/^\d+$/) }
+    count = (opts.limit || numeric || 10).to_i
+    opts.args.delete(numeric) if numeric
+    matching_items(opts, limit: count).each { |item| puts item_label(item) }
+  }
+
+  add_subcmd(:open) { |*args|
+    opts = open_opts.parse(args)
+    if opts.args.empty? && !opts.html && !opts.md && !opts.all
+      next system('open', SERVER)
+    end
+
+    items = matching_items(opts)
+    next puts('No matching items.') if items.empty?
+
+    (opts.all ? items : [pick_one(items)].compact).each { |item| open_item(item) }
+  }
+
+  add_subcmd(:vim) { |*args|
+    opts = ls_opts.parse(args)
+    paths = matching_items(opts).filter_map { |item| item['source_path'] if File.file?(item['source_path'].to_s) }
+    next puts('No matching local sources.') if paths.empty?
+
+    edit_files(*paths)
+  }
+
+  add_subcmd(:cat) { |*args|
+    opts = ls_opts.parse(args)
+    paths = matching_items(opts).filter_map { |item| item['source_path'] if File.file?(item['source_path'].to_s) }
+    next puts('No matching local sources.') if paths.empty?
+
+    paths.each { |path| puts "===== #{File.basename(path)} =====", File.read(path), '' }
+  }
+
+  add_subcmd(:rm) { |*args|
+    opts = ls_opts.parse(args)
+    items = matching_items(opts)
+    next puts('No matching items.') if items.empty?
+
+    item = pick_one(items)
+    next unless item
+
+    API.delete(item['id'], files: opts.files)
+    suffix = opts.files ? ' and deleted tracked source file' : ''
+    puts "Removed from Portfolio#{suffix}: #{item_label(item)}"
+  }
+
+  add_subcmd(:count) { |*_args|
+    puts "items: #{API.health.fetch('items')}"
+  }
+
+  add_subcmd(:index, :tui) { |*_args|
+    system('open', SERVER)
+  }
+
+  add_subcmd(:reindex, :rebuild) { |*_args|
+    status = API.health
+    puts "Portfolio search index is live (#{status.fetch('items')} items)."
+  }
+
+  add_subcmd(:path) { |*_args|
+    puts DOCS_DIR
+  }
+}

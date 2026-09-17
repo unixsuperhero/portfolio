@@ -1,0 +1,9 @@
+{
+  "name": "portfolio",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run app.js",
+    "import": "bun run import.js"
+  }
+}
