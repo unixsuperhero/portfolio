@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+LABEL="com.${USER}.portfolio"
+PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+PORT="${PORTFOLIO_PORT:-4387}"
+BUN=$(command -v bun || true)
+PANDOC=$(command -v pandoc || true)
+
+[[ "$(uname -s)" == "Darwin" ]] || { echo "portfolio install: macOS is required" >&2; exit 1; }
+[[ -n "$BUN" ]] || { echo "portfolio install: install Bun first: brew install bun" >&2; exit 1; }
+[[ -n "$PANDOC" ]] || { echo "portfolio install: install Pandoc first: brew install pandoc" >&2; exit 1; }
+
+mkdir -p "$HOME/Library/LaunchAgents" "$HOME/bin" "$ROOT/logs"
+cp "$ROOT/bin/h-docs" "$HOME/bin/h-docs"
+cp "$ROOT/bin/mdoc" "$HOME/bin/mdoc"
+chmod +x "$HOME/bin/h-docs" "$HOME/bin/mdoc"
+
+cat > "$PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$LABEL</string>
+  <key>ProgramArguments</key>
+  <array><string>$BUN</string><string>run</string><string>$ROOT/app.js</string></array>
+  <key>WorkingDirectory</key><string>$ROOT</string>
+  <key>EnvironmentVariables</key>
+  <dict><key>HOME</key><string>$HOME</string><key>PORT</key><string>$PORT</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>ProcessType</key><string>Interactive</string>
+  <key>StandardOutPath</key><string>$ROOT/logs/stdout.log</string>
+  <key>StandardErrorPath</key><string>$ROOT/logs/stderr.log</string>
+</dict>
+</plist>
+EOF
+
+plutil -lint "$PLIST" >/dev/null
+
+if [[ ! -f "$ROOT/portfolio.sqlite" && -f "$HOME/claude/index.json" ]]; then
+  "$BUN" run "$ROOT/import.js"
+fi
+
+launchctl bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
+launchctl bootstrap "gui/$(id -u)" "$PLIST"
+
+for _ in 1 2 3 4 5; do
+  if curl --fail --silent "http://127.0.0.1:$PORT/health" >/dev/null; then
+    echo "Portfolio installed and running at http://127.0.0.1:$PORT"
+    echo "CLI commands installed in $HOME/bin"
+    echo "Optional hostname: add '127.0.0.1 docs.h' to /etc/hosts"
+    exit 0
+  fi
+  sleep 1
+done
+
+echo "portfolio install: service did not become healthy; inspect $ROOT/logs/stderr.log" >&2
+exit 1
