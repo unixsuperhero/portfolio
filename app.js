@@ -74,8 +74,10 @@ function itemRows(items) {
         <div class="item-line"><span class="kind">${icon(item.type)}</span><a href="${escapeHtml(itemHref(item))}"${external}>${escapeHtml(item.title)}</a></div>
         ${item.description ? `<p>${escapeHtml(item.description)}</p>` : ""}
         ${tags.length ? `<div class="tag-list">${tags.map(tag => `<a class="tag" href="/tags/${tag.id}">${escapeHtml(tag.name)}</a>`).join("")}</div>` : ""}
+        <div class="row-tag-editor" hidden><input name="tags" placeholder="Add a tag" aria-label="Tags for ${escapeHtml(item.title)}"><button type="button" class="row-tag-add" data-id="${item.id}">Add</button></div>
       </div>
       <div class="item-actions">
+        <button type="button" class="icon-button edit-link row-tag-toggle" title="Add tags" aria-label="Add tags to ${escapeHtml(item.title)}">Tag</button>
         <button type="button" class="icon-button toggle-button ${item.pinned ? "active" : ""}" data-id="${item.id}" data-field="pinned" title="${item.pinned ? "Unpin" : "Pin"}" aria-label="${item.pinned ? "Unpin" : "Pin"}"><svg viewBox="0 0 24 24"><path d="M8 3h8l-1 6 3 3v2h-5v7l-2-2v-5H6v-2l3-3-1-6Z"/></svg></button>
         <button type="button" class="icon-button toggle-button ${item.starred ? "active star" : ""}" data-id="${item.id}" data-field="starred" title="${item.starred ? "Unstar" : "Star"}" aria-label="${item.starred ? "Unstar" : "Star"}"><svg viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z"/></svg></button>
         <a class="icon-button edit-link" href="/items/${item.id}/manage" title="Edit" aria-label="Edit ${escapeHtml(item.title)}">Edit</a>
@@ -83,12 +85,22 @@ function itemRows(items) {
     </article>`;
   }).join("")}</div>`;
 }
+function railSection(title, type) {
+  const items = db.query("SELECT * FROM items WHERE type = ? ORDER BY pinned DESC, datetime(created_at) DESC, id DESC").all(type);
+  return `<section class="rail-section"><header><h2>${title}</h2><span>${items.length}</span></header><div class="rail-items">${items.map(item => {
+    const external = ["link", "pr"].includes(item.type) ? ` target="_blank" rel="noreferrer"` : "";
+    return `<article class="rail-item${item.pinned ? " is-pinned" : ""}${item.starred ? " is-starred" : ""}"><a href="${escapeHtml(itemHref(item))}"${external}>${escapeHtml(item.title)}</a>${item.description ? `<p>${escapeHtml(item.description)}</p>` : ""}<div><time>${escapeHtml(item.created_at.slice(0, 10))}</time>${item.pinned ? `<span>Pinned</span>` : ""}${item.starred ? `<span>Starred</span>` : ""}</div></article>`;
+  }).join("") || `<div class="rail-empty">No ${title.toLowerCase()} yet.</div>`}</div></section>`;
+}
+
 
 function shell(title, body, active = "all") {
   const nav = [["all", "/", "Library"], ["starred", "/starred", "Starred"], ["tags", "/tags", "Tags"], ["new", "/new", "Add"]];
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} · Portfolio</title><link rel="stylesheet" href="/assets/app.css"></head><body>
     <header class="topbar"><a class="brand" href="/">Portfolio</a><nav>${nav.map(([key, href, label]) => `<a class="${active === key ? "active" : ""}" href="${href}">${label}</a>`).join("")}</nav></header>
     <main>${body}</main><script>
+      document.querySelectorAll('.row-tag-toggle').forEach(button=>button.addEventListener('click',()=>{const editor=button.closest('.item').querySelector('.row-tag-editor');editor.hidden=!editor.hidden;button.classList.toggle('active',!editor.hidden);button.setAttribute('aria-expanded',String(!editor.hidden));if(!editor.hidden)editor.querySelector('input').focus()}));
+      document.querySelectorAll('.row-tag-add').forEach(button=>{const input=button.previousElementSibling;const add=async()=>{if(!input.value.trim())return;button.disabled=true;button.textContent='Adding…';const data=new FormData();data.set('tags',input.value);const response=await fetch('/items/'+button.dataset.id+'/tags',{method:'POST',body:data});if(response.ok)location.reload();else{button.disabled=false;button.textContent='Add';alert(await response.text())}};button.addEventListener('click',add);input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();add()}})});
       document.querySelectorAll('.toggle-button').forEach(button=>button.addEventListener('click',async()=>{const data=new FormData();data.set('field',button.dataset.field);const response=await fetch('/items/'+button.dataset.id+'/toggle',{method:'POST',body:data});if(response.ok)location.reload()}));
       const all=document.querySelector('[data-select-all]');if(all)all.addEventListener('change',()=>document.querySelectorAll('input[name="ids"]').forEach(input=>input.checked=all.checked));
       const bulk=document.querySelector('.bulk-form');if(bulk)bulk.addEventListener('submit',event=>{const action=bulk.elements.action.value;const count=bulk.querySelectorAll('input[name="ids"]:checked').length;if(!count){event.preventDefault();alert('Select at least one item.');return}if(action==='delete_files'&&!confirm('Remove selected records and permanently delete their tracked source files?'))event.preventDefault();});
@@ -100,7 +112,7 @@ function listItems(url, forced = {}) {
   const pinned = forced.pinned ?? url.searchParams.has("pinned");
   const starred = forced.starred ?? url.searchParams.has("starred");
   const contents = url.searchParams.has("contents");
-  const type = url.searchParams.get("type") ?? "";
+  const type = forced.type ?? url.searchParams.get("type") ?? "";
   const tag = forced.tag ?? Number(url.searchParams.get("tag") || 0);
   const where = ["1=1"], params = [];
   let join = "";
@@ -119,18 +131,31 @@ function listItems(url, forced = {}) {
 
 function libraryPage(url, options = {}) {
   const items = listItems(url, options);
+  const pageSize = 50;
+  const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
+  const page = Math.min(Math.max(Number.parseInt(url.searchParams.get("page") || "1", 10) || 1, 1), pageCount);
+  const start = (page - 1) * pageSize;
+  const visibleItems = items.slice(start, start + pageSize);
+  const pageHref = number => {
+    const target = new URL(url);
+    if (number === 1) target.searchParams.delete("page"); else target.searchParams.set("page", number);
+    return target.pathname + target.search;
+  };
+  const pager = pageCount > 1 ? `<nav class="pager" aria-label="Document pages">${page > 1 ? `<a href="${escapeHtml(pageHref(page - 1))}">Newer</a>` : `<span></span>`}<span>Page ${page} of ${pageCount}</span>${page < pageCount ? `<a href="${escapeHtml(pageHref(page + 1))}">Older</a>` : `<span></span>`}</nav>` : "";
   const q = url.searchParams.get("q") ?? "";
   const checked = key => url.searchParams.has(key) ? " checked" : "";
   const heading = options.heading ?? "Your working library";
   const subhead = options.subhead ?? `${db.query("SELECT count(*) count FROM items").get().count} items, searchable and close at hand.`;
-  return shell(heading, `<section class="page-head"><h1>${escapeHtml(heading)}</h1><p>${escapeHtml(subhead)}</p></section>
-    <form class="filters" method="get"><label class="search"><span>Search</span><input type="search" name="q" value="${escapeHtml(q)}" placeholder="Title, description, or content"><button>Search</button></label>
+  const typeFilter = options.rails ? "" : `<select name="type" aria-label="Item type"><option value="">All types</option>${["document", "note", "link", "pr"].map(type => `<option${url.searchParams.get("type") === type ? " selected" : ""}>${type}</option>`).join("")}</select>`;
+  const center = `<div class="library-center"><form class="filters" method="get"><label class="search"><span>Search</span><input type="search" name="q" value="${escapeHtml(q)}" placeholder="Title, description, or content"><button>Search</button></label>
       <div class="filter-row"><label><input type="checkbox" name="contents"${checked("contents")}> Search contents</label><label><input type="checkbox" name="pinned"${checked("pinned")}> Pinned only</label><label><input type="checkbox" name="starred"${checked("starred")}> Starred only</label>
-      <select name="type" aria-label="Item type"><option value="">All types</option>${["document", "note", "link", "pr"].map(type => `<option${url.searchParams.get("type") === type ? " selected" : ""}>${type}</option>`).join("")}</select><button class="quiet">Apply filters</button></div></form>
+      ${typeFilter}<button class="quiet">Apply filters</button></div></form>
     <form class="bulk-form" method="post" action="/items/bulk">
       <div class="bulk-bar"><label><input type="checkbox" data-select-all> Select all</label><select name="action" aria-label="Bulk action"><option value="star">Star</option><option value="unstar">Unstar</option><option value="pin">Pin</option><option value="unpin">Unpin</option><option value="add_tags">Add tags</option><option value="remove_tags">Remove tags</option><option value="delete">Remove from database</option><option value="delete_files">Remove and delete source files</option></select><input name="tags" placeholder="tags for tag actions"><button>Apply</button></div>
-      <div class="result-count">${items.length} result${items.length === 1 ? "" : "s"}</div>${itemRows(items)}
-    </form>`, options.active ?? "all");
+      <div class="result-count">Showing ${items.length ? start + 1 : 0}–${Math.min(start + pageSize, items.length)} of ${items.length}</div>${itemRows(visibleItems)}
+    </form>${pager}</div>`;
+  const content = options.rails ? `<div class="library-layout"><aside class="library-rail library-rail-left">${railSection("Notes", "note")}</aside>${center}<aside class="library-rail library-rail-right">${railSection("PRs", "pr")}${railSection("Links", "link")}</aside></div>` : center;
+  return shell(heading, `<div class="${options.rails ? "library-shell" : ""}"><section class="page-head"><h1>${escapeHtml(heading)}</h1><p>${escapeHtml(subhead)}</p></section>${content}</div>`, options.active ?? "all");
 }
 
 async function createItem(request) {
@@ -248,7 +273,7 @@ const server = Bun.serve({
         const body = (await file.text()).replaceAll('href="../index.html"', 'href="/"');
         return html(body);
       }
-      if (request.method === "GET" && url.pathname === "/") return html(libraryPage(url));
+      if (request.method === "GET" && url.pathname === "/") return html(libraryPage(url, { type: "document", rails: true, subhead: "Documents in the center; notes, PRs, and links close at hand." }));
       if (request.method === "GET" && url.pathname === "/starred") return html(libraryPage(url, { starred: true, heading: "Starred", subhead: "The items worth returning to.", active: "starred" }));
       if (request.method === "GET" && url.pathname === "/tags") {
         const tags = db.query(`SELECT tags.*, count(taggings.item_id) count FROM tags LEFT JOIN taggings ON taggings.tag_id = tags.id GROUP BY tags.id ORDER BY tags.name`).all();
