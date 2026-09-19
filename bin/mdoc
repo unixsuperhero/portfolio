@@ -2,25 +2,25 @@
 set -euo pipefail
 
 SERVER="${MDOC_SERVER:-http://127.0.0.1:4387}"
-INPUT="" TITLE="" DESC="" TOC=true OPEN=true RECURSIVE=false REBUILD=false
-TEMP=""
-trap '[[ -n "$TEMP" ]] && rm -f "$TEMP"' EXIT
+TITLE="" DESC="" TOC=true OPEN=true RECURSIVE=false REBUILD=false
+TEMP="" TEMP_BASE="" INPUTS=()
+trap '[[ -n "$TEMP" ]] && rm -f "$TEMP"; [[ -n "$TEMP_BASE" ]] && rm -f "$TEMP_BASE"' EXIT
 
 usage() {
   cat <<'EOF'
 mdoc — add Markdown to the local Portfolio server
 
 Usage:
-  mdoc <file.md> [-t|--title TITLE] [-d|--desc DESCRIPTION]
+  mdoc <file.md> [more-files.md] [-r|--recursive] [-t|--title TITLE] [-d|--desc DESCRIPTION]
   echo '# Hello' | mdoc - --title 'Piped input'
 
 Options:
-  -t, --title <text>  Override the first H1 title
-  -d, --desc <text>   Set a short description
+  -t, --title <text>  Override the first root title
+  -d, --desc <text>   Set the first root description
       --toc           Include a table of contents (default)
       --no-toc        Omit the table of contents
-      --no-open       Do not open the saved item
-  -r, --recursive     Add transitively linked Markdown files
+      --no-open       Do not open saved root items
+  -r, --recursive     Add transitively linked local Markdown files
       --no-date       Accepted for compatibility
       --rebuild-index Verify the server and search index
   -h, --help          Show this help
@@ -38,8 +38,10 @@ while [[ $# -gt 0 ]]; do
     -r|--recursive) RECURSIVE=true; shift ;;
     --no-date) shift ;;
     --rebuild-index) REBUILD=true; shift ;;
+    --) shift; INPUTS+=("$@"); break ;;
+    -) INPUTS+=("$1"); shift ;;
     -*) echo "mdoc: unknown flag: $1" >&2; exit 1 ;;
-    *) INPUT="$1"; shift ;;
+    *) INPUTS+=("$1"); shift ;;
   esac
 done
 
@@ -48,66 +50,111 @@ if [[ "$REBUILD" == true ]]; then
   echo
   exit 0
 fi
-[[ -n "$INPUT" ]] || { usage >&2; exit 1; }
+[[ ${#INPUTS[@]} -gt 0 ]] || { usage >&2; exit 1; }
 
-if [[ "$INPUT" == "-" ]]; then
-  [[ "$RECURSIVE" == false ]] || { echo "mdoc: --recursive is not supported with stdin" >&2; exit 1; }
-  TEMP=$(mktemp -t mdoc-stdin-XXXXXX.md)
-  cat > "$TEMP"
-  INPUT="$TEMP"
-fi
-INPUT=$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$INPUT")
-[[ -f "$INPUT" ]] || { echo "mdoc: not found: $INPUT" >&2; exit 1; }
+for index in "${!INPUTS[@]}"; do
+  if [[ "${INPUTS[$index]}" == "-" ]]; then
+    [[ "$RECURSIVE" == false ]] || { echo "mdoc: --recursive is not supported with stdin" >&2; exit 1; }
+    [[ -z "$TEMP" ]] || { echo "mdoc: stdin can appear once" >&2; exit 1; }
+    TEMP_BASE=$(mktemp -t mdoc-stdin)
+    TEMP="$TEMP_BASE.md"
+    mv "$TEMP_BASE" "$TEMP"
+    TEMP_BASE=""
+    cat > "$TEMP"
+    INPUTS[$index]="$TEMP"
+  fi
+  INPUTS[$index]=$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "${INPUTS[$index]}")
+  [[ -f "${INPUTS[$index]}" ]] || { echo "mdoc: not found: ${INPUTS[$index]}" >&2; exit 1; }
+done
 
-add_file() {
-  file="$1" title="$2" desc="$3"
-  response=$(curl --fail --silent --show-error \
-    -F "file=@$file;type=text/markdown" \
-    -F "source_path=$file" \
-    -F "title=$title" \
-    -F "description=$desc" \
-    -F "toc=$TOC" \
-    "$SERVER/api/items")
-  python3 -c 'import json,sys; print(json.load(sys.stdin)["href"])' <<<"$response"
-}
+FILES_JSON=$(python3 - "$RECURSIVE" "${INPUTS[@]}" <<'PY'
+import heapq
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+from urllib.parse import unquote
 
-if [[ "$RECURSIVE" == true ]]; then
-  files=$(python3 - "$INPUT" <<'PY'
-import os,re,sys
-seen=set(); queue=[os.path.abspath(sys.argv[1])]
+reader = 'markdown+lists_without_preceding_blankline-blank_before_header-blank_before_blockquote+autolink_bare_uris+emoji+mark+wikilinks_title_before_pipe'
+recursive = sys.argv[1] == 'true'
+roots = [os.path.normpath(os.path.abspath(path)) for path in sys.argv[2:]]
+
+def local_markdown_link(source, target):
+    if not target or target.startswith(('#', '//')):
+        return None
+    if ':' in target.split('/', 1)[0]:
+        return None
+    boundary = min((index for index in (target.find('?'), target.find('#')) if index >= 0), default=-1)
+    encoded_path = target if boundary < 0 else target[:boundary]
+    if not encoded_path:
+        return None
+    path = unquote(encoded_path)
+    if Path(path).suffix.lower() not in {'.md', '.markdown'}:
+        return None
+    return os.path.normpath(os.path.abspath(os.path.join(os.path.dirname(source), path)))
+
+def links(value):
+    if isinstance(value, dict):
+        if value.get('t') == 'Link':
+            content = value.get('c', [])
+            if len(content) > 2 and isinstance(content[2], list) and content[2]:
+                yield content[2][0]
+        for child in value.values():
+            yield from links(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from links(child)
+
+def document_links(path):
+    result = subprocess.run(['pandoc', '--from=' + reader, '--to=json', path], text=True, capture_output=True)
+    if result.returncode:
+        raise SystemExit(result.stderr.strip() or 'mdoc: pandoc failed')
+    return links(json.loads(result.stdout))
+
+seen = set()
+queue = list(roots)
+heapq.heapify(queue)
 while queue:
-    path=os.path.normpath(queue.pop(0))
-    if path in seen or not os.path.isfile(path): continue
-    seen.add(path); print(path)
-    text=open(path, errors='replace').read()
-    for match in re.finditer(r'\[[^\]]*\]\(([^)#\s]+\.md)(?:#[^)]*)?\)', text):
-        target=match.group(1)
-        if not target.startswith(('http://','https://','mailto:')):
-            queue.append(os.path.join(os.path.dirname(path), target))
-PY
-)
-  root_href=""
-  while IFS= read -r file; do
-    file_title=$(python3 - "$file" <<'PY'
-import os,re,sys
-text=open(sys.argv[1], errors='replace').read()
-match=re.search(r'^# (.+)$', text, re.M)
-print(match.group(1) if match else os.path.splitext(os.path.basename(sys.argv[1]))[0])
-PY
-)
-    file_desc=""
-    if [[ "$file" == "$INPUT" ]]; then
-      [[ -n "$TITLE" ]] && file_title="$TITLE"
-      file_desc="$DESC"
-    fi
-    href=$(add_file "$file" "$file_title" "$file_desc")
-    [[ "$file" == "$INPUT" ]] && root_href="$href"
-  done <<<"$files"
-  href="$root_href"
-else
-  href=$(add_file "$INPUT" "$TITLE" "$DESC")
-fi
+    path = heapq.heappop(queue)
+    if path in seen:
+        continue
+    if not os.path.isfile(path):
+        raise SystemExit(f'mdoc: linked Markdown not found: {path}')
+    seen.add(path)
+    if not recursive:
+        continue
+    for target in document_links(path):
+        child = local_markdown_link(path, target)
+        if child and not os.path.isfile(child):
+            raise SystemExit(f'mdoc: linked Markdown not found: {child} (from {path})')
+        if child and child not in seen:
+            heapq.heappush(queue, child)
 
-url="$SERVER$href"
-echo "mdoc: saved $url"
-[[ "$OPEN" == false ]] || open "$url"
+print(json.dumps({'roots': roots, 'files': sorted(seen)}))
+PY
+)
+
+ROOTS_JSON=$(python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["roots"]))' <<<"$FILES_JSON")
+FILES=()
+while IFS= read -r file; do
+  [[ -n "$file" ]] && FILES+=("$file")
+done < <(python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin)["files"]))' <<<"$FILES_JSON")
+
+CURL_ARGS=(--form-string "roots=$ROOTS_JSON" --form-string "title=$TITLE" --form-string "description=$DESC" --form-string "toc=$TOC")
+for file in "${FILES[@]}"; do
+  escaped_file=${file//\\/\\\\}
+  escaped_file=${escaped_file//\"/\\\"}
+  CURL_ARGS+=(-F "file=@\"$escaped_file\";type=text/markdown" --form-string "source_path=$file")
+done
+RESPONSE=$(curl --fail --silent --show-error "${CURL_ARGS[@]}" "$SERVER/api/documents")
+HREFS=()
+while IFS= read -r href; do
+  [[ -n "$href" ]] && HREFS+=("$href")
+done < <(python3 -c 'import json,sys; print("\n".join(item["href"] for item in json.load(sys.stdin)["items"]))' <<<"$RESPONSE")
+
+for href in "${HREFS[@]}"; do
+  url="$SERVER$href"
+  echo "mdoc: saved $url"
+  [[ "$OPEN" == false ]] || open "$url"
+done

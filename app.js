@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { basename, extname, join, resolve, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, resolve, sep } from "node:path";
 import { unlink } from "node:fs/promises";
 
 const ROOT = import.meta.dir;
@@ -8,6 +8,7 @@ const TEMPLATE = join(ROOT, "templates", "document.html");
 const LEGACY_ROOT = resolve(process.env.PORTFOLIO_LEGACY_ROOT ?? join(process.env.HOME, "claude", "docs"));
 const PORT = Number(process.env.PORT ?? 4387);
 const HOST = process.env.HOST ?? "127.0.0.1";
+const MARKDOWN_READER = "markdown+lists_without_preceding_blankline-blank_before_header-blank_before_blockquote+autolink_bare_uris+emoji+mark+wikilinks_title_before_pipe";
 const db = new Database(DB_PATH, { create: true });
 db.exec(await Bun.file(join(ROOT, "schema.sql")).text());
 
@@ -17,10 +18,53 @@ const text = (value, status = 200) => new Response(value, { status, headers: { "
 const html = (value, status = 200) => new Response(value, { status, headers: { "content-type": "text/html; charset=utf-8" } });
 const field = (form, name) => String(form.get(name) ?? "").trim();
 
-function renderMarkdown(markdown, title, toc = true) {
+function runPandoc(args, input) {
+  const result = Bun.spawnSync({ cmd: ["/opt/homebrew/bin/pandoc", ...args], stdin: Buffer.from(input), stdout: "pipe", stderr: "pipe" });
+  if (result.exitCode !== 0) throw new Error(result.stderr.toString() || "pandoc failed");
+  return result.stdout.toString();
+}
+
+function localMarkdownLink(sourcePath, target) {
+  if (!target || target.startsWith("#") || target.startsWith("//") || /^[a-z][a-z0-9+.-]*:/i.test(target)) return null;
+  const boundary = target.search(/[?#]/);
+  const encodedPath = boundary === -1 ? target : target.slice(0, boundary);
+  if (!encodedPath) return null;
+  let path;
+  try {
+    path = decodeURIComponent(encodedPath);
+  } catch {
+    return null;
+  }
+  if (![".md", ".markdown"].includes(extname(path).toLowerCase())) return null;
+  return { sourcePath: resolve(dirname(sourcePath), path), suffix: boundary === -1 ? "" : target.slice(boundary) };
+}
+
+function rewriteLinks(node, sourcePath, sourceIds) {
+  if (Array.isArray(node)) return node.map(value => rewriteLinks(value, sourcePath, sourceIds));
+  if (!node || typeof node !== "object") return node;
+  if (node.t === "Link" && Array.isArray(node.c?.[2])) {
+    const local = localMarkdownLink(sourcePath, node.c[2][0]);
+    const id = local && sourceIds.get(local.sourcePath);
+    if (id) node.c[2][0] = `/items/${id}${local.suffix}`;
+  }
+  for (const value of Object.values(node)) rewriteLinks(value, sourcePath, sourceIds);
+  return node;
+}
+
+function sourceItemIds() {
+  return new Map(db.query("SELECT id, source_path FROM items WHERE type IN ('document', 'note') AND source_path IS NOT NULL").all().map(item => [item.source_path, item.id]));
+}
+
+function renderMarkdown(markdown, title, toc = true, sourcePath = null, sourceIds = sourceItemIds()) {
+  let input = markdown;
+  let from = `--from=${MARKDOWN_READER}`;
+  if (sourcePath) {
+    const document = JSON.parse(runPandoc([from, "--to=json"], markdown));
+    input = JSON.stringify(rewriteLinks(document, sourcePath, sourceIds));
+    from = "--from=json";
+  }
   const args = [
-    "/opt/homebrew/bin/pandoc",
-    "--from=markdown+lists_without_preceding_blankline-blank_before_header-blank_before_blockquote+autolink_bare_uris+emoji+mark+wikilinks_title_before_pipe",
+    from,
     `--template=${TEMPLATE}`,
     "--syntax-highlighting=breezedark",
     "--standalone",
@@ -31,9 +75,7 @@ function renderMarkdown(markdown, title, toc = true) {
     "--metadata", `date=${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}`,
   ];
   if (toc) args.push("--toc", "--toc-depth=3");
-  const result = Bun.spawnSync({ cmd: args, stdin: Buffer.from(markdown), stdout: "pipe", stderr: "pipe" });
-  if (result.exitCode !== 0) throw new Error(result.stderr.toString() || "pandoc failed");
-  return result.stdout.toString();
+  return runPandoc(args, input);
 }
 
 function upsertItem(item) {
@@ -169,11 +211,69 @@ async function createItem(request) {
   if (!title && content) title = content.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? (upload instanceof File ? upload.name.replace(/\.md$/i, "") : "Untitled");
   if (!title) return text("title is required", 422);
   const toc = field(form, "toc") !== "false" && field(form, "toc") !== "0";
-  const rendered = ["document", "note"].includes(type) && content ? renderMarkdown(content, title, toc) : "";
-  const id = upsertItem({ type, title, description: field(form, "description") || field(form, "desc"), content, rendered_html: rendered, url: field(form, "url") || null, source_path: sourcePath, toc: toc ? 1 : 0 });
+  let id;
+  if (["document", "note"].includes(type) && content) {
+    db.transaction(() => {
+      id = upsertItem({ type, title, description: field(form, "description") || field(form, "desc"), content, rendered_html: "", url: field(form, "url") || null, source_path: sourcePath, toc: toc ? 1 : 0 });
+      const rendered = renderMarkdown(content, title, toc, sourcePath);
+      db.query("UPDATE items SET rendered_html = ? WHERE id = ?").run(rendered, id);
+    })();
+  } else {
+    id = upsertItem({ type, title, description: field(form, "description") || field(form, "desc"), content, rendered_html: "", url: field(form, "url") || null, source_path: sourcePath, toc: toc ? 1 : 0 });
+  }
   const tagNames = field(form, "tags").split(",").map(value => value.trim()).filter(Boolean);
   setTags(id, tagNames);
   return { id, href: itemHref(db.query("SELECT * FROM items WHERE id = ?").get(id)) };
+}
+
+function documentTitle(content, sourcePath) {
+  return content.match(/^#\s+(.+)$/m)?.[1]?.trim() || basename(sourcePath, extname(sourcePath));
+}
+
+async function createDocumentBatch(request) {
+  const form = await request.formData();
+  const uploads = form.getAll("file");
+  const rawSourcePaths = form.getAll("source_path");
+  if (rawSourcePaths.some(path => typeof path !== "string" || !path || !isAbsolute(path))) return text("source paths must be unique absolute paths", 422);
+  const sourcePaths = rawSourcePaths.map(path => resolve(path));
+  let roots;
+  try {
+    const rawRoots = JSON.parse(field(form, "roots") || "[]");
+    if (!Array.isArray(rawRoots) || rawRoots.some(path => typeof path !== "string" || !path || !isAbsolute(path))) return text("roots must be absolute paths", 422);
+    roots = rawRoots.map(path => resolve(path));
+  } catch {
+    return text("roots must be JSON", 422);
+  }
+  if (!uploads.length || uploads.length !== sourcePaths.length || !roots.length) return text("files, source paths, and roots are required", 422);
+  if (new Set(sourcePaths).size !== sourcePaths.length) return text("source paths must be unique absolute paths", 422);
+  if (roots.some(path => !sourcePaths.includes(path))) return text("each root must be included in the batch", 422);
+  const nodes = [];
+  for (let index = 0; index < uploads.length; index++) {
+    const upload = uploads[index];
+    if (!(upload instanceof File)) return text("each batch document needs a Markdown file", 422);
+    const sourcePath = sourcePaths[index];
+    if (![".md", ".markdown"].includes(extname(sourcePath).toLowerCase())) return text("batch source paths must end in .md or .markdown", 422);
+    nodes.push({ sourcePath, content: await upload.text() });
+  }
+  const toc = field(form, "toc") !== "false" && field(form, "toc") !== "0";
+  const root = roots[0];
+  const title = field(form, "title");
+  const description = field(form, "description") || field(form, "desc");
+  const ids = new Map();
+  db.transaction(() => {
+    for (const node of nodes) {
+      const isFirstRoot = node.sourcePath === root;
+      const nodeTitle = isFirstRoot && title ? title : documentTitle(node.content, node.sourcePath);
+      ids.set(node.sourcePath, upsertItem({ type: "document", title: nodeTitle, description: isFirstRoot ? description : "", content: node.content, rendered_html: "", url: null, source_path: node.sourcePath, toc: toc ? 1 : 0 }));
+    }
+    const sourceIds = sourceItemIds();
+    for (const node of nodes) {
+      const item = db.query("SELECT title FROM items WHERE id = ?").get(ids.get(node.sourcePath));
+      const rendered = renderMarkdown(node.content, item.title, toc, node.sourcePath, sourceIds);
+      db.query("UPDATE items SET rendered_html = ? WHERE id = ?").run(rendered, ids.get(node.sourcePath));
+    }
+  })();
+  return { items: roots.map(sourcePath => ({ id: ids.get(sourcePath), href: `/items/${ids.get(sourcePath)}`, source_path: sourcePath })) };
 }
 
 function setTags(itemId, names) {
@@ -219,7 +319,7 @@ async function updateItem(item, form) {
   if (!["document", "note", "link", "pr"].includes(type)) throw new Error("invalid item type");
   if (!title) throw new Error("title is required");
   const toc = form.has("toc");
-  const rendered = ["document", "note"].includes(type) && content ? renderMarkdown(content, title, toc) : "";
+  const rendered = ["document", "note"].includes(type) && content ? renderMarkdown(content, title, toc, item.source_path) : "";
   db.query(`UPDATE items SET type = ?, title = ?, description = ?, content = ?, rendered_html = ?, url = ?, toc = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
     .run(type, title, field(form, "description"), content, rendered, field(form, "url") || null, toc ? 1 : 0, item.id);
   if (form.has("sync_source") && item.source_path?.toLowerCase().endsWith(".md")) await Bun.write(item.source_path, content);
@@ -320,7 +420,7 @@ const server = Bun.serve({
         const item = db.query("SELECT * FROM items WHERE id = ?").get(Number(itemMatch[1]));
         if (!item) return text("not found", 404);
         if (!item.rendered_html && item.content) {
-          item.rendered_html = renderMarkdown(item.content, item.title, Boolean(item.toc));
+          item.rendered_html = renderMarkdown(item.content, item.title, Boolean(item.toc), item.source_path);
           db.query("UPDATE items SET rendered_html = ? WHERE id = ?").run(item.rendered_html, item.id);
         }
         if (item.rendered_html) {
@@ -361,6 +461,11 @@ const server = Bun.serve({
         const item = await createItem(request);
         if (item instanceof Response) return item;
         return Response.json(item, { status: 201 });
+      }
+      if (request.method === "POST" && url.pathname === "/api/documents") {
+        const batch = await createDocumentBatch(request);
+        if (batch instanceof Response) return batch;
+        return Response.json(batch, { status: 201 });
       }
       const toggleMatch = url.pathname.match(/^\/items\/(\d+)\/toggle$/);
       if (request.method === "POST" && toggleMatch) {

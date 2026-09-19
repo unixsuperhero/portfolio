@@ -71,6 +71,28 @@ The service logs are:
 ~/proj/portfolio/logs/stderr.log
 ```
 
+## Add Markdown with `mdoc`
+
+Use `mdoc` to add one or more Markdown files to Portfolio:
+
+```bash
+mdoc guide.md notes.md --no-open
+```
+
+Use `-r` to include local `.md` and `.markdown` files linked by those roots. Portfolio stores the original Markdown and rewrites rendered Pandoc links to the matching Portfolio item. It keeps query strings and fragments on those links.
+
+```bash
+mdoc -r docs/overview.md --title "Overview"
+```
+
+The title and description apply to the first root. `mdoc` returns and opens root items only. It ignores external links, anchor links, images, links written in code, and raw HTML anchors. It reports a missing linked Markdown file before it uploads any document. Paths use their lexical absolute spelling, so two symlink spellings identify different tracked sources.
+
+Pipe one nonrecursive document with `-`:
+
+```bash
+printf '# Hello\n' | mdoc - --title 'Piped input'
+```
+
 ## Recover without `h-docs`
 
 Restart the loaded service:
