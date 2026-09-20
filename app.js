@@ -281,6 +281,9 @@ function portsPage() {
   const rows = snapshot.ports.map(entry => {
     const herdr = entry.herdr;
     const ai = entry.ai;
+    const linkHost = !entry.host || ["*", "::", "0.0.0.0", "::1", "127.0.0.1", "localhost"].includes(entry.host) ? "localhost" : entry.host;
+    const linkTarget = linkHost.includes(":") && !linkHost.startsWith("[") ? `[${linkHost}]` : linkHost;
+    const portUrl = `http://${linkTarget}:${entry.port}`;
     const herdrLabel = herdr
       ? `${escapeHtml(herdr.workspace_label || herdr.workspace_id || "")} ${escapeHtml(herdr.pane_id || "")}${herdr.match === "cwd" ? " ~" : ""}`
       : "<span class='ports-dim'>—</span>";
@@ -292,20 +295,114 @@ function portsPage() {
         : "<span class='ports-dim'>—</span>";
     const aiTitle = escapeHtml(ai?.session ?? ai?.hint ?? "");
     return `<tr>
-      <td class="ports-num">${entry.port}</td>
+      <td class="ports-num"><a href="${escapeHtml(portUrl)}" target="_blank" rel="noreferrer">${entry.port}</a></td>
       <td>${escapeHtml(entry.host)}</td>
       <td>${escapeHtml(entry.command)} <span class="ports-dim">#${entry.pid}</span></td>
       <td class="ports-path" title="${escapeHtml(entry.cwd || "")}">${escapeHtml(entry.cwd || "—")}</td>
       <td title="${herdrTitle}">${herdrLabel}</td>
       <td title="${aiTitle}">${aiLabel}</td>
+      <td class="ports-actions"><a href="/ports/tree?pid=${entry.pid}&port=${entry.port}">Tree</a><button type="button" class="ports-kill" data-pid="${entry.pid}" data-port="${entry.port}" data-command="${escapeHtml(entry.command)}">Kill</button></td>
     </tr>`;
   }).join("");
   const body = `<section class="page-head"><h1>Ports</h1><p>${snapshot.ports.length} TCP listeners · scanned ${escapeHtml(snapshot.scanned_at ?? "")} · <a href="/api/ports">JSON</a></p></section>
     <p>${herdrBadge} <span class="ports-note">Process match = listener descends from the pane shell. A trailing ~ means same working directory only (e.g. this server runs under launchd, not Herdr).</span></p>
     ${warnings.length ? `<p class="settings-note warn">${warnings.map(escapeHtml).join("<br>")}</p>` : ""}
-    ${snapshot.ports.length ? `<div class="ports-wrap"><table class="ports-table"><thead><tr><th>Port</th><th>Bind</th><th>Process</th><th>Directory</th><th>Herdr pane</th><th>AI session</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="empty"><strong>No listeners found.</strong><span>The scanner reported zero TCP LISTEN sockets.</span></div>`}
-    <style>.ports-table{width:100%;border-collapse:collapse;font-size:.82rem}.ports-table th{text-align:left;color:var(--text3);font-family:var(--mono);font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;padding:.5rem;border-bottom:1px solid var(--border)}.ports-table td{padding:.5rem;border-bottom:1px solid var(--border);vertical-align:top;overflow-wrap:anywhere}.ports-num{font-family:var(--mono);font-weight:700}.ports-path{max-width:22rem}.ports-dim{color:var(--text3)}.ports-badge{border:1px solid var(--border2);border-radius:999px;padding:.2rem .6rem;font-size:.72rem}.ports-badge.ok{color:var(--accent2)}.ports-badge.warn{color:var(--gold)}.ports-note{color:var(--text3);font-size:.78rem}.ports-wrap{overflow-x:auto}.ports-table code{color:var(--accent2)}</style>`;
+    ${snapshot.ports.length ? `<div class="ports-wrap"><table class="ports-table"><thead><tr><th>Port</th><th>Bind</th><th>Process</th><th>Directory</th><th>Herdr pane</th><th>AI session</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <script>document.querySelectorAll('.ports-kill').forEach(button=>button.addEventListener('click',async()=>{const label=button.dataset.command+' (#'+button.dataset.pid+') on port '+button.dataset.port;if(!confirm('Kill '+label+'? This sends SIGTERM to the process.'))return;button.disabled=true;try{const response=await fetch('/api/ports/kill',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pid:Number(button.dataset.pid)})});if(response.ok){location.reload();return}button.disabled=false;alert(await response.text())}catch(error){button.disabled=false;alert(String(error && error.message || error))}}));</script>` : `<div class="empty"><strong>No listeners found.</strong><span>The scanner reported zero TCP LISTEN sockets.</span></div>`}
+    <style>.ports-table{width:100%;border-collapse:collapse;font-size:.82rem}.ports-table th{text-align:left;color:var(--text3);font-family:var(--mono);font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;padding:.5rem;border-bottom:1px solid var(--border)}.ports-table td{padding:.5rem;border-bottom:1px solid var(--border);vertical-align:top;overflow-wrap:anywhere}.ports-num{font-family:var(--mono);font-weight:700}.ports-path{max-width:22rem}.ports-dim{color:var(--text3)}.ports-badge{border:1px solid var(--border2);border-radius:999px;padding:.2rem .6rem;font-size:.72rem}.ports-badge.ok{color:var(--accent2)}.ports-badge.warn{color:var(--gold)}.ports-note{color:var(--text3);font-size:.78rem}.ports-wrap{overflow-x:auto}.ports-table code{color:var(--accent2)}.ports-actions{white-space:nowrap}.ports-actions a{margin-right:.6rem}.ports-kill{color:#ff7b72;background:none;border:1px solid var(--border2);border-radius:6px;padding:.15rem .55rem;cursor:pointer;font-size:.78rem}.ports-kill:disabled{opacity:.5;cursor:default}</style>`;
   return html(shell("Ports", body, "ports"));
+}
+
+function findPortEntry(snapshot, pid, port) {
+  const matches = (snapshot.ports ?? []).filter(entry => entry.pid === pid);
+  if (!matches.length) return null;
+  if (port != null && Number.isInteger(port)) {
+    return matches.find(entry => entry.port === port) ?? matches[0];
+  }
+  return matches[0];
+}
+
+function portsTreePage(url) {
+  const pid = Number(url.searchParams.get("pid"));
+  const portParam = url.searchParams.get("port");
+  const port = portParam == null || portParam === "" ? null : Number(portParam);
+  if (!Number.isInteger(pid) || pid <= 0) return text("invalid pid", 422);
+  if (port !== null && (!Number.isInteger(port) || port <= 0)) return text("invalid port", 422);
+  const snapshot = getPortsSnapshot();
+  const entry = findPortEntry(snapshot, pid, port);
+  if (!entry) return text("no TCP listener found for that pid", 404);
+  const herdr = entry.herdr;
+  const ai = entry.ai;
+  const linkHost = !entry.host || ["*", "::", "0.0.0.0", "::1", "127.0.0.1", "localhost"].includes(entry.host) ? "localhost" : entry.host;
+  const linkTarget = linkHost.includes(":") && !linkHost.startsWith("[") ? `[${linkHost}]` : linkHost;
+  const portUrl = `http://${linkTarget}:${entry.port}`;
+  const tree = Array.isArray(entry.tree) && entry.tree.length
+    ? entry.tree
+    : [{ pid: entry.pid, ppid: entry.ppid, command: entry.command_line || entry.command }];
+  const children = Array.isArray(entry.children) ? entry.children : [];
+  const parentPid = tree[0]?.ppid;
+  const reparentedToInit = parentPid === 1 || parentPid === 0;
+  const ownership = herdr?.match === "process"
+    ? `Descends from the Herdr shell (PID ${herdr.shell_pid ?? "?"}) — still owned by pane ${herdr.pane_id ?? ""}.`
+    : herdr
+      ? `Herdr pane ${herdr.pane_id ?? ""} matched by working directory only (~) — the process does not descend from the pane shell, so it may have been started outside Herdr or orphaned.`
+      : reparentedToInit
+        ? `Direct child of PID 1 (launchd): daemonized or orphaned — its parent exited and it was reparented to init.`
+        : `No Herdr pane attributed to this process.`;
+  const sessionLine = ai?.session
+    ? `AI session: ${escapeHtml(ai.kind ?? "unknown")} <code>${escapeHtml(ai.session)}</code> <span class="ports-dim">(${escapeHtml(ai.source ?? "herdr")}${herdr?.agent_status ? ` · agent ${escapeHtml(herdr.agent_status)}` : ""})</span>`
+    : ai?.kind
+      ? `AI hint: ${escapeHtml(ai.kind)} <span class="ports-dim">${escapeHtml(ai.hint ?? ai.source ?? "")}</span> — no live session id, likely a leftover child.`
+      : `No AI session attributed — no agent owns this process.`;
+  const treeRows = tree.map((node, level) => {
+    const badges = [];
+    if (level === 0) badges.push("listening process");
+    if (herdr?.shell_pid != null && node.pid === herdr.shell_pid) badges.push(`Herdr shell · pane ${herdr.pane_id ?? ""}`);
+    if (node.pid === 1) badges.push("init (launchd)");
+    return `<tr><td class="ports-num">${node.pid}</td><td class="ports-num">${node.ppid ?? "—"}</td><td class="ports-path" title="${escapeHtml(node.command || "")}">${escapeHtml(node.command || "—")}</td><td>${badges.length ? badges.map(escapeHtml).join(" · ") : "<span class='ports-dim'>—</span>"}</td></tr>`;
+  }).join("");
+  const childRows = children.length
+    ? children.map(child => `<tr><td class="ports-num">${child.pid}</td><td class="ports-path" title="${escapeHtml(child.command || "")}">${escapeHtml(child.command || "—")}</td></tr>`).join("")
+    : `<tr><td colspan="2"><span class="ports-dim">No child processes.</span></td></tr>`;
+  const body = `<section class="page-head"><p><a href="/ports">← Ports</a></p><h1>Process tree · PID ${entry.pid}</h1><p><a href="${escapeHtml(portUrl)}" target="_blank" rel="noreferrer">Open http://${escapeHtml(linkTarget)}:${entry.port}</a> · ${escapeHtml(entry.command)} · ${escapeHtml(entry.command_line || "")}</p></section>
+    <p>${escapeHtml(ownership)}</p>
+    <p>${sessionLine}</p>
+    <section><h2>Parents</h2><div class="ports-wrap"><table class="ports-table"><thead><tr><th>PID</th><th>PPID</th><th>Command</th><th>Notes</th></tr></thead><tbody>${treeRows}</tbody></table></div></section>
+    <section><h2>Children <span class="ports-dim">(direct)</span></h2><div class="ports-wrap"><table class="ports-table"><thead><tr><th>PID</th><th>Command</th></tr></thead><tbody>${childRows}</tbody></table></div></section>
+    <p><button type="button" class="ports-kill" data-pid="${entry.pid}" data-port="${entry.port}" data-command="${escapeHtml(entry.command)}">Kill PID ${entry.pid} (SIGTERM)</button></p>
+    <script>document.querySelectorAll('.ports-kill').forEach(button=>button.addEventListener('click',async()=>{if(!confirm('Kill '+button.dataset.command+' (#'+button.dataset.pid+') on port '+button.dataset.port+'? This sends SIGTERM to the process.'))return;button.disabled=true;try{const response=await fetch('/api/ports/kill',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pid:Number(button.dataset.pid)})});if(response.ok){location.href='/ports';return}button.disabled=false;alert(await response.text())}catch(error){button.disabled=false;alert(String(error && error.message || error))}}));</script>
+    <style>.ports-table{width:100%;border-collapse:collapse;font-size:.82rem}.ports-table th{text-align:left;color:var(--text3);font-family:var(--mono);font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;padding:.5rem;border-bottom:1px solid var(--border)}.ports-table td{padding:.5rem;border-bottom:1px solid var(--border);vertical-align:top;overflow-wrap:anywhere}.ports-num{font-family:var(--mono);font-weight:700}.ports-path{max-width:34rem}.ports-dim{color:var(--text3)}.ports-wrap{overflow-x:auto}.ports-table code{color:var(--accent2)}.ports-kill{color:#ff7b72;background:none;border:1px solid var(--border2);border-radius:6px;padding:.3rem .7rem;cursor:pointer;font-size:.8rem}.ports-kill:disabled{opacity:.5;cursor:default}</style>`;
+  return html(shell(`Process ${entry.pid} · Ports`, body, "ports"));
+}
+
+async function killPortProcess(request) {
+  let payload = {};
+  const contentType = request.headers.get("content-type") ?? "";
+  try {
+    if (contentType.includes("application/json")) {
+      payload = await request.json();
+    } else {
+      const form = await request.formData();
+      payload = { pid: form.get("pid"), signal: form.get("signal") };
+    }
+  } catch {
+    return text("invalid request body", 400);
+  }
+  const pid = Number(payload.pid);
+  if (!Number.isInteger(pid) || pid <= 1) return text("invalid pid", 422);
+  if (pid === process.pid) return text("refusing to kill the portfolio server itself", 403);
+  const signal = String(payload.signal ?? "TERM").toUpperCase() === "KILL" ? "SIGKILL" : "SIGTERM";
+  const snapshot = getPortsSnapshot();
+  if (snapshot.error && !(snapshot.ports ?? []).length) return text(`cannot verify listeners: ${snapshot.error}`, 502);
+  if (!findPortEntry(snapshot, pid, null)) return text("pid is not a current TCP listener", 404);
+  try {
+    process.kill(pid, signal);
+  } catch (error) {
+    if (error?.code === "ESRCH") return text("no such process", 404);
+    if (error?.code === "EPERM") return text("no permission to signal that process", 403);
+    return text(`failed to signal process: ${error?.message ?? error}`, 500);
+  }
+  return Response.json({ ok: true, pid, signal });
 }
 
 async function uploadToPastry(item, format, visibility) {
@@ -371,8 +468,8 @@ function railSection(title, type) {
 
 function shell(title, body, active = "all") {
   const nav = [["all", "/", "Library"], ["starred", "/starred", "Starred"], ["tags", "/tags", "Tags"], ["ports", "/ports", "Ports"], ["new", "/new", "Add"], ["settings", "/settings", "Settings"]];
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} · Portfolio</title><link rel="stylesheet" href="/assets/app.css"></head><body>
-    <header class="topbar"><a class="brand" href="/">Portfolio</a><nav>${nav.map(([key, href, label]) => `<a class="${active === key ? "active" : ""}" href="${href}">${label}</a>`).join("")}</nav></header>
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} · Portfolios</title><link rel="stylesheet" href="/assets/app.css"></head><body>
+    <header class="topbar"><a class="brand" href="/">丸の中で</a><nav>${nav.map(([key, href, label]) => `<a class="${active === key ? "active" : ""}" href="${href}">${label}</a>`).join("")}</nav></header>
     <main>${body}</main><script>
       document.querySelectorAll('.row-tag-toggle').forEach(button=>button.addEventListener('click',()=>{const editor=button.closest('.item').querySelector('.row-tag-editor');editor.hidden=!editor.hidden;button.classList.toggle('active',!editor.hidden);button.setAttribute('aria-expanded',String(!editor.hidden));if(!editor.hidden)editor.querySelector('input').focus()}));
       document.querySelectorAll('.row-tag-add').forEach(button=>{const input=button.previousElementSibling;const add=async()=>{if(!input.value.trim())return;button.disabled=true;button.textContent='Adding…';const data=new FormData();data.set('tags',input.value);const response=await fetch('/items/'+button.dataset.id+'/tags',{method:'POST',body:data});if(response.ok)location.reload();else{button.disabled=false;button.textContent='Add';alert(await response.text())}};button.addEventListener('click',add);input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();add()}})});
@@ -648,7 +745,9 @@ const server = Bun.serve({
         return html(libraryPage(url, { tag: tag.id, heading: tag.name, subhead: "Everything collected under this tag.", active: "tags" }));
       }
       if (request.method === "GET" && url.pathname === "/ports") return portsPage();
+      if (request.method === "GET" && url.pathname === "/ports/tree") return portsTreePage(url);
       if (request.method === "GET" && url.pathname === "/api/ports") return Response.json(getPortsSnapshot());
+      if (request.method === "POST" && url.pathname === "/api/ports/kill") return killPortProcess(request);
       if (request.method === "GET" && url.pathname === "/settings") return settingsPage();
       if (request.method === "POST" && url.pathname === "/settings") {
         const form = await request.formData();

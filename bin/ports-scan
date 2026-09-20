@@ -6,8 +6,11 @@ Output (stdout) is JSON:
 Each port entry:
   {"port","host","proto","command","pid","user","cwd","ppid","command_line",
    "herdr": {"workspace_id","workspace_label","tab_id","pane_id","agent",
-             "agent_status","agent_session","agent_session_source","cwd"} | None,
-   "ai": {"kind","session"} | None}
+             "agent_status","agent_session","agent_session_source","cwd",
+             "shell_pid","match"} | None,
+   "ai": {"kind","session"} | None,
+   "tree": [{"pid","ppid","command"}] (listener first, walking up to init),
+   "children": [{"pid","ppid","command"}] (direct children of the listener)}
 
 Herdr mapping: a listening PID is attributed to the pane whose shell_pid is
 an ancestor of the PID (or equals it), falling back to cwd equality with the
@@ -236,6 +239,7 @@ def pane_match(pane, agents):
         "workspace_label": pane.get("_workspace_label", ""),
         "tab_id": pane.get("tab_id"),
         "pane_id": pane_id,
+        "shell_pid": pane.get("_shell_pid"),
         "agent": agent,
         "agent_status": (agent_entry or {}).get("agent_status") or pane.get("agent_status"),
         "cwd": pane.get("cwd"),
@@ -268,6 +272,34 @@ def ai_fallback(pid, ancestry, commands):
     return None
 
 
+def process_tree(pid, ancestry, commands):
+    """Walk pid up to init: [{pid, ppid, command}], listener first."""
+    chain = []
+    seen = set()
+    current = pid
+    while current and current not in seen and len(chain) < 64:
+        seen.add(current)
+        ppid = ancestry.get(current)
+        chain.append({
+            "pid": current,
+            "ppid": ppid,
+            "command": commands.get(current, ""),
+        })
+        if not ppid or ppid == current:
+            break
+        current = ppid
+    return chain
+
+
+def direct_children(pid, ancestry, commands):
+    """Direct children of pid: [{pid, ppid, command}] sorted by pid."""
+    return sorted(
+        ({"pid": child, "ppid": pid, "command": commands.get(child, "")}
+         for child, parent in ancestry.items() if parent == pid),
+        key=lambda e: e["pid"],
+    )
+
+
 def main():
     warnings = []
     listeners = parse_listeners(warnings)
@@ -297,6 +329,8 @@ def main():
             "command_line": detail.get("command_line", ""),
             "herdr": herdr,
             "ai": ai,
+            "tree": process_tree(pid, ancestry, commands),
+            "children": direct_children(pid, ancestry, commands),
         })
     payload = {
         "scanned_at": datetime.now(timezone.utc).isoformat(),

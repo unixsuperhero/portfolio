@@ -20,14 +20,26 @@ const FIXTURE_SCAN = {
       herdr: {
         workspace_id: "w1", workspace_label: "demo", tab_id: "w1:t1", pane_id: "w1:p1",
         agent: "codex", agent_status: "working", cwd: "/tmp/proj-a",
-        foreground_cwd: "/tmp/proj-a", match: "process",
+        foreground_cwd: "/tmp/proj-a", match: "process", shell_pid: 100,
       },
       ai: { kind: "codex", session: "01a0dead-beef-0000-0000-000000000001", source: "herdr:codex" },
+      tree: [
+        { pid: 1234, ppid: 100, command: "bun run server.js" },
+        { pid: 100, ppid: 50, command: "herdr pane shell" },
+        { pid: 50, ppid: 1, command: "codex agent" },
+        { pid: 1, ppid: 0, command: "/sbin/launchd" },
+      ],
+      children: [{ pid: 1235, ppid: 1234, command: "bun worker" }],
     },
     {
       host: "*", port: 8124, proto: "TCP", command: "python3", pid: 5678,
       user: "tester", cwd: "/tmp/other", ppid: 1, command_line: "python3 -m http.server 8124",
       herdr: null, ai: null,
+      tree: [
+        { pid: 5678, ppid: 1, command: "python3 -m http.server 8124" },
+        { pid: 1, ppid: 0, command: "/sbin/launchd" },
+      ],
+      children: [],
     },
   ],
 };
@@ -105,9 +117,88 @@ test("ports page renders listeners with pane and session", async () => {
   expect(response.status).toBe(200);
   const page = await response.text();
   expect(page).toContain("8123");
+  expect(page).toContain('href="http://localhost:8123"');
+  expect(page).toContain('href="http://localhost:8124"');
   expect(page).toContain("w1:p1");
   expect(page).toContain("01a0dead");
   expect(page).toContain("/api/ports");
+  expect(page).toContain("/ports/tree?pid=1234");
+  expect(page).toContain('data-pid="1234"');
+});
+
+test("ports tree page shows parents, session, and children", async () => {
+  const page = await (await fetch(`${serverUrl}/ports/tree?pid=1234&port=8123`)).text();
+  expect(page).toContain("Process tree");
+  expect(page).toContain("herdr pane shell");
+  expect(page).toContain("Herdr shell");
+  expect(page).toContain("01a0dead");
+  expect(page).toContain("bun worker");
+  expect(page).toContain("Kill PID 1234");
+});
+
+test("ports tree page flags orphans reparented to init", async () => {
+  const page = await (await fetch(`${serverUrl}/ports/tree?pid=5678`)).text();
+  expect(page).toContain("orphaned");
+  expect(page).toContain("No AI session");
+  expect(page).toContain("No child processes");
+});
+
+test("ports tree page rejects bad lookups", async () => {
+  expect((await fetch(`${serverUrl}/ports/tree?pid=999999`)).status).toBe(404);
+  expect((await fetch(`${serverUrl}/ports/tree`)).status).toBe(422);
+});
+
+test("api/ports/kill refuses unknown and invalid pids", async () => {
+  const kill = (body) => fetch(`${serverUrl}/api/ports/kill`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  expect((await kill({ pid: 999999 })).status).toBe(404);
+  expect((await kill({ pid: 1 })).status).toBe(422);
+  expect((await kill({ pid: "nope" })).status).toBe(422);
+});
+
+test("api/ports/kill signals a real listener process", async () => {
+  const marker = join(directory, "kill-marker");
+  await rm(marker, { force: true });
+  const victim = Bun.spawn(["sh", "-c", `trap "touch '${marker}'; exit 0" TERM; sleep 30 & wait`]);
+  try {
+    const scan = {
+      ...FIXTURE_SCAN,
+      ports: [{
+        host: "127.0.0.1", port: 8999, proto: "TCP", command: "sh", pid: victim.pid,
+        user: "tester", cwd: "/tmp", ppid: 1, command_line: "sh victim",
+        herdr: null, ai: null,
+        tree: [{ pid: victim.pid, ppid: 1, command: "sh victim" }],
+        children: [],
+      }],
+    };
+    const scanFile = join(directory, "kill-scan.json");
+    const scanner = join(directory, "kill-scanner");
+    await writeFile(scanFile, JSON.stringify(scan));
+    await writeFile(scanner, `#!/bin/sh\ncat '${scanFile}'\n`);
+    await Bun.$`chmod +x ${scanner}`.quiet();
+    const target = await startServer({ PORTS_SCAN_BIN: scanner });
+    try {
+      const response = await fetch(`${target.url}/api/ports/kill`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ pid: victim.pid }),
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, pid: victim.pid, signal: "SIGTERM" });
+      for (let attempt = 0; attempt < 100; attempt++) {
+        try { await Bun.file(marker).text(); break; } catch {}
+        await Bun.sleep(25);
+        if (attempt === 99) throw new Error("victim never received SIGTERM");
+      }
+    } finally {
+      target.child.kill();
+    }
+  } finally {
+    try { victim.kill(); } catch {}
+  }
 });
 
 test("mdoc imports HTML files verbatim with title from <title>", async () => {
