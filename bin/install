@@ -7,6 +7,7 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 PORT="${PORTFOLIO_PORT:-4387}"
 BUN=$(command -v bun || true)
 PANDOC=$(command -v pandoc || true)
+PASTRY=$(command -v pastry || true)
 
 [[ "$(uname -s)" == "Darwin" ]] || { echo "portfolio install: macOS is required" >&2; exit 1; }
 [[ -n "$BUN" ]] || { echo "portfolio install: install Bun first: brew install bun" >&2; exit 1; }
@@ -27,7 +28,7 @@ cat > "$PLIST" <<EOF
   <array><string>$BUN</string><string>run</string><string>$ROOT/app.js</string></array>
   <key>WorkingDirectory</key><string>$ROOT</string>
   <key>EnvironmentVariables</key>
-  <dict><key>HOME</key><string>$HOME</string><key>PORT</key><string>$PORT</string></dict>
+  <dict><key>HOME</key><string>$HOME</string><key>PORT</key><string>$PORT</string>$([[ -n "$PASTRY" ]] && printf '<key>PASTRY_BIN</key><string>%s</string>' "$PASTRY")</dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
   <key>ProcessType</key><string>Interactive</string>

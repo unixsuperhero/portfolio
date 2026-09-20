@@ -147,6 +147,36 @@ To make `h-docs` use that URL, add this setting to your shell configuration:
 export HDOCS_SERVER=http://docs.h:4387
 ```
 
+## Settings
+
+Open `http://127.0.0.1:4387/settings` to manage local preferences. They are stored in the `settings` table of the Portfolio database.
+
+The available setting is **Enable Pastry uploads**.
+
+## Upload documents to Pastry
+
+1. Turn on **Enable Pastry uploads** on the settings page.
+2. Open any document, then click **Upload to Pastry** in the document header.
+3. In the dialog, choose the file type (Markdown or HTML) and the visibility (public or private), then click **Upload**.
+
+The server writes the document to a temporary file and runs:
+
+```bash
+pastry create <file> --title "<document title>" --public|--private --json
+```
+
+Uploads are also available over HTTP:
+
+```bash
+curl -X POST http://127.0.0.1:4387/api/items/1/pastry \
+  -H 'content-type: application/json' \
+  -d '{"format":"md","visibility":"private"}'
+```
+
+`format` is `md` or `html`. `visibility` is `public` or `private`. The response contains the Pastry `slug` and `url`.
+
+Portfolio calls `pastry` on `PATH`. Set `PASTRY_BIN` to an absolute path in the LaunchAgent environment if the service cannot find it.
+
 ## Back up the library
 
 Stop the service before copying the live SQLite database:

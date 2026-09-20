@@ -1,6 +1,8 @@
 import { Database } from "bun:sqlite";
 import { basename, dirname, extname, isAbsolute, join, resolve, sep } from "node:path";
-import { unlink } from "node:fs/promises";
+import { mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 const ROOT = import.meta.dir;
 const DB_PATH = process.env.PORTFOLIO_DB ?? join(ROOT, "portfolio.sqlite");
@@ -55,6 +57,21 @@ function sourceItemIds() {
   return new Map(db.query("SELECT id, source_path FROM items WHERE type IN ('document', 'note') AND source_path IS NOT NULL").all().map(item => [item.source_path, item.id]));
 }
 
+const getSetting = (key, fallback = "") => db.query("SELECT value FROM settings WHERE key = ?").get(key)?.value ?? fallback;
+const setSetting = (key, value) => db.query("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
+const pastryEnabled = () => getSetting("pastry_enabled") === "1";
+const PASTRY_FALLBACKS = [".config/gohan/bin/pastry", ".local/bin/pastry", "bin/pastry"];
+let pastryResolved;
+function pastryBin() {
+  if (process.env.PASTRY_BIN) return process.env.PASTRY_BIN;
+  if (pastryResolved) return pastryResolved;
+  const home = process.env.HOME ?? "";
+  const candidates = [...PASTRY_FALLBACKS.map(path => join(home, path)), "/opt/homebrew/bin/pastry", "/usr/local/bin/pastry"];
+  pastryResolved = Bun.which("pastry") ?? candidates.find(existsSync) ?? "pastry";
+  return pastryResolved;
+}
+const slugify = value => String(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+
 function renderMarkdown(markdown, title, toc = true, sourcePath = null, sourceIds = sourceItemIds()) {
   let input = markdown;
   let from = `--from=${MARKDOWN_READER}`;
@@ -104,6 +121,167 @@ function icon(type) {
   return { document: "DOC", note: "NOTE", link: "LINK", pr: "PR" }[type] ?? type.toUpperCase();
 }
 
+const pastryButton = item => `<div class="pastry-header-actions"><button type="button" class="pastry-open" data-pastry-open data-pastry-item="${item.id}">Upload to Pastry</button></div>`;
+
+function pastryWidget() {
+  return `<style>
+    .pastry-header-actions{margin-top:1.1rem}
+    .pastry-open{border:0;border-radius:999px;background:var(--accent);color:#08111f;font:600 .78rem/1 var(--font-body,inherit);letter-spacing:.02em;padding:.55rem .95rem;cursor:pointer}
+    .pastry-open:hover{background:var(--accent2)}
+    .pastry-modal[hidden]{display:none}
+    .pastry-modal{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:1.25rem;background:rgba(4,8,18,.72)}
+    .pastry-modal-card{width:min(420px,100%);display:grid;gap:1rem;padding:1.25rem;border:1px solid var(--border2);border-radius:var(--radius,12px);background:var(--surface);color:var(--text);font-family:var(--font-body,inherit);font-size:.95rem;text-align:left}
+    .pastry-modal-card h2{margin:0;font-size:1.15rem}
+    .pastry-modal-card fieldset{display:grid;gap:.45rem;margin:0;padding:.7rem .85rem;border:1px solid var(--border);border-radius:10px}
+    .pastry-modal-card legend{padding:0 .35rem;font:600 .62rem/1 var(--font-mono,monospace);letter-spacing:.16em;text-transform:uppercase;color:var(--text3)}
+    .pastry-modal-card label{display:flex;align-items:center;gap:.5rem;cursor:pointer}
+    .pastry-modal-card input{accent-color:var(--accent)}
+    .pastry-status{margin:0;min-height:1.25em;font-size:.82rem;color:var(--text2)}
+    .pastry-status.error{color:#ff9d9d}
+    .pastry-status a{color:var(--accent)}
+    .pastry-modal-actions{display:flex;justify-content:flex-end;gap:.6rem}
+    .pastry-modal-actions button{border:0;border-radius:8px;padding:.62rem 1rem;font:700 .85rem var(--font-body,inherit);cursor:pointer}
+    .pastry-cancel{background:var(--surface2);color:var(--text)}
+    .pastry-submit{background:var(--accent);color:#08111f}
+    .pastry-submit[disabled]{opacity:.55;cursor:progress}
+  </style>
+  <div class="pastry-modal" id="pastry-modal" hidden>
+    <div class="pastry-modal-card" role="dialog" aria-modal="true" aria-labelledby="pastry-modal-title">
+      <h2 id="pastry-modal-title">Upload to Pastry</h2>
+      <fieldset><legend>File type</legend>
+        <label><input type="radio" name="pastry-format" value="md" checked> Markdown (.md)</label>
+        <label><input type="radio" name="pastry-format" value="html"> HTML (.html)</label>
+      </fieldset>
+      <fieldset><legend>Visibility</legend>
+        <label><input type="radio" name="pastry-visibility" value="public" checked> Public</label>
+        <label><input type="radio" name="pastry-visibility" value="private"> Private</label>
+      </fieldset>
+      <p class="pastry-status" role="status"></p>
+      <div class="pastry-modal-actions">
+        <button type="button" class="pastry-cancel">Cancel</button>
+        <button type="button" class="pastry-submit">Upload</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    (() => {
+      const trigger = document.querySelector('[data-pastry-open]');
+      const modal = document.getElementById('pastry-modal');
+      if (!trigger || !modal) return;
+      const status = modal.querySelector('.pastry-status');
+      const submit = modal.querySelector('.pastry-submit');
+      const itemId = trigger.dataset.pastryItem;
+      const close = () => { modal.hidden = true; status.textContent = ''; status.classList.remove('error'); submit.disabled = false; };
+      const open = () => { modal.hidden = false; };
+      trigger.addEventListener('click', open);
+      modal.querySelector('.pastry-cancel').addEventListener('click', close);
+      modal.addEventListener('click', event => { if (event.target === modal) close(); });
+      document.addEventListener('keydown', event => { if (event.key === 'Escape' && !modal.hidden) close(); });
+      submit.addEventListener('click', async () => {
+        const format = modal.querySelector('input[name="pastry-format"]:checked').value;
+        const visibility = modal.querySelector('input[name="pastry-visibility"]:checked').value;
+        submit.disabled = true;
+        status.classList.remove('error');
+        status.textContent = 'Uploading…';
+        try {
+          const response = await fetch('/api/items/' + itemId + '/pastry', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ format, visibility }),
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error || 'Upload failed');
+          status.textContent = 'Uploaded as ' + (payload.slug || payload.output || 'snippet') + '.';
+          if (payload.url) {
+            const link = document.createElement('a');
+            link.href = payload.url;
+            link.target = '_blank';
+            link.rel = 'noreferrer';
+            link.textContent = 'Open';
+            status.append(' ', link);
+          }
+          submit.disabled = false;
+        } catch (error) {
+          status.classList.add('error');
+          status.textContent = error.message;
+          submit.disabled = false;
+        }
+      });
+    })();
+  </script>`;
+}
+
+function injectPastry(documentHtml, item) {
+  const button = pastryButton(item);
+  const withButton = documentHtml.includes("</header>")
+    ? documentHtml.replace("</header>", `${button}</header>`)
+    : documentHtml.replace("</body>", `${button}</body>`);
+  return withButton.replace("</body>", `${pastryWidget()}</body>`);
+}
+
+async function pastryContent(item, format) {
+  if (format === "html") {
+    if (item.rendered_html) return item.rendered_html;
+    if (item.source_path?.toLowerCase().endsWith(".html")) {
+      const file = Bun.file(item.source_path);
+      if (await file.exists()) return file.text();
+    }
+    return item.content ? renderMarkdown(item.content, item.title, Boolean(item.toc)) : "";
+  }
+  return item.content ?? "";
+}
+
+function pastryStatus() {
+  const bin = Bun.which(pastryBin());
+  if (!bin) return { ok: false, detail: `"${pastryBin()}" not found on PATH` };
+  const result = Bun.spawnSync({ cmd: [bin, "auth", "status"], stdout: "pipe", stderr: "pipe" });
+  const output = `${result.stdout.toString()}${result.stderr.toString()}`.trim();
+  const detail = output.split("\n").map(line => line.trim()).filter(Boolean).slice(0, 2).join(" · ") || "no output";
+  return { ok: result.exitCode === 0 && /authenticated/i.test(output), detail: `${bin} · ${detail}` };
+}
+
+function settingsPage() {
+  const enabled = pastryEnabled();
+  const status = pastryStatus();
+  const body = `<section class="page-head"><h1>Settings</h1><p>Local preferences stored in this Portfolio database.</p></section>
+    <form class="editor" method="post" action="/settings">
+      <label class="check"><input type="checkbox" name="pastry_enabled"${enabled ? " checked" : ""}> Enable Pastry uploads</label>
+      <p class="settings-note">When enabled, every document page shows an <strong>Upload to Pastry</strong> button in its header. Uploads run <code>pastry create &lt;file&gt;</code> with your chosen file type and visibility.</p>
+      <p class="settings-note${status.ok ? "" : " warn"}">Pastry CLI: ${escapeHtml(status.detail)}</p>
+      <button class="primary">Save settings</button>
+    </form>`;
+  return html(shell("Settings", body, "settings"));
+}
+
+async function uploadToPastry(item, format, visibility) {
+  const content = await pastryContent(item, format);
+  if (!content) {
+    const error = new Error(`this item has no ${format === "html" ? "HTML" : "Markdown"} content to upload`);
+    error.status = 422;
+    throw error;
+  }
+  const dir = await mkdtemp(join(tmpdir(), "portfolio-pastry-"));
+  const file = join(dir, `${slugify(item.title) || "document"}.${format}`);
+  await writeFile(file, content);
+  try {
+    const args = [pastryBin(), "create", file, "--title", item.title, visibility === "private" ? "--private" : "--public", "--json"];
+    const result = Bun.spawnSync({ cmd: args, stdout: "pipe", stderr: "pipe" });
+    const stdout = result.stdout.toString().trim();
+    const stderr = result.stderr.toString().trim();
+    if (result.exitCode !== 0) throw new Error(stderr || stdout || `pastry create exited with ${result.exitCode}`);
+    let payload = null;
+    try { payload = JSON.parse(stdout); } catch {}
+    const snippet = payload?.snippet ?? payload;
+    return {
+      slug: snippet?.slug ?? snippet?.id ?? null,
+      url: snippet?.url ?? snippet?.html_url ?? null,
+      output: stdout,
+    };
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
 function itemRows(items) {
   if (!items.length) return `<div class="empty"><strong>Nothing here.</strong><span>Change the filters or add an item.</span></div>`;
   return `<div class="items">${items.map(item => {
@@ -137,7 +315,7 @@ function railSection(title, type) {
 
 
 function shell(title, body, active = "all") {
-  const nav = [["all", "/", "Library"], ["starred", "/starred", "Starred"], ["tags", "/tags", "Tags"], ["new", "/new", "Add"]];
+  const nav = [["all", "/", "Library"], ["starred", "/starred", "Starred"], ["tags", "/tags", "Tags"], ["new", "/new", "Add"], ["settings", "/settings", "Settings"]];
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} · Portfolio</title><link rel="stylesheet" href="/assets/app.css"></head><body>
     <header class="topbar"><a class="brand" href="/">Portfolio</a><nav>${nav.map(([key, href, label]) => `<a class="${active === key ? "active" : ""}" href="${href}">${label}</a>`).join("")}</nav></header>
     <main>${body}</main><script>
@@ -371,7 +549,26 @@ const server = Bun.serve({
         const file = Bun.file(candidate);
         if (!await file.exists()) return text("not found", 404);
         const body = (await file.text()).replaceAll('href="../index.html"', 'href="/"');
-        return html(body);
+        const legacyItem = pastryEnabled() ? db.query("SELECT * FROM items WHERE source_path = ?").get(candidate) : null;
+        return html(legacyItem ? injectPastry(body, legacyItem) : body);
+      }
+      if (request.method === "GET" && url.pathname === "/api/settings") return Response.json({ pastry_enabled: pastryEnabled() });
+      const pastryMatch = url.pathname.match(/^\/api\/items\/(\d+)\/pastry$/);
+      if (request.method === "POST" && pastryMatch) {
+        if (!pastryEnabled()) return Response.json({ error: "pastry uploads are disabled in settings" }, { status: 403 });
+        const item = db.query("SELECT * FROM items WHERE id = ?").get(Number(pastryMatch[1]));
+        if (!item) return Response.json({ error: "not found" }, { status: 404 });
+        const body = await request.json().catch(() => ({}));
+        const format = body.format === "html" ? "html" : "md";
+        const visibility = body.visibility === "private" ? "private" : "public";
+        try {
+          const uploaded = await uploadToPastry(item, format, visibility);
+          return Response.json({ ...uploaded, format, visibility });
+        } catch (error) {
+          if (error.status) return Response.json({ error: error.message }, { status: error.status });
+          const bin = Bun.which(pastryBin());
+          return Response.json({ error: bin ? error.message : `pastry CLI "${pastryBin()}" not found on PATH` }, { status: bin ? 502 : 503 });
+        }
       }
       if (request.method === "GET" && url.pathname === "/") return html(libraryPage(url, { type: "document", rails: true, subhead: "Documents in the center; notes, PRs, and links close at hand." }));
       if (request.method === "GET" && url.pathname === "/starred") return html(libraryPage(url, { starred: true, heading: "Starred", subhead: "The items worth returning to.", active: "starred" }));
@@ -385,6 +582,12 @@ const server = Bun.serve({
         const tag = db.query("SELECT * FROM tags WHERE id = ?").get(Number(tagMatch[1]));
         if (!tag) return text("not found", 404);
         return html(libraryPage(url, { tag: tag.id, heading: tag.name, subhead: "Everything collected under this tag.", active: "tags" }));
+      }
+      if (request.method === "GET" && url.pathname === "/settings") return settingsPage();
+      if (request.method === "POST" && url.pathname === "/settings") {
+        const form = await request.formData();
+        setSetting("pastry_enabled", form.has("pastry_enabled") ? "1" : "0");
+        return redirect("/settings");
       }
       if (request.method === "GET" && url.pathname === "/new") {
         return html(shell("Add an item", `<section class="page-head"><h1>Add an item</h1><p>Documents and notes use Markdown. Links and PRs point outward.</p></section><form class="editor" method="post" action="/items"><label>Type<select name="type"><option value="note">Note</option><option value="document">Document</option><option value="link">Link</option><option value="pr">PR</option></select></label><label>Title<input name="title" required></label><label>Description<input name="description"></label><label>URL<input name="url" type="url" placeholder="https://"></label><label>Tags<input name="tags" placeholder="architecture, portfolio-name"></label><label>Markdown<textarea name="content" rows="16"></textarea></label><button class="primary">Save item</button></form>`, "new"));
@@ -425,9 +628,10 @@ const server = Bun.serve({
         }
         if (item.rendered_html) {
           const manage = `<a href="/items/${item.id}/manage" style="position:fixed;right:1rem;bottom:1rem;z-index:20;padding:.55rem .8rem;border-radius:8px;background:#172239;color:#b8d0ff;font:600 12px system-ui;text-decoration:none;box-shadow:0 8px 24px rgba(0,0,0,.35)">Manage</a>`;
-          return html(item.rendered_html.replace("</body>", `${manage}</body>`));
+          const documentHtml = pastryEnabled() ? injectPastry(item.rendered_html, item) : item.rendered_html;
+          return html(documentHtml.replace("</body>", `${manage}</body>`));
         }
-        return html(shell(item.title, `<section class="detail-head"><a href="/">Back to library</a><h1>${escapeHtml(item.title)}</h1></section><pre>${escapeHtml(item.content)}</pre>`));
+        return html(shell(item.title, `<section class="detail-head"><a href="/">Back to library</a><h1>${escapeHtml(item.title)}</h1>${pastryEnabled() ? pastryButton(item) : ""}</section><pre>${escapeHtml(item.content)}</pre>${pastryEnabled() ? pastryWidget() : ""}`));
       }
       if (request.method === "POST" && url.pathname === "/items/bulk") {
         const form = await request.formData();
