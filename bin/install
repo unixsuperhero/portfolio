@@ -16,7 +16,8 @@ PASTRY=$(command -v pastry || true)
 mkdir -p "$HOME/Library/LaunchAgents" "$HOME/bin" "$ROOT/logs"
 cp "$ROOT/bin/h-docs" "$HOME/bin/h-docs"
 cp "$ROOT/bin/mdoc" "$HOME/bin/mdoc"
-chmod +x "$HOME/bin/h-docs" "$HOME/bin/mdoc"
+cp "$ROOT/bin/ports-scan" "$HOME/bin/ports-scan"
+chmod +x "$HOME/bin/h-docs" "$HOME/bin/mdoc" "$HOME/bin/ports-scan"
 
 cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

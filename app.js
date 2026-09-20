@@ -10,6 +10,7 @@ const TEMPLATE = join(ROOT, "templates", "document.html");
 const LEGACY_ROOT = resolve(process.env.PORTFOLIO_LEGACY_ROOT ?? join(process.env.HOME, "claude", "docs"));
 const PORT = Number(process.env.PORT ?? 4387);
 const HOST = process.env.HOST ?? "127.0.0.1";
+const PORTS_SCAN_BIN = process.env.PORTS_SCAN_BIN ?? join(ROOT, "bin", "ports-scan");
 const MARKDOWN_READER = "markdown+lists_without_preceding_blankline-blank_before_header-blank_before_blockquote+autolink_bare_uris+emoji+mark+wikilinks_title_before_pipe";
 const db = new Database(DB_PATH, { create: true });
 db.exec(await Bun.file(join(ROOT, "schema.sql")).text());
@@ -108,7 +109,10 @@ function upsertItem(item) {
 }
 
 function itemHref(item) {
-  if (item.type === "document" && !item.content && item.source_path?.endsWith(".html")) return `/legacy/${encodeURIComponent(basename(item.source_path))}`;
+  if (item.type === "document" && !item.content && item.source_path?.toLowerCase().endsWith(".html")) {
+    const candidate = resolve(LEGACY_ROOT, basename(item.source_path));
+    if (candidate.startsWith(LEGACY_ROOT + sep) && existsSync(candidate)) return `/legacy/${encodeURIComponent(basename(item.source_path))}`;
+  }
   if ((item.type === "link" || item.type === "pr") && item.url) return item.url;
   return `/items/${item.id}`;
 }
@@ -253,6 +257,57 @@ function settingsPage() {
   return html(shell("Settings", body, "settings"));
 }
 
+function getPortsSnapshot() {
+  try {
+    const result = Bun.spawnSync({ cmd: [PORTS_SCAN_BIN], stdout: "pipe", stderr: "pipe" });
+    if (result.exitCode !== 0) {
+      const detail = result.stderr.toString().trim().split("\n")[0] || `scanner exited with ${result.exitCode}`;
+      return { scanned_at: new Date().toISOString(), herdr_available: false, ports: [], warnings: [], error: detail };
+    }
+    const payload = JSON.parse(result.stdout.toString());
+    if (!Array.isArray(payload.ports)) throw new Error("scanner returned no ports array");
+    return payload;
+  } catch (error) {
+    return { scanned_at: new Date().toISOString(), herdr_available: false, ports: [], warnings: [], error: error.message };
+  }
+}
+
+function portsPage() {
+  const snapshot = getPortsSnapshot();
+  const herdrBadge = snapshot.herdr_available
+    ? `<span class="ports-badge ok">Herdr linked</span>`
+    : `<span class="ports-badge warn">Herdr unavailable</span>`;
+  const warnings = [...(snapshot.warnings ?? []), ...(snapshot.error ? [`scan error: ${snapshot.error}`] : [])];
+  const rows = snapshot.ports.map(entry => {
+    const herdr = entry.herdr;
+    const ai = entry.ai;
+    const herdrLabel = herdr
+      ? `${escapeHtml(herdr.workspace_label || herdr.workspace_id || "")} ${escapeHtml(herdr.pane_id || "")}${herdr.match === "cwd" ? " ~" : ""}`
+      : "<span class='ports-dim'>—</span>";
+    const herdrTitle = herdr ? escapeHtml(`tab ${herdr.tab_id ?? ""} · ${herdr.agent_status ?? ""} · match: ${herdr.match ?? "?"}`) : "";
+    const aiLabel = ai?.session
+      ? `${escapeHtml(ai.kind ?? "")} <code>${escapeHtml(String(ai.session).slice(0, 8))}…</code>`
+      : ai?.kind
+        ? escapeHtml(ai.kind)
+        : "<span class='ports-dim'>—</span>";
+    const aiTitle = escapeHtml(ai?.session ?? ai?.hint ?? "");
+    return `<tr>
+      <td class="ports-num">${entry.port}</td>
+      <td>${escapeHtml(entry.host)}</td>
+      <td>${escapeHtml(entry.command)} <span class="ports-dim">#${entry.pid}</span></td>
+      <td class="ports-path" title="${escapeHtml(entry.cwd || "")}">${escapeHtml(entry.cwd || "—")}</td>
+      <td title="${herdrTitle}">${herdrLabel}</td>
+      <td title="${aiTitle}">${aiLabel}</td>
+    </tr>`;
+  }).join("");
+  const body = `<section class="page-head"><h1>Ports</h1><p>${snapshot.ports.length} TCP listeners · scanned ${escapeHtml(snapshot.scanned_at ?? "")} · <a href="/api/ports">JSON</a></p></section>
+    <p>${herdrBadge} <span class="ports-note">Process match = listener descends from the pane shell. A trailing ~ means same working directory only (e.g. this server runs under launchd, not Herdr).</span></p>
+    ${warnings.length ? `<p class="settings-note warn">${warnings.map(escapeHtml).join("<br>")}</p>` : ""}
+    ${snapshot.ports.length ? `<div class="ports-wrap"><table class="ports-table"><thead><tr><th>Port</th><th>Bind</th><th>Process</th><th>Directory</th><th>Herdr pane</th><th>AI session</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="empty"><strong>No listeners found.</strong><span>The scanner reported zero TCP LISTEN sockets.</span></div>`}
+    <style>.ports-table{width:100%;border-collapse:collapse;font-size:.82rem}.ports-table th{text-align:left;color:var(--text3);font-family:var(--mono);font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;padding:.5rem;border-bottom:1px solid var(--border)}.ports-table td{padding:.5rem;border-bottom:1px solid var(--border);vertical-align:top;overflow-wrap:anywhere}.ports-num{font-family:var(--mono);font-weight:700}.ports-path{max-width:22rem}.ports-dim{color:var(--text3)}.ports-badge{border:1px solid var(--border2);border-radius:999px;padding:.2rem .6rem;font-size:.72rem}.ports-badge.ok{color:var(--accent2)}.ports-badge.warn{color:var(--gold)}.ports-note{color:var(--text3);font-size:.78rem}.ports-wrap{overflow-x:auto}.ports-table code{color:var(--accent2)}</style>`;
+  return html(shell("Ports", body, "ports"));
+}
+
 async function uploadToPastry(item, format, visibility) {
   const content = await pastryContent(item, format);
   if (!content) {
@@ -315,7 +370,7 @@ function railSection(title, type) {
 
 
 function shell(title, body, active = "all") {
-  const nav = [["all", "/", "Library"], ["starred", "/starred", "Starred"], ["tags", "/tags", "Tags"], ["new", "/new", "Add"], ["settings", "/settings", "Settings"]];
+  const nav = [["all", "/", "Library"], ["starred", "/starred", "Starred"], ["tags", "/tags", "Tags"], ["ports", "/ports", "Ports"], ["new", "/new", "Add"], ["settings", "/settings", "Settings"]];
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} · Portfolio</title><link rel="stylesheet" href="/assets/app.css"></head><body>
     <header class="topbar"><a class="brand" href="/">Portfolio</a><nav>${nav.map(([key, href, label]) => `<a class="${active === key ? "active" : ""}" href="${href}">${label}</a>`).join("")}</nav></header>
     <main>${body}</main><script>
@@ -405,8 +460,13 @@ async function createItem(request) {
 }
 
 function documentTitle(content, sourcePath) {
+  if (extname(sourcePath).toLowerCase() === ".html") {
+    return content.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() || basename(sourcePath, extname(sourcePath));
+  }
   return content.match(/^#\s+(.+)$/m)?.[1]?.trim() || basename(sourcePath, extname(sourcePath));
 }
+
+const isHtmlPath = sourcePath => extname(sourcePath).toLowerCase() === ".html";
 
 async function createDocumentBatch(request) {
   const form = await request.formData();
@@ -428,9 +488,9 @@ async function createDocumentBatch(request) {
   const nodes = [];
   for (let index = 0; index < uploads.length; index++) {
     const upload = uploads[index];
-    if (!(upload instanceof File)) return text("each batch document needs a Markdown file", 422);
+    if (!(upload instanceof File)) return text("each batch document needs a Markdown or HTML file", 422);
     const sourcePath = sourcePaths[index];
-    if (![".md", ".markdown"].includes(extname(sourcePath).toLowerCase())) return text("batch source paths must end in .md or .markdown", 422);
+    if (![".md", ".markdown", ".html"].includes(extname(sourcePath).toLowerCase())) return text("batch source paths must end in .md, .markdown, or .html", 422);
     nodes.push({ sourcePath, content: await upload.text() });
   }
   const toc = field(form, "toc") !== "false" && field(form, "toc") !== "0";
@@ -442,10 +502,12 @@ async function createDocumentBatch(request) {
     for (const node of nodes) {
       const isFirstRoot = node.sourcePath === root;
       const nodeTitle = isFirstRoot && title ? title : documentTitle(node.content, node.sourcePath);
-      ids.set(node.sourcePath, upsertItem({ type: "document", title: nodeTitle, description: isFirstRoot ? description : "", content: node.content, rendered_html: "", url: null, source_path: node.sourcePath, toc: toc ? 1 : 0 }));
+      const html = isHtmlPath(node.sourcePath);
+      ids.set(node.sourcePath, upsertItem({ type: "document", title: nodeTitle, description: isFirstRoot ? description : "", content: html ? "" : node.content, rendered_html: html ? node.content : "", url: null, source_path: node.sourcePath, toc: toc ? 1 : 0 }));
     }
     const sourceIds = sourceItemIds();
     for (const node of nodes) {
+      if (isHtmlPath(node.sourcePath)) continue;
       const item = db.query("SELECT title FROM items WHERE id = ?").get(ids.get(node.sourcePath));
       const rendered = renderMarkdown(node.content, item.title, toc, node.sourcePath, sourceIds);
       db.query("UPDATE items SET rendered_html = ? WHERE id = ?").run(rendered, ids.get(node.sourcePath));
@@ -497,9 +559,11 @@ async function updateItem(item, form) {
   if (!["document", "note", "link", "pr"].includes(type)) throw new Error("invalid item type");
   if (!title) throw new Error("title is required");
   const toc = form.has("toc");
-  const rendered = ["document", "note"].includes(type) && content ? renderMarkdown(content, title, toc, item.source_path) : "";
+  const htmlBacked = item.source_path?.toLowerCase().endsWith(".html") && !content;
+  const rendered = ["document", "note"].includes(type) && content ? renderMarkdown(content, title, toc, item.source_path) : (htmlBacked ? item.rendered_html : "");
+  const nextContent = htmlBacked ? item.content : content;
   db.query(`UPDATE items SET type = ?, title = ?, description = ?, content = ?, rendered_html = ?, url = ?, toc = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
-    .run(type, title, field(form, "description"), content, rendered, field(form, "url") || null, toc ? 1 : 0, item.id);
+    .run(type, title, field(form, "description"), nextContent, rendered, field(form, "url") || null, toc ? 1 : 0, item.id);
   if (form.has("sync_source") && item.source_path?.toLowerCase().endsWith(".md")) await Bun.write(item.source_path, content);
 }
 
@@ -583,6 +647,8 @@ const server = Bun.serve({
         if (!tag) return text("not found", 404);
         return html(libraryPage(url, { tag: tag.id, heading: tag.name, subhead: "Everything collected under this tag.", active: "tags" }));
       }
+      if (request.method === "GET" && url.pathname === "/ports") return portsPage();
+      if (request.method === "GET" && url.pathname === "/api/ports") return Response.json(getPortsSnapshot());
       if (request.method === "GET" && url.pathname === "/settings") return settingsPage();
       if (request.method === "POST" && url.pathname === "/settings") {
         const form = await request.formData();

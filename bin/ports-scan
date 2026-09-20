@@ -1,0 +1,312 @@
+#!/usr/bin/env python3
+"""Scan local TCP listeners and attribute them to processes, cwds, and Herdr panes.
+
+Output (stdout) is JSON:
+  {"scanned_at": iso, "herdr_available": bool, "ports": [...], "warnings": [...]}
+Each port entry:
+  {"port","host","proto","command","pid","user","cwd","ppid","command_line",
+   "herdr": {"workspace_id","workspace_label","tab_id","pane_id","agent",
+             "agent_status","agent_session","agent_session_source","cwd"} | None,
+   "ai": {"kind","session"} | None}
+
+Herdr mapping: a listening PID is attributed to the pane whose shell_pid is
+an ancestor of the PID (or equals it), falling back to cwd equality with the
+pane foreground_cwd. Agent session comes from `herdr agent list`.
+When Herdr is unavailable, ports/process/cwd are still reported and
+`ai` falls back to a heuristic scan of the ancestor command lines.
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from datetime import datetime, timezone
+
+TIMEOUT = 8
+AI_HINT_RE = re.compile(r"(codex|claude|muse|cursor|gemini|aider|copilot|opencode|omp)\b", re.I)
+
+
+def run(cmd, timeout=TIMEOUT):
+    try:
+        result = subprocess.run(
+            cmd, text=True, capture_output=True, timeout=timeout)
+        return result.returncode, result.stdout, result.stderr
+    except FileNotFoundError as error:
+        return 127, "", str(error)
+    except subprocess.TimeoutExpired:
+        return 124, "", f"timed out: {' '.join(cmd)}"
+
+
+def parse_listeners(warnings):
+    code, out, err = run(["lsof", "-iTCP", "-sTCP:LISTEN", "-P", "-n"])
+    if code != 0 or not out.strip():
+        if err.strip():
+            warnings.append(f"lsof: {err.strip().splitlines()[0][:200]}")
+        else:
+            warnings.append("lsof returned no listeners")
+        return []
+    entries = []
+    for line in out.splitlines()[1:]:
+        parts = line.split(None, 8)
+        if len(parts) < 9:
+            continue
+        command, pid, user = parts[0], parts[1], parts[2]
+        name = parts[8].strip()
+        match = re.search(r"(\S+):(\d+)(?:\s+\(LISTEN\))?\s*$", name)
+        if not match:
+            continue
+        try:
+            pid_int = int(pid)
+            port_int = int(match.group(2))
+        except ValueError:
+            continue
+        entries.append({
+            "host": match.group(1),
+            "port": port_int,
+            "proto": "TCP",
+            "command": command,
+            "pid": pid_int,
+            "user": user,
+        })
+    # Dedupe exact (host, port, pid) repeats (e.g. IPv4/IPv6 double rows collapse naturally).
+    seen = set()
+    unique = []
+    for entry in entries:
+        key = (entry["host"], entry["port"], entry["pid"])
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(entry)
+    return sorted(unique, key=lambda e: (e["port"], e["host"], e["pid"]))
+
+
+def process_details(pids, warnings):
+    """Return ({pid: {ppid, command_line}}, {pid: ppid}, {pid: command})."""
+    info = {}
+    ancestry = {}
+    commands = {}
+    code, out, _ = run(["ps", "-ax", "-o", "pid,ppid,command"])
+    if code != 0 or not out.strip():
+        warnings.append("ps ancestry scan failed")
+        return info, ancestry, commands
+    for line in out.splitlines()[1:]:
+        parts = line.strip().split(None, 2)
+        if len(parts) < 2:
+            continue
+        try:
+            pid = int(parts[0])
+            ppid = int(parts[1])
+        except ValueError:
+            continue
+        cmd = parts[2] if len(parts) > 2 else ""
+        ancestry[pid] = ppid
+        commands[pid] = cmd
+        if pid in pids:
+            info[pid] = {"ppid": ppid, "command_line": cmd}
+    return info, ancestry, commands
+
+
+def pid_cwd(pid, warnings):
+    code, out, _ = run(["lsof", "-a", "-p", str(pid), "-d", "cwd", "-F", "n"], timeout=4)
+    if code == 0:
+        for line in out.splitlines():
+            if line.startswith("n/"):
+                return line[1:]
+    # Fallback: parse human-readable lsof output.
+    code, out, _ = run(["lsof", "-p", str(pid)], timeout=4)
+    if code == 0:
+        for line in out.splitlines():
+            if re.search(r"\bcwd\b", line):
+                parts = line.split(None, 8)
+                if len(parts) == 9 and parts[8].startswith("/"):
+                    return parts[8]
+    return ""
+
+
+def herdr_json(args, warnings):
+    code, out, err = run(["herdr", *args], timeout=TIMEOUT)
+    if code != 0:
+        detail = (err or out).strip().splitlines()
+        if detail:
+            warnings.append(f"herdr {' '.join(args[:2])}: {detail[0][:160]}")
+        return None
+    try:
+        return json.loads(out)
+    except (json.JSONDecodeError, ValueError):
+        warnings.append(f"herdr {' '.join(args[:2])}: unparseable output")
+        return None
+
+
+def unwrap(payload):
+    if isinstance(payload, dict) and isinstance(payload.get("result"), dict):
+        return payload["result"]
+    return payload if isinstance(payload, dict) else {}
+
+
+def collect_herdr(warnings):
+    """Return (panes, agents, shell_pid->pane, available)."""
+    if not shutil.which("herdr") and not os.environ.get("HERDR_SOCKET_PATH"):
+        warnings.append("herdr CLI not found; port ownership falls back to process data")
+        return [], [], {}, False
+    workspaces_doc = herdr_json(["workspace", "list"], warnings)
+    workspaces = unwrap(workspaces_doc).get("workspaces", [])
+    if workspaces_doc is None:
+        warnings.append("herdr unavailable; port ownership falls back to process data")
+        return [], [], {}, False
+    panes = []
+    labels = {w.get("workspace_id"): w.get("label", "") for w in workspaces if w.get("workspace_id")}
+    for workspace in workspaces:
+        wid = workspace.get("workspace_id")
+        if not wid:
+            continue
+        doc = herdr_json(["pane", "list", "--workspace", wid], warnings)
+        for pane in unwrap(doc).get("panes", []):
+            pane["_workspace_label"] = labels.get(wid, "")
+            panes.append(pane)
+    agents_doc = herdr_json(["agent", "list"], warnings)
+    agents = unwrap(agents_doc).get("agents", [])
+    shell_map = {}
+    for pane in panes:
+        pane_id = pane.get("pane_id")
+        if not pane_id:
+            continue
+        doc = herdr_json(["pane", "process-info", "--pane", pane_id], warnings)
+        info = unwrap(doc).get("process_info", {})
+        shell_pid = info.get("shell_pid")
+        if isinstance(shell_pid, int):
+            shell_map[shell_pid] = pane
+        # Keep foreground pids for direct-match fallback.
+        pane["_shell_pid"] = shell_pid if isinstance(shell_pid, int) else None
+        pane["_fg_pids"] = [p.get("pid") for p in info.get("foreground_processes", [])
+                            if isinstance(p.get("pid"), int)]
+    return panes, agents, shell_map, True
+
+
+def ancestors(pid, ancestry):
+    chain = []
+    seen = set()
+    current = pid
+    while current and current not in seen and len(chain) < 64:
+        seen.add(current)
+        parent = ancestry.get(current)
+        if not parent:
+            break
+        chain.append(parent)
+        current = parent
+    return chain
+
+
+def attribute(pid, cwd, panes, agents, shell_map, ancestry):
+    chain = set(ancestors(pid, ancestry)) | {pid}
+    for shell_pid, pane in shell_map.items():
+        if shell_pid in chain:
+            herdr, ai = pane_match(pane, agents)
+            herdr["match"] = "process"
+            return herdr, ai
+    for pane in panes:
+        if pid in (pane.get("_fg_pids") or []):
+            herdr, ai = pane_match(pane, agents)
+            herdr["match"] = "process"
+            return herdr, ai
+    if cwd:
+        for pane in panes:
+            if cwd == pane.get("foreground_cwd") or cwd == pane.get("cwd"):
+                herdr, ai = pane_match(pane, agents)
+                herdr["match"] = "cwd"
+                return herdr, ai
+    return None
+
+
+def pane_match(pane, agents):
+    pane_id = pane.get("pane_id")
+    agent_entry = next((a for a in agents if a.get("pane_id") == pane_id), None)
+    agent = (agent_entry or {}).get("agent") or pane.get("agent")
+    session = (agent_entry or {}).get("agent_session") or pane.get("agent_session") or {}
+    if isinstance(session, dict):
+        session_value = session.get("value")
+        session_source = session.get("source")
+        session_agent = session.get("agent") or agent
+    else:
+        session_value = str(session) if session else None
+        session_source = None
+        session_agent = agent
+    herdr = {
+        "workspace_id": pane.get("workspace_id"),
+        "workspace_label": pane.get("_workspace_label", ""),
+        "tab_id": pane.get("tab_id"),
+        "pane_id": pane_id,
+        "agent": agent,
+        "agent_status": (agent_entry or {}).get("agent_status") or pane.get("agent_status"),
+        "cwd": pane.get("cwd"),
+        "foreground_cwd": pane.get("foreground_cwd"),
+    }
+    ai = None
+    if session_value or session_agent:
+        ai = {"kind": session_agent, "session": session_value,
+              "source": session_source or "herdr"}
+    return herdr, ai
+
+
+def ai_fallback(pid, ancestry, commands):
+    """Heuristic AI-session hint from ancestor command lines when Herdr has no match."""
+    current = pid
+    seen = set()
+    while current and current not in seen and len(seen) < 64:
+        seen.add(current)
+        cmdline = commands.get(current, "")
+        if cmdline:
+            first = cmdline.split()[0] if cmdline.split() else ""
+            match = AI_HINT_RE.search(os.path.basename(first) + " " + cmdline)
+            if match:
+                return {"kind": match.group(1).lower(), "session": None,
+                        "source": "process-heuristic",
+                        "hint": cmdline[:300]}
+        current = ancestry.get(current)
+        if not current or current <= 1:
+            break
+    return None
+
+
+def main():
+    warnings = []
+    listeners = parse_listeners(warnings)
+    pids = {e["pid"] for e in listeners}
+    details, ancestry, commands = process_details(pids, warnings)
+    panes, agents, shell_map, herdr_available = collect_herdr(warnings)
+    cws = {}
+    for pid in pids:
+        cws[pid] = pid_cwd(pid, warnings)
+    ports = []
+    for entry in listeners:
+        pid = entry["pid"]
+        detail = details.get(pid, {})
+        cwd = cws.get(pid, "")
+        herdr = None
+        ai = None
+        if herdr_available:
+            matched = attribute(pid, cwd, panes, agents, shell_map, ancestry)
+            if matched:
+                herdr, ai = matched
+        if ai is None:
+            ai = ai_fallback(pid, ancestry, commands)
+        ports.append({
+            **entry,
+            "cwd": cwd,
+            "ppid": detail.get("ppid"),
+            "command_line": detail.get("command_line", ""),
+            "herdr": herdr,
+            "ai": ai,
+        })
+    payload = {
+        "scanned_at": datetime.now(timezone.utc).isoformat(),
+        "herdr_available": herdr_available,
+        "ports": ports,
+        "warnings": sorted(set(warnings)),
+    }
+    json.dump(payload, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+
+
+if __name__ == "__main__":
+    main()

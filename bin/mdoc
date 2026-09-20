@@ -8,11 +8,14 @@ trap '[[ -n "$TEMP" ]] && rm -f "$TEMP"; [[ -n "$TEMP_BASE" ]] && rm -f "$TEMP_B
 
 usage() {
   cat <<'EOF'
-mdoc — add Markdown to the local Portfolio server
+mdoc — add Markdown or HTML to the local Portfolio server
 
 Usage:
-  mdoc <file.md> [more-files.md] [-r|--recursive] [-t|--title TITLE] [-d|--desc DESCRIPTION]
+  mdoc <file.md|file.html> [more-files...] [-r|--recursive] [-t|--title TITLE] [-d|--desc DESCRIPTION]
   echo '# Hello' | mdoc - --title 'Piped input'
+
+HTML files are stored as-is and served verbatim. Recursive link-following
+applies to Markdown files only; HTML files are added without link traversal.
 
 Options:
   -t, --title <text>  Override the first root title
@@ -124,6 +127,8 @@ while queue:
     seen.add(path)
     if not recursive:
         continue
+    if Path(path).suffix.lower() not in {'.md', '.markdown'}:
+        continue
     for target in document_links(path):
         child = local_markdown_link(path, target)
         if child and not os.path.isfile(child):
@@ -145,7 +150,7 @@ CURL_ARGS=(--form-string "roots=$ROOTS_JSON" --form-string "title=$TITLE" --form
 for file in "${FILES[@]}"; do
   escaped_file=${file//\\/\\\\}
   escaped_file=${escaped_file//\"/\\\"}
-  CURL_ARGS+=(-F "file=@\"$escaped_file\";type=text/markdown" --form-string "source_path=$file")
+  CURL_ARGS+=(-F "file=@\"$escaped_file\"" --form-string "source_path=$file")
 done
 RESPONSE=$(curl --fail --silent --show-error "${CURL_ARGS[@]}" "$SERVER/api/documents")
 HREFS=()

@@ -188,3 +188,25 @@ h-docs start
 ```
 
 Back up tracked source files separately. Most current sources are under `~/claude/docs/`, but `mdoc` can track Markdown from any absolute path.
+
+## Add HTML files with `mdoc`
+
+`mdoc` also accepts `.html` files. They are stored as-is and served verbatim:
+
+```bash
+mdoc report.html --no-open
+```
+
+The title defaults to the file's `<title>` tag. Recursive link-following applies to Markdown only.
+
+## Track open ports
+
+Open `http://127.0.0.1:4387/ports` for a live table of TCP listeners: owning process, working directory, Herdr pane, and AI session. The same data is available as JSON:
+
+```bash
+curl http://127.0.0.1:4387/api/ports
+h-docs ports
+h-docs ports --json
+```
+
+Attribution comes from `bin/ports-scan` (`lsof` + `ps` + `herdr`). A listener counts as a **process match** when it descends from a pane's shell; a trailing `~` means same working directory only. This server runs under `launchd`, so its own row shows `~`. When Herdr is unreachable the process and directory columns still work. Set `PORTS_SCAN_BIN` to override the scanner (used by tests).

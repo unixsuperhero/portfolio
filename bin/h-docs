@@ -45,6 +45,10 @@ class PortfolioApi
     get('/health')
   end
 
+  def ports
+    get('/api/ports')
+  end
+
   def delete(id, files: false)
     target = uri("/api/items/#{id}")
     target.query = URI.encode_www_form(delete_files: 1) if files
@@ -244,5 +248,27 @@ Hiiro.run(*ARGV, plugins: [Pins]) {
 
   add_subcmd(:path) { |*_args|
     puts DOCS_DIR
+  }
+
+  add_subcmd(:ports) { |*args|
+    json = args.include?('--json')
+    snapshot = API.ports
+    if json
+      next puts JSON.pretty_generate(snapshot)
+    end
+    ports = snapshot.fetch('ports', [])
+    if ports.empty?
+      next puts('No TCP listeners found.')
+    end
+    puts format('%-7s %-15s %-18s %s', 'PORT', 'BIND', 'PROCESS', 'DIRECTORY / HERDR / AI')
+    ports.each do |port|
+      herdr = port['herdr']
+      ai = port['ai']
+      herdr_label = herdr ? "#{herdr['workspace_label'] || herdr['workspace_id']} #{herdr['pane_id']}#{herdr['match'] == 'cwd' ? ' ~' : ''}" : '-'
+      ai_label = ai&.fetch('session', nil) ? "#{ai['kind']} #{ai['session'][0, 8]}…" : (ai&.fetch('kind', nil) || '-')
+      puts format('%-7s %-15s %-18s %s', port['port'], port['host'], "#{port['command']}##{port['pid']}", port['cwd'].to_s)
+      puts "         herdr: #{herdr_label}   ai: #{ai_label}"
+    end
+    warn "herdr unavailable: #{snapshot.fetch('warnings', []).join('; ')}" if snapshot['herdr_available'] == false
   }
 }
