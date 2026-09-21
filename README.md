@@ -242,6 +242,29 @@ The same data is available as JSON, with each card's matching items:
 curl http://127.0.0.1:4387/api/portfolios/1
 ```
 
+## Quick add
+
+Every page has an **+ Add** button under the header. It opens a box with one text area, focused, and no title field. Paste or type, and the detected type and title show under the text before you save. The **Type** menu overrides the guess.
+
+```text
+https://github.com/x/y/pull/12   → pr        titled x/y#12
+https://remotion.dev/docs        → link      titled remotion.dev/docs
+~/proj/portfolio                 → dir       when the path is a directory
+~/proj/x/TASKS.md                → document  imported and tracked, like mdoc
+~/notes/report.html              → document  plus a file item with the path actions
+~/data/things.csv                → file      the path does not have to exist yet
+anything else                    → note      titled by its first heading or line
+```
+
+A note that contains a URL stays a note. Only a URL on its own is a link. **Pick file or folder…** browses the disk and drops the chosen path into the box. Tags apply to the new item. Press ⌘↵ to save.
+
+The same endpoint serves scripts. Omit `type` to use the detected one:
+
+```bash
+curl -X POST http://127.0.0.1:4387/items/quick -F content=https://remotion.dev -F tags=yt
+curl 'http://127.0.0.1:4387/api/detect?content=~/proj/portfolio'
+```
+
 ## Track files and directories
 
 Items can be of type `file` or `dir`. They point at a path on disk, which does not have to exist. Every file and dir item, and every slot below, shares the same actions:

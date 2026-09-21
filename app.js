@@ -696,32 +696,43 @@ function shell(title, body, active = "all") {
   const nav = [["all", "/", "Library"], ["starred", "/starred", "Starred"], ["tags", "/tags", "Tags"], ["portfolios", "/portfolios", "Portfolios"], ["categories", "/categories", "Categories"], ["ports", "/ports", "Ports"], ["new", "/new", "Add"], ["settings", "/settings", "Settings"]];
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} · Portfolios</title><link rel="stylesheet" href="/assets/app.css"></head><body>
     <header class="topbar"><a class="brand" href="/">丸の中で</a><nav>${nav.map(([key, href, label]) => `<a class="${active === key ? "active" : ""}" href="${href}">${label}</a>`).join("")}</nav></header>
+    <div class="add-bar"><button type="button" class="add-open" data-add-type="" aria-label="Add an item">+ Add</button><span>Paste a URL, a path, or Markdown. The type is detected as you type.</span></div>
     <main>${body}</main>
     <div class="item-modal" data-item-modal hidden>
       <div class="item-modal-card" role="dialog" aria-modal="true" aria-labelledby="item-modal-title">
         <div class="item-modal-head"><div><p class="eyebrow">Quick add</p><h2 id="item-modal-title">Add item</h2></div><button type="button" class="item-modal-close" data-item-modal-close aria-label="Close">×</button></div>
-        <form class="item-modal-form" method="post" action="/items">
-          <input type="hidden" name="return_to" value="/">
-          <input type="hidden" name="type" data-item-type>
-          <label>Title<input name="title" required autofocus></label>
-          <label>Description<input name="description"></label>
-          <label data-item-url>URL<input name="url" type="url" placeholder="https://"></label>
-          <label>Tags<input name="tags" placeholder="architecture, ruby"></label>
-          <label class="item-modal-content" data-item-content>Markdown<textarea name="content" rows="7" placeholder="# Notes"></textarea></label>
-          <div class="item-modal-actions"><button type="button" class="quiet" data-item-modal-close>Cancel</button><button class="primary">Add item</button></div>
+        <form class="item-modal-form" data-quick-form>
+          <textarea name="content" rows="7" placeholder="https://…  or  ~/proj/thing  or  # A note" aria-label="Content" data-quick-content></textarea>
+          <div class="quick-detect"><span class="kind" data-quick-kind>NOTE</span><span data-quick-title>Untitled</span><span class="quick-warn" data-quick-warn></span></div>
+          <div class="quick-row">
+            <label>Type<select name="type" data-quick-type><option value="">Detected</option>${ITEM_TYPES.map(type => `<option value="${type}">${type}</option>`).join("")}</select></label>
+            <label>Tags<input name="tags" placeholder="architecture, ruby"></label>
+            <button type="button" class="quiet" data-quick-pick aria-expanded="false">Pick file or folder…</button>
+          </div>
+          <div class="quick-browser" data-quick-browser hidden><div class="directory-browser-head"><code data-quick-path></code><button type="button" data-quick-up>Up</button></div><div class="directory-browser-list" data-quick-list></div></div>
+          <p class="quick-error" data-quick-error role="alert"></p>
+          <div class="item-modal-actions"><button type="button" class="quiet" data-item-modal-close>Cancel</button><button class="primary" data-quick-submit>Add item</button></div>
         </form>
       </div>
     </div><script>
       const itemModal=document.querySelector('[data-item-modal]');
-      const itemType=itemModal?.querySelector('[data-item-type]');
-      const itemTitle=itemModal?.querySelector('#item-modal-title');
-      const itemUrl=itemModal?.querySelector('[data-item-url]');
-      const itemContent=itemModal?.querySelector('[data-item-content]');
-      const openItemModal=type=>{if(!itemModal)return;itemType.value=type;itemTitle.textContent='Add '+({note:'note',pr:'PR',link:'link'}[type]||'item');itemUrl.hidden=type==='note';itemContent.hidden=type==='link'||type==='pr';itemModal.hidden=false;itemModal.querySelector('input[name=title]').focus()};
+      const quick={form:itemModal.querySelector('[data-quick-form]'),content:itemModal.querySelector('[data-quick-content]'),type:itemModal.querySelector('[data-quick-type]'),kind:itemModal.querySelector('[data-quick-kind]'),title:itemModal.querySelector('[data-quick-title]'),warn:itemModal.querySelector('[data-quick-warn]'),error:itemModal.querySelector('[data-quick-error]'),browser:itemModal.querySelector('[data-quick-browser]'),path:itemModal.querySelector('[data-quick-path]'),list:itemModal.querySelector('[data-quick-list]'),pick:itemModal.querySelector('[data-quick-pick]'),up:itemModal.querySelector('[data-quick-up]'),submit:itemModal.querySelector('[data-quick-submit]')};
+      const kindLabel=type=>({document:'DOC',note:'NOTE',link:'LINK',pr:'PR',file:'FILE',dir:'DIR'})[type]||type.toUpperCase();
+      let detectTimer,detectRequest=0,browsePath='';
+      const showKind=()=>{quick.kind.textContent=kindLabel(quick.type.value||quick.kind.dataset.detected||'note')};
+      const detect=async()=>{const id=++detectRequest;const data=await(await fetch('/api/detect?'+new URLSearchParams({content:quick.content.value}))).json();if(id!==detectRequest)return;quick.kind.dataset.detected=data.type;quick.title.textContent=data.title||'';quick.warn.textContent=data.error?data.error:(data.exists===false?'not on disk yet':'');showKind()};
+      quick.content.addEventListener('input',()=>{clearTimeout(detectTimer);detectTimer=setTimeout(detect,150)});
+      quick.type.addEventListener('change',showKind);
+      const openItemModal=type=>{quick.form.reset();quick.type.value=type||'';quick.error.textContent='';quick.browser.hidden=true;quick.pick.setAttribute('aria-expanded','false');itemModal.hidden=false;detect();quick.content.focus()};
       document.querySelectorAll('[data-add-type]').forEach(button=>button.addEventListener('click',()=>openItemModal(button.dataset.addType)));
       document.querySelectorAll('[data-item-modal-close]').forEach(button=>button.addEventListener('click',()=>{itemModal.hidden=true}));
-      itemModal?.addEventListener('click',event=>{if(event.target===itemModal)itemModal.hidden=true});
-      document.addEventListener('keydown',event=>{if(event.key==='Escape'&&itemModal&&!itemModal.hidden)itemModal.hidden=true});
+      itemModal.addEventListener('click',event=>{if(event.target===itemModal)itemModal.hidden=true});
+      document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!itemModal.hidden)itemModal.hidden=true;if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)&&event.target===quick.content)quick.form.requestSubmit()});
+      const browse=async path=>{const response=await fetch('/api/settings/directories?'+new URLSearchParams({path,files:'1'}));const data=await response.json().catch(()=>({}));if(!response.ok){quick.error.textContent=data.error||'Could not read that directory.';return}browsePath=data.path;quick.path.textContent=data.path;quick.up.disabled=!data.parent;quick.list.replaceChildren(...[...data.directories.map(entry=>({...entry,dir:true})),...data.files].map(entry=>{const row=document.createElement('button');row.type='button';row.className='directory-browser-row';row.textContent=(entry.dir?'📁 ':'📄 ')+entry.name;row.addEventListener('click',()=>{if(entry.dir){browse(entry.path)}else{choose(entry.path)}});return row}));const pickHere=document.createElement('button');pickHere.type='button';pickHere.className='directory-browser-row quick-choose';pickHere.textContent='Use this folder';pickHere.addEventListener('click',()=>choose(browsePath));quick.list.prepend(pickHere)};
+      const choose=path=>{quick.content.value=path;quick.browser.hidden=true;quick.pick.setAttribute('aria-expanded','false');detect();quick.content.focus()};
+      quick.pick.addEventListener('click',()=>{const open=quick.browser.hidden;quick.browser.hidden=!open;quick.pick.setAttribute('aria-expanded',String(open));if(open)browse(browsePath||'${escapeHtml(process.env.HOME ?? "/")}')});
+      quick.up.addEventListener('click',()=>{if(browsePath)browse(browsePath.slice(0,browsePath.lastIndexOf('/'))||'/')});
+      quick.form.addEventListener('submit',async event=>{event.preventDefault();quick.submit.disabled=true;quick.error.textContent='';const response=await fetch('/items/quick',{method:'POST',body:new FormData(quick.form)});if(response.ok)location.reload();else{quick.error.textContent=await response.text();quick.submit.disabled=false}});
       document.querySelectorAll('.row-tag-toggle').forEach(button=>button.addEventListener('click',()=>{const editor=button.closest('.item').querySelector('.row-tag-editor');editor.hidden=!editor.hidden;button.classList.toggle('active',!editor.hidden);button.setAttribute('aria-expanded',String(!editor.hidden));if(!editor.hidden)editor.querySelector('input').focus()}));
       document.querySelectorAll('.row-tag-add').forEach(button=>{const input=button.previousElementSibling;const add=async()=>{if(!input.value.trim())return;button.disabled=true;button.textContent='Adding…';const data=new FormData();data.set('tags',input.value);const response=await fetch('/items/'+button.dataset.id+'/tags',{method:'POST',body:data});if(response.ok)location.reload();else{button.disabled=false;button.textContent='Add';alert(await response.text())}};button.addEventListener('click',add);input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();add()}})});
       document.querySelectorAll('.toggle-button').forEach(button=>button.addEventListener('click',async()=>{const data=new FormData();data.set('field',button.dataset.field);const response=await fetch('/items/'+button.dataset.id+'/toggle',{method:'POST',body:data});if(response.ok)location.reload()}));
@@ -1034,6 +1045,71 @@ const setPathAndCategory = db.query("UPDATE items SET path = ?, category_id = ? 
 
 const categorySelect = selectedId => `<label>Category<select name="category"><option value="">None</option>${listCategories().map(category => `<option value="${escapeHtml(category.name)}"${category.id === selectedId ? " selected" : ""}>${escapeHtml(category.name)} (${category.kind})</option>`).join("")}</select></label>`;
 
+// What a pasted or picked thing is. Shape says which field the text fills;
+// type is the guess, which the form can override.
+//   url  → link, or pr when the URL points at a pull/merge request
+//   path → dir when it is one on disk, document for .md/.html, else file
+//   text → note
+async function detectType(raw) {
+  const content = raw.trim();
+  const line = content.split("\n").length === 1 ? content : "";
+  if (/^https?:\/\/\S+$/.test(line)) {
+    const pr = line.match(/github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)/) || line.match(/\/(?:pull|merge_requests)\/(\d+)/);
+    const url = new URL(line);
+    return { shape: "url", type: pr ? "pr" : "link", url: line, title: pr ? (pr[2] ? `${pr[1]}#${pr[2]}` : `${url.hostname}${url.pathname}`) : (url.hostname + url.pathname).replace(/\/$/, "") };
+  }
+  if (/^(~\/|\/)/.test(line)) {
+    const path = normalizeItemPath(line);
+    const info = await stat(path).catch(() => null);
+    const importable = [".md", ".markdown", ".html"].includes(extname(path).toLowerCase());
+    return { shape: "path", type: info?.isDirectory() ? "dir" : importable ? "document" : "file", path, exists: Boolean(info), title: info?.isDirectory() || !importable ? basename(path) : basename(path, extname(path)) };
+  }
+  const title = content.match(/^#\s+(.+)$/m)?.[1]?.trim() || content.split("\n").map(value => value.trim()).find(Boolean) || "Untitled";
+  return { shape: "text", type: "note", content, title: title.slice(0, 80) };
+}
+
+// Imports a Markdown or HTML file as a tracked document, the way mdoc does. An
+// HTML file also gets a file item, so it has the path actions.
+async function importDocument(path) {
+  const content = await Bun.file(path).text();
+  const isHtml = isHtmlPath(path);
+  const title = documentTitle(content, path);
+  let id;
+  db.transaction(() => {
+    id = upsertItem({ type: "document", title, description: "", content: isHtml ? "" : content, rendered_html: isHtml ? content : "", url: null, source_path: path, toc: 1 });
+    if (!isHtml) db.query("UPDATE items SET rendered_html = ? WHERE id = ?").run(renderMarkdown(content, title, true, path), id);
+  })();
+  if (isHtml && !db.query("SELECT 1 FROM items WHERE path = ?").get(path)) db.query("INSERT INTO items(type, title, path) VALUES ('file', ?, ?)").run(basename(path), path);
+  return id;
+}
+
+async function quickAdd(request) {
+  const form = await request.formData();
+  const detected = await detectType(String(form.get("content") ?? ""));
+  const type = field(form, "type") || detected.type;
+  if (!ITEM_TYPES.includes(type)) return text("invalid item type", 422);
+  const tags = field(form, "tags").split(",").map(value => value.trim()).filter(Boolean);
+  const insert = extra => upsertItem({ description: "", content: "", rendered_html: "", url: null, source_path: null, toc: 1, title: detected.title, ...extra });
+  let id;
+  if (["link", "pr"].includes(type)) {
+    if (detected.shape !== "url") return text(`a ${type === "pr" ? "PR" : "link"} needs a URL`, 422);
+    id = insert({ type, url: detected.url });
+  } else if (PATH_TYPES.includes(type)) {
+    if (detected.shape !== "path") return text(`a ${type} needs an absolute path`, 422);
+    if (db.query("SELECT 1 FROM items WHERE path = ?").get(detected.path)) return text("another item already tracks that path", 422);
+    id = insert({ type });
+    setPathAndCategory.run(detected.path, null, id);
+  } else if (type === "document" && detected.shape === "path") {
+    if (!detected.exists) return text("that file does not exist yet", 422);
+    id = await importDocument(detected.path);
+  } else {
+    if (detected.shape !== "text") return text(`a ${type} needs some text`, 422);
+    id = insert({ type, content: detected.content, rendered_html: renderMarkdown(detected.content, detected.title, true) });
+  }
+  setTags(id, tags);
+  return { id, href: itemHref(db.query("SELECT * FROM items WHERE id = ?").get(id)), type, title: detected.title };
+}
+
 async function createItem(request) {
   const form = await request.formData();
   const upload = form.get("file");
@@ -1106,12 +1182,12 @@ async function listDirectories(url) {
   }
   if (!info.isDirectory()) return Response.json({ error: "Path is not a directory." }, { status: 422 });
   try {
-    const directories = (await readdir(path, { withFileTypes: true }))
-      .filter(entry => entry.isDirectory())
-      .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }) || left.name.localeCompare(right.name))
-      .map(entry => ({ name: entry.name, path: join(path, entry.name) }));
+    const entries = (await readdir(path, { withFileTypes: true }))
+      .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }) || left.name.localeCompare(right.name));
+    const directories = entries.filter(entry => entry.isDirectory()).map(entry => ({ name: entry.name, path: join(path, entry.name) }));
+    const files = url.searchParams.has("files") ? entries.filter(entry => entry.isFile() && !entry.name.startsWith(".")).map(entry => ({ name: entry.name, path: join(path, entry.name) })) : undefined;
     const parent = dirname(path);
-    return Response.json({ path, parent: parent === path ? null : parent, directories });
+    return Response.json({ path, parent: parent === path ? null : parent, directories, files });
   } catch (error) {
     if (error.code === "ENOENT") return Response.json({ error: "Directory not found." }, { status: 404 });
     if (error.code === "EACCES" || error.code === "EPERM") return Response.json({ error: "Directory is not readable." }, { status: 403 });
@@ -1680,6 +1756,14 @@ const server = Bun.serve({
         const item = await createItem(request);
         if (item instanceof Response) return item;
         return redirect(item.returnTo || item.href);
+      }
+      if (request.method === "GET" && url.pathname === "/api/detect") {
+        const { shape, ...detected } = await detectType(url.searchParams.get("content") ?? "").catch(error => ({ type: "note", error: error.message }));
+        return Response.json(detected);
+      }
+      if (request.method === "POST" && url.pathname === "/items/quick") {
+        const item = await quickAdd(request);
+        return item instanceof Response ? item : Response.json(item, { status: 201 });
       }
       if (request.method === "POST" && url.pathname === "/api/items") {
         const item = await createItem(request);
