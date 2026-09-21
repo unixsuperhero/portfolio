@@ -22,6 +22,22 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS watched_directories (
+  id INTEGER PRIMARY KEY,
+  path TEXT NOT NULL UNIQUE,
+  recursive INTEGER NOT NULL DEFAULT 0 CHECK (recursive IN (0, 1)),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS watched_items (
+  watched_directory_id INTEGER NOT NULL REFERENCES watched_directories(id) ON DELETE CASCADE,
+  item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+  PRIMARY KEY (watched_directory_id, item_id)
+);
+
+CREATE INDEX IF NOT EXISTS watched_items_item ON watched_items(item_id);
+
 CREATE TABLE IF NOT EXISTS tags (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL COLLATE NOCASE UNIQUE,

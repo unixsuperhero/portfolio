@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { basename, dirname, extname, isAbsolute, join, resolve, sep } from "node:path";
-import { mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { mkdtemp, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { existsSync, watch } from "node:fs";
 import { tmpdir } from "node:os";
 
 const ROOT = import.meta.dir;
@@ -11,7 +11,9 @@ const LEGACY_ROOT = resolve(process.env.PORTFOLIO_LEGACY_ROOT ?? join(process.en
 const PORT = Number(process.env.PORT ?? 4387);
 const HOST = process.env.HOST ?? "127.0.0.1";
 const PORTS_SCAN_BIN = process.env.PORTS_SCAN_BIN ?? join(ROOT, "bin", "ports-scan");
+const OSASCRIPT_BIN = process.env.PORTFOLIO_OSASCRIPT_BIN ?? "/usr/bin/osascript";
 const MARKDOWN_READER = "markdown+lists_without_preceding_blankline-blank_before_header-blank_before_blockquote+autolink_bare_uris+emoji+mark+wikilinks_title_before_pipe";
+const WATCH_DEBOUNCE_MS = Number(process.env.PORTFOLIO_WATCH_DEBOUNCE_MS ?? 200);
 const db = new Database(DB_PATH, { create: true });
 db.exec(await Bun.file(join(ROOT, "schema.sql")).text());
 
@@ -244,17 +246,81 @@ function pastryStatus() {
   return { ok: result.exitCode === 0 && /authenticated/i.test(output), detail: `${bin} · ${detail}` };
 }
 
-function settingsPage() {
+function settingsPage(error = "", statusCode = 200) {
   const enabled = pastryEnabled();
   const status = pastryStatus();
+  const directories = watchedDirectories();
+  const rows = directories.map(directory => {
+    const state = watchStates.get(directory.id);
+    const detail = state?.error
+      ? `<span class="watch-status warn">${escapeHtml(state.error)}</span>`
+      : `<span class="watch-status">${state?.watcher ? "Watching" : "Configured"} · ${state?.count ?? 0} documents${state?.lastSyncedAt ? ` · synced ${escapeHtml(new Date(state.lastSyncedAt).toLocaleString())}` : ""}</span>`;
+    return `<div class="watch-row">
+      <div class="watch-path"><code>${escapeHtml(directory.path)}</code>${detail}</div>
+      <form class="watch-options" method="post" action="/settings/watched-directories/${directory.id}">
+        <label class="check"><input type="checkbox" name="recursive"${directory.recursive ? " checked" : ""}> Include subdirectories</label>
+        <button>Save</button>
+      </form>
+      <form method="post" action="/settings/watched-directories/${directory.id}/delete">
+        <button class="danger" onclick="return confirm('Stop watching this directory and remove documents no longer covered by another watched directory?')">Remove</button>
+      </form>
+    </div>`;
+  }).join("");
   const body = `<section class="page-head"><h1>Settings</h1><p>Local preferences stored in this Portfolio database.</p></section>
-    <form class="editor" method="post" action="/settings">
-      <label class="check"><input type="checkbox" name="pastry_enabled"${enabled ? " checked" : ""}> Enable Pastry uploads</label>
-      <p class="settings-note">When enabled, every document page shows an <strong>Upload to Pastry</strong> button in its header. Uploads run <code>pastry create &lt;file&gt;</code> with your chosen file type and visibility.</p>
-      <p class="settings-note${status.ok ? "" : " warn"}">Pastry CLI: ${escapeHtml(status.detail)}</p>
-      <button class="primary">Save settings</button>
-    </form>`;
-  return html(shell("Settings", body, "settings"));
+    <section class="settings-section">
+      <h2>Watched directories</h2>
+      <p class="settings-note">Portfolio pulls Markdown and HTML files from disk. One watcher handles each configured directory, including its full tree when <strong>Include subdirectories</strong> is enabled.</p>
+      ${error ? `<p class="settings-error" role="alert">${escapeHtml(error)}</p>` : ""}
+      <form class="watch-add" method="post" action="/settings/watched-directories">
+        <div class="watch-path-field">
+          <label for="watched-directory-path">Directory path</label>
+          <div class="watch-path-control">
+            <input id="watched-directory-path" name="path" required placeholder="/Users/you/Documents/docs">
+            <button type="button" class="folder-picker" data-folder-picker>Choose folder…</button>
+          </div>
+          <span class="folder-picker-status" data-folder-picker-status role="status" aria-live="polite"></span>
+        </div>
+        <label class="check"><input type="checkbox" name="recursive"> Include subdirectories</label>
+        <button class="primary">Add directory</button>
+      </form>
+      <script>
+        document.querySelector('[data-folder-picker]')?.addEventListener('click',async event=>{
+          const button=event.currentTarget;
+          const input=button.form.elements.path;
+          const status=button.form.querySelector('[data-folder-picker-status]');
+          button.disabled=true;
+          button.textContent='Choosing…';
+          status.textContent='';
+          try{
+            const response=await fetch('/api/settings/choose-folder',{method:'POST'});
+            const data=await response.json().catch(()=>({}));
+            if(!response.ok)throw new Error(data.error||'The folder picker failed.');
+            if(data.cancelled)return;
+            if(typeof data.path!=='string')throw new Error('The folder picker returned an invalid path.');
+            input.value=data.path;
+            input.focus();
+          }catch(error){
+            status.textContent=error.message||'The folder picker failed.';
+          }finally{
+            button.disabled=false;
+            button.textContent='Choose folder…';
+          }
+        });
+      </script>
+      <div class="watch-list">${rows || `<div class="empty"><strong>No watched directories.</strong><span>Add one to pull documents into the library automatically.</span></div>`}</div>
+      ${directories.length ? `<form method="post" action="/settings/watched-directories/sync"><button>Sync now</button></form>` : ""}
+      <p class="settings-note">Removing a watch or excluding its subdirectories removes uncovered documents from Portfolio. Source files are never deleted here.</p>
+    </section>
+    <section class="settings-section">
+      <h2>Pastry uploads</h2>
+      <form class="editor" method="post" action="/settings">
+        <label class="check"><input type="checkbox" name="pastry_enabled"${enabled ? " checked" : ""}> Enable Pastry uploads</label>
+        <p class="settings-note">When enabled, every document page shows an <strong>Upload to Pastry</strong> button in its header. Uploads run <code>pastry create &lt;file&gt;</code> with your chosen file type and visibility.</p>
+        <p class="settings-note${status.ok ? "" : " warn"}">Pastry CLI: ${escapeHtml(status.detail)}</p>
+        <button class="primary">Save settings</button>
+      </form>
+    </section>`;
+  return html(shell("Settings", body, "settings"), statusCode);
 }
 
 function getPortsSnapshot() {
@@ -630,6 +696,184 @@ function documentTitle(content, sourcePath) {
 
 const isHtmlPath = sourcePath => extname(sourcePath).toLowerCase() === ".html";
 
+const watchStates = new Map();
+let watchTimer;
+let reconcilePromise;
+let reconcileAgain = false;
+
+function watchedDirectories() {
+  return db.query("SELECT * FROM watched_directories ORDER BY path").all();
+}
+
+async function normalizeWatchedPath(value) {
+  const home = process.env.HOME ?? "";
+  const expanded = value === "~" ? home : value.startsWith("~/") ? join(home, value.slice(2)) : value;
+  if (!expanded || !isAbsolute(expanded)) throw new Error("Directory path must be absolute.");
+  const path = resolve(expanded);
+  const info = await stat(path);
+  if (!info.isDirectory()) throw new Error("Path is not a directory.");
+  return path;
+}
+
+async function chooseWatchedDirectory() {
+  try {
+    const child = Bun.spawn({
+      cmd: [OSASCRIPT_BIN, "-e", 'POSIX path of (choose folder with prompt "Choose a folder to watch")'],
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    if (exitCode !== 0) {
+      if (exitCode === 1 && (stderr.includes("(-128)") || /user canceled/i.test(stderr))) return Response.json({ cancelled: true });
+      const detail = stderr.trim().split("\n")[0] || `osascript exited with status ${exitCode}`;
+      return Response.json({ error: `Could not open the folder picker: ${detail}` }, { status: 500 });
+    }
+    const path = stdout.trim();
+    if (!isAbsolute(path)) return Response.json({ error: "The folder picker did not return an absolute path." }, { status: 500 });
+    return Response.json({ path: resolve(path) });
+  } catch (error) {
+    return Response.json({ error: `Could not open the folder picker: ${error.message}` }, { status: 500 });
+  }
+}
+
+async function scanWatchedDirectory(directory) {
+  const info = await stat(directory.path);
+  if (!info.isDirectory()) throw new Error("Path is not a directory.");
+  const paths = [];
+  const glob = new Bun.Glob(directory.recursive ? "**/*" : "*");
+  for await (const path of glob.scan({ cwd: directory.path, absolute: true, onlyFiles: true })) {
+    if ([".md", ".markdown", ".html"].includes(extname(path).toLowerCase())) paths.push(path);
+  }
+  paths.sort();
+  const documents = new Map();
+  for (const sourcePath of paths) {
+    const content = await Bun.file(sourcePath).text();
+    documents.set(sourcePath, { sourcePath, content, title: documentTitle(content, sourcePath), html: isHtmlPath(sourcePath) });
+  }
+  return documents;
+}
+
+function upsertWatchedDocument(document) {
+  const existing = db.query("SELECT id FROM items WHERE source_path = ?").get(document.sourcePath);
+  const content = document.html ? "" : document.content;
+  const rendered = document.html ? document.content : "";
+  if (existing) {
+    db.query(`UPDATE items SET type = 'document', title = ?, content = ?, rendered_html = ?, url = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .run(document.title, content, rendered, existing.id);
+    return existing.id;
+  }
+  return upsertItem({ type: "document", title: document.title, description: "", content, rendered_html: rendered, url: null, source_path: document.sourcePath, toc: 1 });
+}
+
+async function performWatchedReconciliation() {
+  const directories = watchedDirectories();
+  const scans = new Map();
+  const documents = new Map();
+  const failures = new Map();
+  for (const directory of directories) {
+    try {
+      const scan = await scanWatchedDirectory(directory);
+      scans.set(directory.id, scan);
+      for (const [path, document] of scan) documents.set(path, document);
+    } catch (error) {
+      failures.set(directory.id, error);
+    }
+  }
+
+  db.transaction(() => {
+    const previousItemIds = new Set();
+    for (const directory of directories) {
+      if (!scans.has(directory.id)) continue;
+      for (const row of db.query("SELECT item_id FROM watched_items WHERE watched_directory_id = ?").all(directory.id)) previousItemIds.add(row.item_id);
+      db.query("DELETE FROM watched_items WHERE watched_directory_id = ?").run(directory.id);
+    }
+
+    const documentIds = new Map();
+    for (const document of [...documents.values()].sort((a, b) => a.sourcePath.localeCompare(b.sourcePath))) {
+      documentIds.set(document.sourcePath, upsertWatchedDocument(document));
+    }
+
+    const claim = db.query("INSERT OR IGNORE INTO watched_items(watched_directory_id, item_id) VALUES (?, ?)");
+    for (const [directoryId, scan] of scans) {
+      for (const path of scan.keys()) claim.run(directoryId, documentIds.get(path));
+    }
+
+    const hasClaim = db.query("SELECT 1 FROM watched_items WHERE item_id = ? LIMIT 1");
+    const removeItem = db.query("DELETE FROM items WHERE id = ?");
+    for (const itemId of previousItemIds) {
+      if (!hasClaim.get(itemId)) removeItem.run(itemId);
+    }
+    db.query("DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM taggings)").run();
+
+    const sourceIds = sourceItemIds();
+    const updateRendered = db.query("UPDATE items SET rendered_html = ? WHERE id = ?");
+    for (const document of documents.values()) {
+      if (document.html) continue;
+      const id = documentIds.get(document.sourcePath);
+      const item = db.query("SELECT title, toc FROM items WHERE id = ?").get(id);
+      updateRendered.run(renderMarkdown(document.content, item.title, Boolean(item.toc), document.sourcePath, sourceIds), id);
+    }
+  })();
+
+  const syncedAt = new Date().toISOString();
+  for (const directory of directories) {
+    const state = watchStates.get(directory.id) ?? {};
+    const failure = failures.get(directory.id);
+    state.error = failure?.message ?? null;
+    if (!failure) {
+      state.lastSyncedAt = syncedAt;
+      state.count = scans.get(directory.id).size;
+    }
+    watchStates.set(directory.id, state);
+  }
+}
+
+function reconcileWatchedDirectories() {
+  if (reconcilePromise) {
+    reconcileAgain = true;
+    return reconcilePromise;
+  }
+  reconcilePromise = (async () => {
+    do {
+      reconcileAgain = false;
+      await performWatchedReconciliation();
+    } while (reconcileAgain);
+  })().catch(error => console.error("watched directories:", error)).finally(() => {
+    reconcilePromise = null;
+  });
+  return reconcilePromise;
+}
+
+function scheduleWatchedReconciliation() {
+  clearTimeout(watchTimer);
+  watchTimer = setTimeout(() => reconcileWatchedDirectories(), WATCH_DEBOUNCE_MS);
+}
+
+async function reloadWatchedDirectories() {
+  clearTimeout(watchTimer);
+  for (const state of watchStates.values()) state.watcher?.close();
+  watchStates.clear();
+  for (const directory of watchedDirectories()) {
+    const state = { watcher: null, error: null, lastSyncedAt: null, count: 0 };
+    try {
+      state.watcher = watch(directory.path, { recursive: Boolean(directory.recursive) }, scheduleWatchedReconciliation);
+      state.watcher.on("error", error => {
+        state.error = error.message;
+        state.watcher?.close();
+        state.watcher = null;
+      });
+    } catch (error) {
+      state.error = error.message;
+    }
+    watchStates.set(directory.id, state);
+  }
+  await reconcileWatchedDirectories();
+}
+
 async function createDocumentBatch(request) {
   const form = await request.formData();
   const uploads = form.getAll("file");
@@ -729,6 +973,8 @@ async function updateItem(item, form) {
   if (form.has("sync_source") && item.source_path?.toLowerCase().endsWith(".md")) await Bun.write(item.source_path, content);
 }
 
+await reloadWatchedDirectories();
+
 const server = Bun.serve({
   hostname: HOST,
   port: PORT,
@@ -778,7 +1024,10 @@ const server = Bun.serve({
         const legacyItem = pastryEnabled() ? db.query("SELECT * FROM items WHERE source_path = ?").get(candidate) : null;
         return html(legacyItem ? injectPastry(body, legacyItem) : body);
       }
-      if (request.method === "GET" && url.pathname === "/api/settings") return Response.json({ pastry_enabled: pastryEnabled() });
+      if (request.method === "GET" && url.pathname === "/api/settings") return Response.json({
+        pastry_enabled: pastryEnabled(),
+        watched_directories: watchedDirectories().map(directory => ({ ...directory, recursive: Boolean(directory.recursive) })),
+      });
       const pastryMatch = url.pathname.match(/^\/api\/items\/(\d+)\/pastry$/);
       if (request.method === "POST" && pastryMatch) {
         if (!pastryEnabled()) return Response.json({ error: "pastry uploads are disabled in settings" }, { status: 403 });
@@ -814,9 +1063,49 @@ const server = Bun.serve({
       if (request.method === "GET" && url.pathname === "/api/ports") return Response.json(getPortsSnapshot());
       if (request.method === "POST" && url.pathname === "/api/ports/kill") return killPortProcess(request);
       if (request.method === "GET" && url.pathname === "/settings") return settingsPage();
+      if (request.method === "POST" && url.pathname === "/api/settings/choose-folder") return chooseWatchedDirectory();
       if (request.method === "POST" && url.pathname === "/settings") {
         const form = await request.formData();
         setSetting("pastry_enabled", form.has("pastry_enabled") ? "1" : "0");
+        return redirect("/settings");
+      }
+      if (request.method === "POST" && url.pathname === "/settings/watched-directories") {
+        const form = await request.formData();
+        try {
+          const path = await normalizeWatchedPath(field(form, "path"));
+          if (db.query("SELECT 1 FROM watched_directories WHERE path = ?").get(path)) return settingsPage("That directory is already being watched.", 422);
+          db.query("INSERT INTO watched_directories(path, recursive) VALUES (?, ?)").run(path, form.has("recursive") ? 1 : 0);
+          await reloadWatchedDirectories();
+          return redirect("/settings");
+        } catch (error) {
+          return settingsPage(error.message, 422);
+        }
+      }
+      if (request.method === "POST" && url.pathname === "/settings/watched-directories/sync") {
+        await reloadWatchedDirectories();
+        return redirect("/settings");
+      }
+      const watchedDirectoryMatch = url.pathname.match(/^\/settings\/watched-directories\/(\d+)$/);
+      if (request.method === "POST" && watchedDirectoryMatch) {
+        const id = Number(watchedDirectoryMatch[1]);
+        const form = await request.formData();
+        const result = db.query("UPDATE watched_directories SET recursive = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(form.has("recursive") ? 1 : 0, id);
+        if (!result.changes) return text("not found", 404);
+        await reloadWatchedDirectories();
+        return redirect("/settings");
+      }
+      const watchedDirectoryDeleteMatch = url.pathname.match(/^\/settings\/watched-directories\/(\d+)\/delete$/);
+      if (request.method === "POST" && watchedDirectoryDeleteMatch) {
+        const id = Number(watchedDirectoryDeleteMatch[1]);
+        const itemIds = db.query("SELECT item_id FROM watched_items WHERE watched_directory_id = ?").all(id).map(row => row.item_id);
+        db.transaction(() => {
+          db.query("DELETE FROM watched_directories WHERE id = ?").run(id);
+          const hasClaim = db.query("SELECT 1 FROM watched_items WHERE item_id = ? LIMIT 1");
+          const removeItem = db.query("DELETE FROM items WHERE id = ?");
+          for (const itemId of itemIds) if (!hasClaim.get(itemId)) removeItem.run(itemId);
+          db.query("DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM taggings)").run();
+        })();
+        await reloadWatchedDirectories();
         return redirect("/settings");
       }
       if (request.method === "GET" && url.pathname === "/new") {

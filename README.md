@@ -149,9 +149,21 @@ export HDOCS_SERVER=http://docs.h:4387
 
 ## Settings
 
-Open `http://127.0.0.1:4387/settings` to manage local preferences. They are stored in the `settings` table of the Portfolio database.
+Open `http://127.0.0.1:4387/settings` to configure watched directories and Pastry uploads.
 
-The available setting is **Enable Pastry uploads**.
+### Pull documents from watched directories
+
+1. Enter an absolute directory path.
+2. Select **Include subdirectories** if Portfolio must also import files below that directory.
+3. Click **Add directory**.
+
+Portfolio imports `.md`, `.markdown`, and `.html` files. It uses one watcher in the server process for each configured directory. Recursive mode uses the same watcher for the whole directory tree. It does not start a process for each subdirectory.
+
+File additions, edits, and deletions update the library. Turning off **Include subdirectories** removes nested documents that no other watched directory covers. Removing a watched directory also removes its uncovered documents, but it does not delete source files.
+
+Click **Sync now** to run an immediate scan. The server also scans each watched directory when it starts.
+
+The **Enable Pastry uploads** setting is stored in the `settings` table. Watched directories are stored in `watched_directories`.
 
 ## Upload documents to Pastry
 
