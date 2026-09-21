@@ -260,13 +260,14 @@ Hiiro.run(*ARGV, plugins: [Pins]) {
     if ports.empty?
       next puts('No TCP listeners found.')
     end
-    puts format('%-7s %-15s %-18s %s', 'PORT', 'BIND', 'PROCESS', 'DIRECTORY / HERDR / AI')
+    puts format('%-7s %-15s %-18s %-10s %s', 'PORT', 'BIND', 'PROCESS', 'UPTIME', 'DIRECTORY / HERDR / AI')
     ports.each do |port|
       herdr = port['herdr']
       ai = port['ai']
       herdr_label = herdr ? "#{herdr['workspace_label'] || herdr['workspace_id']} #{herdr['pane_id']}#{herdr['match'] == 'cwd' ? ' ~' : ''}" : '-'
       ai_label = ai&.fetch('session', nil) ? "#{ai['kind']} #{ai['session'][0, 8]}…" : (ai&.fetch('kind', nil) || '-')
-      puts format('%-7s %-15s %-18s %s', port['port'], port['host'], "#{port['command']}##{port['pid']}", port['cwd'].to_s)
+      uptime = port['elapsed'] && !port['elapsed'].empty? ? port['elapsed'] : '-'
+      puts format('%-7s %-15s %-18s %-10s %s', port['port'], port['host'], "#{port['command']}##{port['pid']}", uptime, port['cwd'].to_s)
       puts "         herdr: #{herdr_label}   ai: #{ai_label}"
     end
     warn "herdr unavailable: #{snapshot.fetch('warnings', []).join('; ')}" if snapshot['herdr_available'] == false

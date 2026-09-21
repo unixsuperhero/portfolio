@@ -17,6 +17,7 @@ const FIXTURE_SCAN = {
     {
       host: "127.0.0.1", port: 8123, proto: "TCP", command: "bun", pid: 1234,
       user: "tester", cwd: "/tmp/proj-a", ppid: 100, command_line: "bun run server.js",
+      elapsed_secs: 7543, elapsed: "2h 05m", started_at: "2026-09-19T21:54:17.000Z",
       herdr: {
         workspace_id: "w1", workspace_label: "demo", tab_id: "w1:t1", pane_id: "w1:p1",
         agent: "codex", agent_status: "working", cwd: "/tmp/proj-a",
@@ -24,20 +25,38 @@ const FIXTURE_SCAN = {
       },
       ai: { kind: "codex", session: "01a0dead-beef-0000-0000-000000000001", source: "herdr:codex" },
       tree: [
-        { pid: 1234, ppid: 100, command: "bun run server.js" },
-        { pid: 100, ppid: 50, command: "herdr pane shell" },
-        { pid: 50, ppid: 1, command: "codex agent" },
-        { pid: 1, ppid: 0, command: "/sbin/launchd" },
+        { pid: 1234, ppid: 100, command: "bun run server.js", cwd: "/tmp/proj-a", ports: [{ host: "127.0.0.1", port: 8123 }], elapsed_secs: 7543, elapsed: "2h 05m", started_at: "2026-09-19T21:54:17.000Z" },
+        { pid: 100, ppid: 50, command: "herdr pane shell", cwd: "/tmp", ports: [{ host: "127.0.0.1", port: 8125 }], elapsed_secs: 9000, elapsed: "2h 30m", started_at: "2026-09-19T21:30:00.000Z" },
+        { pid: 50, ppid: 1, command: "codex agent", cwd: "/tmp", ports: [], elapsed_secs: 9100, elapsed: "2h 31m", started_at: "2026-09-19T21:28:20.000Z" },
+        { pid: 1, ppid: 0, command: "/sbin/launchd", cwd: "", ports: [], elapsed_secs: null, elapsed: "", started_at: null },
       ],
-      children: [{ pid: 1235, ppid: 1234, command: "bun worker" }],
+      children: [{ pid: 1235, ppid: 1234, command: "bun worker", cwd: "/tmp/proj-a/worker", elapsed_secs: 3600, elapsed: "1h", started_at: "2026-09-19T23:00:00.000Z" }],
+    },
+    {
+      host: "127.0.0.1", port: 8125, proto: "TCP", command: "herdr", pid: 100,
+      user: "tester", cwd: "/tmp", ppid: 50, command_line: "herdr pane shell",
+      elapsed_secs: 9000, elapsed: "2h 30m", started_at: "2026-09-19T21:30:00.000Z",
+      herdr: {
+        workspace_id: "w1", workspace_label: "demo", tab_id: "w1:t1", pane_id: "w1:p1",
+        agent: "codex", agent_status: "working", cwd: "/tmp/proj-a",
+        foreground_cwd: "/tmp/proj-a", match: "process", shell_pid: 100,
+      },
+      ai: { kind: "codex", session: "01a0dead-beef-0000-0000-000000000001", source: "herdr:codex" },
+      tree: [
+        { pid: 100, ppid: 50, command: "herdr pane shell", cwd: "/tmp", ports: [{ host: "127.0.0.1", port: 8125 }] },
+        { pid: 50, ppid: 1, command: "codex agent", cwd: "/tmp", ports: [] },
+        { pid: 1, ppid: 0, command: "/sbin/launchd", cwd: "", ports: [] },
+      ],
+      children: [],
     },
     {
       host: "*", port: 8124, proto: "TCP", command: "python3", pid: 5678,
       user: "tester", cwd: "/tmp/other", ppid: 1, command_line: "python3 -m http.server 8124",
+      elapsed_secs: 45, elapsed: "45s", started_at: "2026-09-19T23:59:15.000Z",
       herdr: null, ai: null,
       tree: [
-        { pid: 5678, ppid: 1, command: "python3 -m http.server 8124" },
-        { pid: 1, ppid: 0, command: "/sbin/launchd" },
+        { pid: 5678, ppid: 1, command: "python3 -m http.server 8124", cwd: "/tmp/other", ports: [{ host: "*", port: 8124 }] },
+        { pid: 1, ppid: 0, command: "/sbin/launchd", cwd: "", ports: [] },
       ],
       children: [],
     },
@@ -102,14 +121,22 @@ afterAll(async () => {
 test("api/ports returns scanner attribution shape", async () => {
   const snapshot = await (await fetch(`${serverUrl}/api/ports`)).json();
   expect(snapshot.herdr_available).toBe(true);
-  expect(snapshot.ports).toHaveLength(2);
-  const [first, second] = snapshot.ports;
-  expect(first.port).toBe(8123);
+  expect(snapshot.ports).toHaveLength(3);
+  const byPort = Object.fromEntries(snapshot.ports.map(entry => [entry.port, entry]));
+  const first = byPort[8123];
   expect(first.cwd).toBe("/tmp/proj-a");
   expect(first.herdr.pane_id).toBe("w1:p1");
   expect(first.herdr.match).toBe("process");
   expect(first.ai.session).toContain("01a0dead");
-  expect(second.herdr).toBeNull();
+  expect(first.tree).toHaveLength(4);
+  expect(first.tree[1].cwd).toBe("/tmp");
+  expect(first.elapsed_secs).toBe(7543);
+  expect(first.elapsed).toBe("2h 05m");
+  expect(first.started_at).toBe("2026-09-19T21:54:17.000Z");
+  expect(first.tree[1].elapsed).toBe("2h 30m");
+  expect(byPort[8124].elapsed).toBe("45s");
+  expect(byPort[8124].herdr).toBeNull();
+  expect(byPort[8125].pid).toBe(100);
 });
 
 test("ports page renders listeners with pane and session", async () => {
@@ -124,16 +151,31 @@ test("ports page renders listeners with pane and session", async () => {
   expect(page).toContain("/api/ports");
   expect(page).toContain("/ports/tree?pid=1234");
   expect(page).toContain('data-pid="1234"');
+  expect(page).toContain("2h 05m");
+  expect(page).toContain("45s");
+  expect(page).toContain("started 2026-09-19T21:54:17.000Z");
 });
 
 test("ports tree page shows parents, session, and children", async () => {
   const page = await (await fetch(`${serverUrl}/ports/tree?pid=1234&port=8123`)).text();
   expect(page).toContain("Process tree");
   expect(page).toContain("herdr pane shell");
-  expect(page).toContain("Herdr shell");
   expect(page).toContain("01a0dead");
   expect(page).toContain("bun worker");
+  expect(page).toContain("/tmp/proj-a/worker");
   expect(page).toContain("Kill PID 1234");
+  expect(page).toContain("listener");
+  expect(page).toContain("parent");
+  expect(page).toContain("2h 05m");
+  expect(page).toContain("2h 30m");
+  expect(page).toContain("1h");
+});
+
+test("ports tree page links parents that have ports open", async () => {
+  const page = await (await fetch(`${serverUrl}/ports/tree?pid=1234&port=8123`)).text();
+  expect(page).toContain('href="http://localhost:8125"');
+  expect(page).toContain("also listening");
+  expect(page).toContain("/tmp</td>");
 });
 
 test("ports tree page flags orphans reparented to init", async () => {

@@ -5,12 +5,21 @@ Output (stdout) is JSON:
   {"scanned_at": iso, "herdr_available": bool, "ports": [...], "warnings": [...]}
 Each port entry:
   {"port","host","proto","command","pid","user","cwd","ppid","command_line",
+   "elapsed_secs","elapsed","started_at",
    "herdr": {"workspace_id","workspace_label","tab_id","pane_id","agent",
              "agent_status","agent_session","agent_session_source","cwd",
              "shell_pid","match"} | None,
    "ai": {"kind","session"} | None,
-   "tree": [{"pid","ppid","command"}] (listener first, walking up to init),
-   "children": [{"pid","ppid","command"}] (direct children of the listener)}
+   "tree": [{"pid","ppid","command","cwd","ports","elapsed_secs","elapsed",
+     "started_at"}] (listener first, walking up to init; cwd per ancestor,
+     ports = its own open [{host,port}]),
+   "children": [{"pid","ppid","command","cwd","elapsed_secs","elapsed",
+     "started_at"}] (direct children of the listener)}
+
+elapsed_secs is seconds since the process started (from `ps -o etime`);
+elapsed is a short human form ("45s", "12m 03s", "4h 05m", "3d 2h");
+started_at is the estimated ISO start time. All three are null/""/null
+when ps reports nothing usable.
 
 Herdr mapping: a listening PID is attributed to the pane whose shell_pid is
 an ancestor of the PID (or equals it), falling back to cwd equality with the
@@ -24,10 +33,56 @@ import re
 import shutil
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 TIMEOUT = 8
 AI_HINT_RE = re.compile(r"(codex|claude|muse|cursor|gemini|aider|copilot|opencode|omp)\b", re.I)
+
+
+def parse_etime(value):
+    """BSD/macOS `ps -o etime` ([D-]HH:MM:SS or MM:SS) -> seconds, or None."""
+    text = (value or "").strip()
+    days = 0
+    if "-" in text:
+        day_part, text = text.split("-", 1)
+        try:
+            days = int(day_part)
+        except ValueError:
+            return None
+    try:
+        nums = [int(part) for part in text.split(":")]
+    except ValueError:
+        return None
+    if len(nums) == 2:
+        return days * 86400 + nums[0] * 60 + nums[1]
+    if len(nums) == 3:
+        return days * 86400 + nums[0] * 3600 + nums[1] * 60 + nums[2]
+    return None
+
+
+def format_elapsed(secs):
+    """Short human uptime: 45s, 12m 03s, 4h 05m, 3d 2h. Empty when unknown."""
+    if secs is None:
+        return ""
+    mins, sec = divmod(secs, 60)
+    if mins < 1:
+        return f"{sec}s"
+    if mins < 60:
+        return f"{mins}m {sec:02d}s" if sec else f"{mins}m"
+    hours, mins = divmod(mins, 60)
+    if hours < 48:
+        return f"{hours}h {mins:02d}m" if mins else f"{hours}h"
+    days, hours = divmod(hours, 24)
+    return f"{days}d {hours}h" if hours else f"{days}d"
+
+
+def started_iso(now, secs):
+    if secs is None:
+        return None
+    try:
+        return (now - timedelta(seconds=secs)).isoformat()
+    except (OverflowError, ValueError):
+        return None
 
 
 def run(cmd, timeout=TIMEOUT):
@@ -85,29 +140,33 @@ def parse_listeners(warnings):
 
 
 def process_details(pids, warnings):
-    """Return ({pid: {ppid, command_line}}, {pid: ppid}, {pid: command})."""
+    """Return ({pid: {ppid, command_line, elapsed_secs}}, {pid: ppid},
+    {pid: command}, {pid: elapsed_secs})."""
     info = {}
     ancestry = {}
     commands = {}
-    code, out, _ = run(["ps", "-ax", "-o", "pid,ppid,command"])
+    etimes = {}
+    code, out, _ = run(["ps", "-ax", "-o", "pid,ppid,etime,command"])
     if code != 0 or not out.strip():
         warnings.append("ps ancestry scan failed")
-        return info, ancestry, commands
+        return info, ancestry, commands, etimes
     for line in out.splitlines()[1:]:
-        parts = line.strip().split(None, 2)
-        if len(parts) < 2:
+        parts = line.strip().split(None, 3)
+        if len(parts) < 3:
             continue
         try:
             pid = int(parts[0])
             ppid = int(parts[1])
         except ValueError:
             continue
-        cmd = parts[2] if len(parts) > 2 else ""
+        secs = parse_etime(parts[2])
+        cmd = parts[3] if len(parts) > 3 else ""
         ancestry[pid] = ppid
         commands[pid] = cmd
+        etimes[pid] = secs
         if pid in pids:
-            info[pid] = {"ppid": ppid, "command_line": cmd}
-    return info, ancestry, commands
+            info[pid] = {"ppid": ppid, "command_line": cmd, "elapsed_secs": secs}
+    return info, ancestry, commands, etimes
 
 
 def pid_cwd(pid, warnings):
@@ -127,8 +186,55 @@ def pid_cwd(pid, warnings):
     return ""
 
 
+def batch_cwd(pids, warnings):
+    """cwd for many pids in one lsof call: {pid: cwd}."""
+    targets = sorted(set(pids))
+    if not targets:
+        return {}
+    code, out, err = run(
+        ["lsof", "-a", "-p", ",".join(map(str, targets)), "-d", "cwd", "-F", "pn"],
+        timeout=8,
+    )
+    result = {}
+    current = None
+    for line in out.splitlines():
+        if line.startswith("p"):
+            try:
+                current = int(line[1:])
+            except ValueError:
+                current = None
+        elif line.startswith("n/") and current is not None:
+            result[current] = line[1:]
+            current = None
+    if code != 0 and not result:
+        # A pid that exited mid-scan can poison the whole batch; only warn
+        # when nothing at all came back.
+        detail = (err or "").strip().splitlines()
+        warnings.append(f"lsof batch cwd: {detail[0][:160] if detail else 'no output'}")
+    return result
+
+
+HERDR_FALLBACKS = ["~/.local/bin/herdr", "/opt/homebrew/bin/herdr", "/usr/local/bin/herdr"]
+_HERDR_BIN = "herdr"
+
+
+def resolve_herdr_bin():
+    """herdr binary: HERDR_BIN override, then PATH, then common locations."""
+    override = os.environ.get("HERDR_BIN")
+    if override:
+        return override
+    found = shutil.which("herdr")
+    if found:
+        return found
+    for candidate in HERDR_FALLBACKS:
+        path = os.path.expanduser(candidate)
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    return None
+
+
 def herdr_json(args, warnings):
-    code, out, err = run(["herdr", *args], timeout=TIMEOUT)
+    code, out, err = run([_HERDR_BIN, *args], timeout=TIMEOUT)
     if code != 0:
         detail = (err or out).strip().splitlines()
         if detail:
@@ -149,9 +255,12 @@ def unwrap(payload):
 
 def collect_herdr(warnings):
     """Return (panes, agents, shell_pid->pane, available)."""
-    if not shutil.which("herdr") and not os.environ.get("HERDR_SOCKET_PATH"):
-        warnings.append("herdr CLI not found; port ownership falls back to process data")
+    global _HERDR_BIN
+    resolved = resolve_herdr_bin()
+    if resolved is None and not os.environ.get("HERDR_SOCKET_PATH"):
+        warnings.append("herdr CLI not found (looked for 'herdr' on PATH, HERDR_BIN, and ~/.local/bin); port ownership falls back to process data")
         return [], [], {}, False
+    _HERDR_BIN = resolved or "herdr"
     workspaces_doc = herdr_json(["workspace", "list"], warnings)
     workspaces = unwrap(workspaces_doc).get("workspaces", [])
     if workspaces_doc is None:
@@ -272,8 +381,16 @@ def ai_fallback(pid, ancestry, commands):
     return None
 
 
-def process_tree(pid, ancestry, commands):
-    """Walk pid up to init: [{pid, ppid, command}], listener first."""
+def uptime_fields(now, secs):
+    return {
+        "elapsed_secs": secs,
+        "elapsed": format_elapsed(secs),
+        "started_at": started_iso(now, secs),
+    }
+
+
+def process_tree(pid, ancestry, commands, etimes, now):
+    """Walk pid up to init: [{pid, ppid, command, ...uptime}], listener first."""
     chain = []
     seen = set()
     current = pid
@@ -284,6 +401,7 @@ def process_tree(pid, ancestry, commands):
             "pid": current,
             "ppid": ppid,
             "command": commands.get(current, ""),
+            **uptime_fields(now, etimes.get(current)),
         })
         if not ppid or ppid == current:
             break
@@ -291,10 +409,11 @@ def process_tree(pid, ancestry, commands):
     return chain
 
 
-def direct_children(pid, ancestry, commands):
-    """Direct children of pid: [{pid, ppid, command}] sorted by pid."""
+def direct_children(pid, ancestry, commands, etimes, now):
+    """Direct children of pid: [{pid, ppid, command, ...uptime}] sorted by pid."""
     return sorted(
-        ({"pid": child, "ppid": pid, "command": commands.get(child, "")}
+        ({"pid": child, "ppid": pid, "command": commands.get(child, ""),
+          **uptime_fields(now, etimes.get(child))}
          for child, parent in ancestry.items() if parent == pid),
         key=lambda e: e["pid"],
     )
@@ -304,11 +423,12 @@ def main():
     warnings = []
     listeners = parse_listeners(warnings)
     pids = {e["pid"] for e in listeners}
-    details, ancestry, commands = process_details(pids, warnings)
+    details, ancestry, commands, etimes = process_details(pids, warnings)
     panes, agents, shell_map, herdr_available = collect_herdr(warnings)
     cws = {}
     for pid in pids:
         cws[pid] = pid_cwd(pid, warnings)
+    now = datetime.now(timezone.utc)
     ports = []
     for entry in listeners:
         pid = entry["pid"]
@@ -327,13 +447,32 @@ def main():
             "cwd": cwd,
             "ppid": detail.get("ppid"),
             "command_line": detail.get("command_line", ""),
+            **uptime_fields(now, detail.get("elapsed_secs")),
             "herdr": herdr,
             "ai": ai,
-            "tree": process_tree(pid, ancestry, commands),
-            "children": direct_children(pid, ancestry, commands),
+            "tree": process_tree(pid, ancestry, commands, etimes, now),
+            "children": direct_children(pid, ancestry, commands, etimes, now),
         })
+    pid_ports = {}
+    for item in ports:
+        pid_ports.setdefault(item["pid"], []).append({"host": item["host"], "port": item["port"]})
+    tree_pids = set()
+    for item in ports:
+        for node in item["tree"]:
+            tree_pids.add(node["pid"])
+        for child in item["children"]:
+            tree_pids.add(child["pid"])
+    known_cwds = {item["pid"]: item["cwd"] for item in ports if item["cwd"]}
+    fetched = batch_cwd(tree_pids - set(known_cwds), warnings)
+    cwd_of = {**fetched, **known_cwds}
+    for item in ports:
+        for node in item["tree"]:
+            node["cwd"] = cwd_of.get(node["pid"], "")
+            node["ports"] = pid_ports.get(node["pid"], [])
+        for child in item["children"]:
+            child["cwd"] = cwd_of.get(child["pid"], "")
     payload = {
-        "scanned_at": datetime.now(timezone.utc).isoformat(),
+        "scanned_at": now.isoformat(),
         "herdr_available": herdr_available,
         "ports": ports,
         "warnings": sorted(set(warnings)),

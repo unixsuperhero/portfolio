@@ -201,7 +201,7 @@ The title defaults to the file's `<title>` tag. Recursive link-following applies
 
 ## Track open ports
 
-Open `http://127.0.0.1:4387/ports` for a live table of TCP listeners: owning process, working directory, Herdr pane, and AI session. The same data is available as JSON:
+Open `http://127.0.0.1:4387/ports` for a live table of TCP listeners: owning process, uptime, working directory, Herdr pane, and AI session. Hover an uptime value for the estimated start time. The same data is available as JSON:
 
 ```bash
 curl http://127.0.0.1:4387/api/ports

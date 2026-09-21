@@ -1,0 +1,1329 @@
+Muse Code Conversation Export
+=============================
+
+Exported At: 2026-09-21 03:17:13 UTC
+Session: 01a0bfb5-6c37-7c41-b2bc-d2e07eeb7c8b
+Workspace: /Users/unixsuperhero/proj/portfolio
+
+## Conversation
+
+  Model set to muse-spark-1.3-contributor
+  ⎿  Your content, including inter-session messages, may be used for product
+     improvement.
+
+  Skills: 295 loaded · 118 warnings · 261 details hidden
+    skills_catalog was trimmed to fit its size limit (32 KB): 294 descriptions
+    compacted, 117 skill ids omitted
+    prompt-craft: skill omitted to keep the startup catalog within its aggregate
+    budget of 32000 bytes
+    prompt-optimizer: skill omitted to keep the startup catalog within its
+    aggregate budget of 32000 bytes
+    prototype: skill omitted to keep the startup catalog within its aggregate
+    budget of 32000 bytes
+    Run muse skills list --source all for full diagnostics.
+
+❯ we added ports page...now make the links clickable so i can view what is
+  running
+
+◆ Ran command · List workspace and show package · ✓ · 0.1s
+├ ls -la && echo --- && cat package.json 2>/dev/null | head -n 100
+├ exit 0
+└ total 232120
+  drwxr-xr-x@  17 unixsuperhero  staff        544 Sep 20 11:35 .
+  drwxr-xr-x  115 unixsuperhero  staff       3680 Sep 20 06:36 ..
+  drwxr-xr-x@  15 unixsuperhero  staff        480 Sep 20 12:44 .git
+  -rw-r--r--@   1 unixsuperhero  staff         22 Sep 17 13:55 .gitignore
+  -rw-r--r--@   1 unixsuperhero  staff      52603 Sep 20 11:43 app.js
+  drwxr-xr-x@   8 unixsuperhero  staff        256 Sep 20 11:44 bin
+  -rw-r--r--@   1 unixsuperhero  staff       2294 Sep 17 13:28 import.js
+  … 12 lines omitted
+    "name": "portfolio",
+    "private": true,
+    "type": "module",
+    "scripts": {
+      "start": "bun run app.js",
+      "import": "bun run import.js"
+    }
+  }
+
+  Searched "ports" (35 matches)
+  Read app.js
+  Read bin/ports-scan
+
+◆ Ran command · Check tests for ports coverage · ✓ · 0.1s
+├ ls test/ && grep -rn "ports" test/ | head -n 40
+├ exit 0
+└ mdoc.test.js
+  ports.test.js
+  test/mdoc.test.js:69:test("imports recursive batches, preserves raw Markdown,…
+  test/ports.test.js:7:const directory = await mkdtemp(join(tmpdir(), "portfoli…
+  test/ports.test.js:16:  ports: [
+  test/ports.test.js:79:  const scanner = join(fixture, "bin", "ports-scan");
+  test/ports.test.js:90:test("api/ports returns scanner attribution shape", asy…
+  test/ports.test.js:91:  const snapshot = await (await fetch(`${serverUrl}/api…
+  … 2 lines omitted
+  test/ports.test.js:103:test("ports page renders listeners with pane and sessi…
+  test/ports.test.js:104:  const response = await fetch(`${serverUrl}/ports`);
+  test/ports.test.js:110:  expect(page).toContain("/api/ports");
+  test/ports.test.js:113:test("mdoc imports HTML files verbatim with title from…
+  test/ports.test.js:128:test("api/ports degrades gracefully when the scanner f…
+  test/ports.test.js:131:    const snapshot = await (await fetch(`${failing.url…
+  test/ports.test.js:132:    expect(snapshot.ports).toHaveLength(0);
+  test/ports.test.js:134:    const page = await (await fetch(`${failing.url}/po…
+
+  Read test/ports.test.js
+
+◆ Edited app.js (+3 −0)
+  283      const ai = entry.ai;
+  284 +    const linkHost = !entry.host || ["*", "::", "0.0.0.0", "::1", "127.0.
+       0.1", "localhost"].includes(entry.host) ? "localhost" : entry.host;
+  285 +    const linkTarget = linkHost.includes(":") && !linkHost.startsWith("["
+       ) ? `[${linkHost}]` : linkHost;
+  286 +    const portUrl = `http://${linkTarget}:${entry.port}`;
+
+◆ Edited app.js (+1 −1)
+  298 -      <td class="ports-num">${entry.port}</td>
+  298 +      <td class="ports-num"><a href="${escapeHtml(portUrl)}" target="_bla
+       nk" rel="noreferrer">${entry.port}</a></td>
+
+◆ Edited test/ports.test.js (+2 −0)
+  107    expect(page).toContain("8123");
+  108 +  expect(page).toContain('href="http://localhost:8123"');
+  109 +  expect(page).toContain('href="http://localhost:8124"');
+  110    expect(page).toContain("w1:p1");
+
+◆ Ran command · Run ports tests · ✓ · 0.8s
+├ bun test test/ports.test.js 2>&1 | tail -n 20
+├ exit 0
+└ bun test v1.3.14 (d1632b29)
+
+  test/ports.test.js:
+  (pass) api/ports returns scanner attribution shape [424.56ms]
+  (pass) ports page renders listeners with pane and session [9.35ms]
+  (pass) mdoc imports HTML files verbatim with title from <title> [181.67ms]
+  (pass) api/ports degrades gracefully when the scanner fails [32.21ms]
+
+   4 pass
+   0 fail
+   23 expect() calls
+  Ran 4 tests across 1 file. [710.00ms]
+
+◆ Done. Each port number on /ports is now a clickable link opening
+  http://localhost:<port> in a new tab, so you can view what's running there.
+
+  Details:
+  • Wildcard/loopback binds (*, 0.0.0.0, ::, 127.0.0.1, ::1, localhost) link to
+    localhost; a specific bound IP links to that host instead, with IPv6
+    bracketed.
+  • Changed app.js:281 (portsPage) and added link assertions in
+    test/ports.test.js:107.
+  • Verified: bun test test/ports.test.js — 4 pass, 0 fail.
+
+◆ Worked for 1m 00s · 12:47 PM
+
+❯ Okay, so let's extend the ports page to do two things. One, I want a button to
+  kill the process. And besides that, I want a link to be able to view the full
+  process tree. Basically, I want to see what the parent processes are and if
+  there's still like an AI session running or whatever or if it's like an orphan
+  child.
+
+  Read app.js
+  Read bin/ports-scan
+  Read test/ports.test.js
+  Read app.js
+  Read app.js
+
+◆ Ran command · Check README ports docs and handler tail · ✓ · 0.1s
+├ grep -n -i "port" README.md | head -n 20; echo ---; sed -n '750,820p' app.js
+├ exit 0
+└ 1:# Portfolio setup
+  3:Portfolio is a local document server for macOS. It uses Bun, SQLite, Pandoc…
+  13:2. Copy this project to `~/proj/portfolio`.
+  18:   ~/proj/portfolio/portfolio.sqlite
+  22:   The database stores document content and metadata. The paths in `source…
+  27:   ~/proj/portfolio/bin/install
+  39:- Creates `~/Library/LaunchAgents/com.$USER.portfolio.plist`.
+  41:- Imports `~/claude/index.json` when no Portfolio database exists.
+  … 27 lines omitted
+      } catch (error) {
+        console.error(error);
+        return text(`portfolio: ${error.message}`, 500);
+      }
+    },
+  });
+
+  console.log(`Portfolio listening on http://${server.hostname}:${server.port}`…
+
+◆ Edited bin/ports-scan (+5 −2)
+   8     "herdr": {"workspace_id","workspace_label","tab_id","pane_id","agent",
+   9 -             "agent_status","agent_session","agent_session_source","cwd"}
+      | None,
+  10 -   "ai": {"kind","session"} | None}
+   9 +             "agent_status","agent_session","agent_session_source","cwd",
+  10 +             "shell_pid","match"} | None,
+  11 +   "ai": {"kind","session"} | None,
+  12 +   "tree": [{"pid","ppid","command"}] (listener first, walking up to init)
+      ,
+  13 +   "children": [{"pid","ppid","command"}] (direct children of the listener
+      )}
+
+◆ Edited bin/ports-scan (+1 −0)
+  241          "pane_id": pane_id,
+  242 +        "shell_pid": pane.get("_shell_pid"),
+
+◆ Edited bin/ports-scan (+28 −0)
+  275 +def process_tree(pid, ancestry, commands):
+  276 +    """Walk pid up to init: [{pid, ppid, command}], listener first."""
+  277 +    chain = []
+  278 +    seen = set()
+  279 +    current = pid
+  280 +    while current and current not in seen and len(chain) < 64:
+  281 +        seen.add(current)
+  282 +        ppid = ancestry.get(current)
+  283 +        chain.append({
+  284 +            "pid": current,
+  285 +            "ppid": ppid,
+  286 +            "command": commands.get(current, ""),
+  287 +        })
+  288 +        if not ppid or ppid == current:
+  289 +            break
+  290 +        current = ppid
+  291 +    return chain
+  292 +
+  293 +
+  294 +def direct_children(pid, ancestry, commands):
+  295 +    """Direct children of pid: [{pid, ppid, command}] sorted by pid."""
+  296 +    return sorted(
+  297 +        ({"pid": child, "ppid": pid, "command": commands.get(child, "")}
+  298 +         for child, parent in ancestry.items() if parent == pid),
+  299 +        key=lambda e: e["pid"],
+  300 +    )
+  301 +
+  302 +
+  303  def main():
+
+◆ Edited bin/ports-scan (+2 −0)
+  331              "ai": ai,
+  332 +            "tree": process_tree(pid, ancestry, commands),
+  333 +            "children": direct_children(pid, ancestry, commands),
+  334          })
+
+◆ Ran command · Smoke-test extended scanner output · ✓ · 0.8s
+├ ./bin/ports-scan | head -c 2000; echo
+├ exit 0
+└ {
+    "scanned_at": "2026-09-20T16:52:29.386145+00:00",
+    "herdr_available": true,
+    "ports": [
+      {
+        "host": "127.0.0.1",
+        "port": 3047,
+        "proto": "TCP",
+  … 51 lines omitted
+          "session": "01a0ba87-bebd-7cc3-8052-cc4095826c42",
+          "source": "herdr:codex"
+        },
+        "tree": [
+          {
+            "pid": 24917,
+            "ppid": 1,
+            "
+
+◆ Edited app.js (+96 −2)
+  303        <td title="${aiTitle}">${aiLabel}</td>
+  304 +      <td class="ports-actions"><a href="/ports/tree?pid=${entry.pid}&por
+       t=${entry.port}">Tree</a><button type="button" class="ports-kill" data-pi
+       d="${entry.pid}" data-port="${entry.port}" data-command="${escapeHtml(ent
+       ry.command)}">Kill</button></td>
+  305      </tr>`;
+      ⋮
+  309      ${warnings.length ? `<p class="settings-note warn">${warnings.map(esc
+       apeHtml).join("<br>")}</p>` : ""}
+  309 -    ${snapshot.ports.length ? `<div class="ports-wrap"><table class="port
+       s-table"><thead><tr><th>Port</th><th>Bind</th><th>Process</th><th>Directo
+       ry</th><th>Herdr pane</th><th>AI session</th></tr></thead><tbody>${rows}<
+       /tbody></table></div>` : `<div class="empty"><strong>No listeners found.<
+       /strong><span>The scanner reported zero TCP LISTEN sockets.</span></div>`
+       }
+  310 -    <style>.ports-table{width:100%;border-collapse:collapse;font-size:.82
+       rem}.ports-table th{text-align:left;color:var(--text3);font-family:var(--
+       mono);font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;padd
+       ing:.5rem;border-bottom:1px solid var(--border)}.ports-table td{padding:.
+       5rem;border-bottom:1px solid var(--border);vertical-align:top;overflow-wr
+       ap:anywhere}.ports-num{font-family:var(--mono);font-weight:700}.ports-pat
+       h{max-width:22rem}.ports-dim{color:var(--text3)}.ports-badge{border:1px s
+       olid var(--border2);border-radius:999px;padding:.2rem .6rem;font-size:.72
+       rem}.ports-badge.ok{color:var(--accent2)}.ports-badge.warn{color:var(--go
+       ld)}.ports-note{color:var(--text3);font-size:.78rem}.ports-wrap{overflow-
+       x:auto}.ports-table code{color:var(--accent2)}</style>`;
+  310 +    ${snapshot.ports.length ? `<div class="ports-wrap"><table class="port
+       s-table"><thead><tr><th>Port</th><th>Bind</th><th>Process</th><th>Directo
+       ry</th><th>Herdr pane</th><th>AI session</th><th>Actions</th></tr></thead
+       ><tbody>${rows}</tbody></table></div>
+  311 +    <script>document.querySelectorAll('.ports-kill').forEach(button=>butt
+       on.addEventListener('click',async()=>{const label=`${button.dataset.comma
+       nd} (#${button.dataset.pid}) on port ${button.dataset.port}`;if(!confirm(
+       `Kill ${label}? This sends SIGTERM to the process.`))return;button.disabl
+       ed=true;try{const response=await fetch('/api/ports/kill',{method:'POST',h
+       eaders:{'content-type':'application/json'},body:JSON.stringify({pid:Numbe
+       r(button.dataset.pid)})});if(response.ok){location.reload();return}button
+       .disabled=false;alert(await response.text())}catch(error){button.disabled
+       =false;alert(String(error && error.message || error))}}));</script>` : `<
+       div class="empty"><strong>No listeners found.</strong><span>The scanner r
+       eported zero TCP LISTEN sockets.</span></div>`}
+  312 +    <style>.ports-table{width:100%;border-collapse:collapse;font-size:.82
+       rem}.ports-table th{text-align:left;color:var(--text3);font-family:var(--
+       mono);font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;padd
+       ing:.5rem;border-bottom:1px solid var(--border)}.ports-table td{padding:.
+       5rem;border-bottom:1px solid var(--border);vertical-align:top;overflow-wr
+       ap:anywhere}.ports-num{font-family:var(--mono);font-weight:700}.ports-pat
+       h{max-width:22rem}.ports-dim{color:var(--text3)}.ports-badge{border:1px s
+       olid var(--border2);border-radius:999px;padding:.2rem .6rem;font-size:.72
+       rem}.ports-badge.ok{color:var(--accent2)}.ports-badge.warn{color:var(--go
+       ld)}.ports-note{color:var(--text3);font-size:.78rem}.ports-wrap{overflow-
+       x:auto}.ports-table code{color:var(--accent2)}.ports-actions{white-space:
+       nowrap}.ports-actions a{margin-right:.6rem}.ports-kill{color:#ff7b72;back
+       ground:none;border:1px solid var(--border2);border-radius:6px;padding:.15
+       rem .55rem;cursor:pointer;font-size:.78rem}.ports-kill:disabled{opacity:.
+       5;cursor:default}</style>`;
+  313    return html(shell("Ports", body, "ports"));
+  314  }
+  315 +
+  316 +function findPortEntry(snapshot, pid, port) {
+  317 +  const matches = (snapshot.ports ?? []).filter(entry => entry.pid === pi
+       d);
+  318 +  if (!matches.length) return null;
+  319 +  if (port != null && Number.isInteger(port)) {
+  320 +    return matches.find(entry => entry.port === port) ?? matches[0];
+  321 +  }
+  322 +  return matches[0];
+  323 +}
+  324 +
+  325 +function portsTreePage(url) {
+  326 +  const pid = Number(url.searchParams.get("pid"));
+  327 +  const portParam = url.searchParams.get("port");
+  328 +  const port = portParam == null || portParam === "" ? null : Number(port
+       Param);
+  329 +  if (!Number.isInteger(pid) || pid <= 0) return text("invalid pid", 422)
+       ;
+  330 +  if (port !== null && (!Number.isInteger(port) || port <= 0)) return tex
+       t("invalid port", 422);
+  331 +  const snapshot = getPortsSnapshot();
+  332 +  const entry = findPortEntry(snapshot, pid, port);
+  333 +  if (!entry) return text("no TCP listener found for that pid", 404);
+  334 +  const herdr = entry.herdr;
+  335 +  const ai = entry.ai;
+  336 +  const linkHost = !entry.host || ["*", "::", "0.0.0.0", "::1", "127.0.0.
+       1", "localhost"].includes(entry.host) ? "localhost" : entry.host;
+  337 +  const linkTarget = linkHost.includes(":") && !linkHost.startsWith("[")
+       ? `[${linkHost}]` : linkHost;
+  338 +  const portUrl = `http://${linkTarget}:${entry.port}`;
+  339 +  const tree = Array.isArray(entry.tree) && entry.tree.length
+  340 +    ? entry.tree
+  341 +    : [{ pid: entry.pid, ppid: entry.ppid, command: entry.command_line ||
+        entry.command }];
+  342 +  const children = Array.isArray(entry.children) ? entry.children : [];
+  343 +  const parentPid = tree[0]?.ppid;
+  344 +  const reparentedToInit = parentPid === 1 || parentPid === 0;
+  345 +  const ownership = herdr?.match === "process"
+  346 +    ? `Descends from the Herdr shell (PID ${herdr.shell_pid ?? "?"}) — st
+       ill owned by pane ${herdr.pane_id ?? ""}.`
+  347 +    : herdr
+  348 +      ? `Herdr pane ${herdr.pane_id ?? ""} matched by working directory o
+       nly (~) — the process does not descend from the pane shell, so it may hav
+       e been started outside Herdr or orphaned.`
+  349 +      : reparentedToInit
+  350 +        ? `Direct child of PID 1 (launchd): daemonized or orphaned — its
+       parent exited and it was reparented to init.`
+  351 +        : `No Herdr pane attributed to this process.`;
+  352 +  const sessionLine = ai?.session
+  353 +    ? `AI session: ${escapeHtml(ai.kind ?? "unknown")} <code>${escapeHtml
+       (ai.session)}</code> <span class="ports-dim">(${escapeHtml(ai.source ?? "
+       herdr")}${herdr?.agent_status ? ` · agent ${escapeHtml(herdr.agent_status
+       )}` : ""})</span>`
+  354 +    : ai?.kind
+  355 +      ? `AI hint: ${escapeHtml(ai.kind)} <span class="ports-dim">${escape
+       Html(ai.hint ?? ai.source ?? "")}</span> — no live session id, likely a l
+       eftover child.`
+  356 +      : `No AI session attributed — no agent owns this process.`;
+  357 +  const treeRows = tree.map((node, level) => {
+  358 +    const badges = [];
+  359 +    if (level === 0) badges.push("listening process");
+  360 +    if (herdr?.shell_pid != null && node.pid === herdr.shell_pid) badges.
+       push(`Herdr shell · pane ${herdr.pane_id ?? ""}`);
+  361 +    if (node.pid === 1) badges.push("init (launchd)");
+  362 +    return `<tr><td class="ports-num">${node.pid}</td><td class="ports-nu
+       m">${node.ppid ?? "—"}</td><td class="ports-path" title="${escapeHtml(nod
+       e.command || "")}">${escapeHtml(node.command || "—")}</td><td>${badges.le
+       ngth ? badges.map(escapeHtml).join(" · ") : "<span class='ports-dim'>—</s
+       pan>"}</td></tr>`;
+  363 +  }).join("");
+  364 +  const childRows = children.length
+  365 +    ? children.map(child => `<tr><td class="ports-num">${child.pid}</td><
+       td class="ports-path" title="${escapeHtml(child.command || "")}">${escape
+       Html(child.command || "—")}</td></tr>`).join("")
+  366 +    : `<tr><td colspan="2"><span class="ports-dim">No child processes.</s
+       pan></td></tr>`;
+  367 +  const body = `<section class="page-head"><p><a href="/ports">← Ports</a
+       ></p><h1>Process tree · PID ${entry.pid}</h1><p><a href="${escapeHtml(por
+       tUrl)}" target="_blank" rel="noreferrer">Open http://${escapeHtml(linkTar
+       get)}:${entry.port}</a> · ${escapeHtml(entry.command)} · ${escapeHtml(ent
+       ry.command_line || "")}</p></section>
+  368 +    <p>${escapeHtml(ownership)}</p>
+  369 +    <p>${sessionLine}</p>
+  370 +    <section><h2>Parents</h2><div class="ports-wrap"><table class="ports-
+       table"><thead><tr><th>PID</th><th>PPID</th><th>Command</th><th>Notes</th>
+       </tr></thead><tbody>${treeRows}</tbody></table></div></section>
+  371 +    <section><h2>Children <span class="ports-dim">(direct)</span></h2><di
+       v class="ports-wrap"><table class="ports-table"><thead><tr><th>PID</th><t
+       h>Command</th></tr></thead><tbody>${childRows}</tbody></table></div></sec
+       tion>
+  372 +    <p><button type="button" class="ports-kill" data-pid="${entry.pid}" d
+       ata-port="${entry.port}" data-command="${escapeHtml(entry.command)}">Kill
+        PID ${entry.pid} (SIGTERM)</button></p>
+  373 +    <script>document.querySelectorAll('.ports-kill').forEach(button=>butt
+       on.addEventListener('click',async()=>{if(!confirm(`Kill ${button.dataset.
+       command} (#${button.dataset.pid}) on port ${button.dataset.port}? This se
+       nds SIGTERM to the process.`))return;button.disabled=true;try{const respo
+       nse=await fetch('/api/ports/kill',{method:'POST',headers:{'content-type':
+       'application/json'},body:JSON.stringify({pid:Number(button.dataset.pid)})
+       });if(response.ok){location.href='/ports';return}button.disabled=false;al
+       ert(await response.text())}catch(error){button.disabled=false;alert(Strin
+       g(error && error.message || error))}}));</script>
+  374 +    <style>.ports-table{width:100%;border-collapse:collapse;font-size:.82
+       rem}.ports-table th{text-align:left;color:var(--text3);font-family:var(--
+       mono);font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;padd
+       ing:.5rem;border-bottom:1px solid var(--border)}.ports-table td{padding:.
+       5rem;border-bottom:1px solid var(--border);vertical-align:top;overflow-wr
+       ap:anywhere}.ports-num{font-family:var(--mono);font-weight:700}.ports-pat
+       h{max-width:34rem}.ports-dim{color:var(--text3)}.ports-wrap{overflow-x:au
+       to}.ports-table code{color:var(--accent2)}.ports-kill{color:#ff7b72;backg
+       round:none;border:1px solid var(--border2);border-radius:6px;padding:.3re
+       m .7rem;cursor:pointer;font-size:.8rem}.ports-kill:disabled{opacity:.5;cu
+       rsor:default}</style>`;
+  375 +  return html(shell(`Process ${entry.pid} · Ports`, body, "ports"));
+  376 +}
+  377 +
+  378 +async function killPortProcess(request) {
+  379 +  let payload = {};
+  380 +  const contentType = request.headers.get("content-type") ?? "";
+  381 +  try {
+  382 +    if (contentType.includes("application/json")) {
+  383 +      payload = await request.json();
+  384 +    } else {
+  385 +      const form = await request.formData();
+  386 +      payload = { pid: form.get("pid"), signal: form.get("signal") };
+  387 +    }
+  388 +  } catch {
+  389 +    return text("invalid request body", 400);
+  390 +  }
+  391 +  const pid = Number(payload.pid);
+  392 +  if (!Number.isInteger(pid) || pid <= 1) return text("invalid pid", 422)
+       ;
+  393 +  if (pid === process.pid) return text("refusing to kill the portfolio se
+       rver itself", 403);
+  394 +  const signal = String(payload.signal ?? "TERM").toUpperCase() === "KILL
+       " ? "SIGKILL" : "SIGTERM";
+  395 +  const snapshot = getPortsSnapshot();
+  396 +  if (snapshot.error && !(snapshot.ports ?? []).length) return text(`cann
+       ot verify listeners: ${snapshot.error}`, 502);
+  397 +  if (!findPortEntry(snapshot, pid, null)) return text("pid is not a curr
+       ent TCP listener", 404);
+  398 +  try {
+  399 +    process.kill(pid, signal);
+  400 +  } catch (error) {
+  401 +    if (error?.code === "ESRCH") return text("no such process", 404);
+  402 +    if (error?.code === "EPERM") return text("no permission to signal tha
+       t process", 403);
+  403 +    return text(`failed to signal process: ${error?.message ?? error}`, 5
+       00);
+  404 +  }
+  405 +  return Response.json({ ok: true, pid, signal });
+  406 +}
+
+◆ Edited app.js (+2 −0)
+  747        if (request.method === "GET" && url.pathname === "/ports") return p
+       ortsPage();
+  748 +      if (request.method === "GET" && url.pathname === "/ports/tree") ret
+       urn portsTreePage(url);
+  749        if (request.method === "GET" && url.pathname === "/api/ports") retu
+       rn Response.json(getPortsSnapshot());
+  750 +      if (request.method === "POST" && url.pathname === "/api/ports/kill"
+       ) return killPortProcess(request);
+
+◆ Edited test/ports.test.js (+13 −1)
+  22          agent: "codex", agent_status: "working", cwd: "/tmp/proj-a",
+  23 -        foreground_cwd: "/tmp/proj-a", match: "process",
+  23 +        foreground_cwd: "/tmp/proj-a", match: "process", shell_pid: 100,
+  24        },
+  25        ai: { kind: "codex", session: "01a0dead-beef-0000-0000-000000000001"
+      , source: "herdr:codex" },
+  26 +      tree: [
+  27 +        { pid: 1234, ppid: 100, command: "bun run server.js" },
+  28 +        { pid: 100, ppid: 50, command: "herdr pane shell" },
+  29 +        { pid: 50, ppid: 1, command: "codex agent" },
+  30 +        { pid: 1, ppid: 0, command: "/sbin/launchd" },
+  31 +      ],
+  32 +      children: [{ pid: 1235, ppid: 1234, command: "bun worker" }],
+  33      },
+     ⋮
+  37        herdr: null, ai: null,
+  38 +      tree: [
+  39 +        { pid: 5678, ppid: 1, command: "python3 -m http.server 8124" },
+  40 +        { pid: 1, ppid: 0, command: "/sbin/launchd" },
+  41 +      ],
+  42 +      children: [],
+  43      },
+
+◆ Edited test/ports.test.js (+77 −0)
+  124    expect(page).toContain("/api/ports");
+  125 +  expect(page).toContain("/ports/tree?pid=1234");
+  126 +  expect(page).toContain('data-pid="1234"');
+  127 +});
+  128 +
+  129 +test("ports tree page shows parents, session, and children", async () =>
+       {
+  130 +  const page = await (await fetch(`${serverUrl}/ports/tree?pid=1234&port=
+       8123`)).text();
+  131 +  expect(page).toContain("Process tree");
+  132 +  expect(page).toContain("herdr pane shell");
+  133 +  expect(page).toContain("Herdr shell");
+  134 +  expect(page).toContain("01a0dead");
+  135 +  expect(page).toContain("bun worker");
+  136 +  expect(page).toContain("Kill PID 1234");
+  137 +});
+  138 +
+  139 +test("ports tree page flags orphans reparented to init", async () => {
+  140 +  const page = await (await fetch(`${serverUrl}/ports/tree?pid=5678`)).te
+       xt();
+  141 +  expect(page).toContain("orphaned");
+  142 +  expect(page).toContain("No AI session");
+  143 +  expect(page).toContain("No child processes");
+  144 +});
+  145 +
+  146 +test("ports tree page rejects bad lookups", async () => {
+  147 +  expect((await fetch(`${serverUrl}/ports/tree?pid=999999`)).status).toBe
+       (404);
+  148 +  expect((await fetch(`${serverUrl}/ports/tree`)).status).toBe(422);
+  149 +});
+  150 +
+  151 +test("api/ports/kill refuses unknown and invalid pids", async () => {
+  152 +  const kill = (body) => fetch(`${serverUrl}/api/ports/kill`, {
+  153 +    method: "POST",
+  154 +    headers: { "content-type": "application/json" },
+  155 +    body: JSON.stringify(body),
+  156 +  });
+  157 +  expect((await kill({ pid: 999999 })).status).toBe(404);
+  158 +  expect((await kill({ pid: 1 })).status).toBe(422);
+  159 +  expect((await kill({ pid: "nope" })).status).toBe(422);
+  160 +});
+  161 +
+  162 +test("api/ports/kill signals a real listener process", async () => {
+  163 +  const marker = join(directory, "kill-marker");
+  164 +  await rm(marker, { force: true });
+  165 +  const victim = Bun.spawn(["sh", "-c", `trap "touch '${marker}'; exit 0"
+        TERM; sleep 30`]);
+  166 +  try {
+  167 +    const scan = {
+  168 +      ...FIXTURE_SCAN,
+  169 +      ports: [{
+  170 +        host: "127.0.0.1", port: 8999, proto: "TCP", command: "sh", pid:
+       victim.pid,
+  171 +        user: "tester", cwd: "/tmp", ppid: 1, command_line: "sh victim",
+  172 +        herdr: null, ai: null,
+  173 +        tree: [{ pid: victim.pid, ppid: 1, command: "sh victim" }],
+  174 +        children: [],
+  175 +      }],
+  176 +    };
+  177 +    const scanFile = join(directory, "kill-scan.json");
+  178 +    const scanner = join(directory, "kill-scanner");
+  179 +    await writeFile(scanFile, JSON.stringify(scan));
+  180 +    await writeFile(scanner, `#!/bin/sh\ncat '${scanFile}'\n`);
+  181 +    await Bun.$`chmod +x ${scanner}`.quiet();
+  182 +    const target = await startServer({ PORTS_SCAN_BIN: scanner });
+  183 +    try {
+  184 +      const response = await fetch(`${target.url}/api/ports/kill`, {
+  185 +        method: "POST",
+  186 +        headers: { "content-type": "application/json" },
+  187 +        body: JSON.stringify({ pid: victim.pid }),
+  188 +      });
+  189 +      expect(response.status).toBe(200);
+  190 +      expect(await response.json()).toEqual({ ok: true, pid: victim.pid,
+       signal: "SIGTERM" });
+  191 +      for (let attempt = 0; attempt < 100; attempt++) {
+  192 +        try { await Bun.file(marker).text(); break; } catch {}
+  193 +        await Bun.sleep(25);
+  194 +        if (attempt === 99) throw new Error("victim never received SIGTER
+       M");
+  195 +      }
+  196 +    } finally {
+  197 +      target.child.kill();
+  198 +    }
+  199 +  } finally {
+  200 +    try { victim.kill(); } catch {}
+  201 +  }
+  202  });
+
+◆ Ran command · Run extended ports test suite · ✓ · 0.1s
+├ bun test test/ports.test.js 2>&1 | tail -n 25
+├ exit 0
+└ 72 |     stdout: "pipe",
+  73 |     stderr: "ignore",
+  74 |   });
+  75 |   const { value } = await child.stdout.getReader().read();
+  76 |   const port = new TextDecoder().decode(value).match(/:(\d+)/)?.[1];
+  77 |   if (!port) { child.kill(); throw new Error("Portfolio did not report a…
+                                              ^
+  error: Portfolio did not report a port
+  … 9 lines omitted
+         ^
+  TypeError: undefined is not an object (evaluating 'server.kill')
+        at <anonymous> (/Users/unixsuperhero/proj/portfolio/test/ports.test.js:…
+  (fail) (unnamed) [0.16ms]
+
+   0 pass
+   2 fail
+  Ran 2 tests across 1 file. [38.00ms]
+
+◆ Ran command · Syntax-check edited app.js · ✓ · 0.1s
+├ node --check app.js 2>&1 | head -n 10; bun build ./app.js --target bun --
+│ outfile /dev/null 2>&1 | head -n 20
+├ exit 0
+└ /Users/unixsuperhero/proj/portfolio/app.js:311
+      <script>document.querySelectorAll('.ports-kill').forEach(button=>button.a…
+                                                                               …
+
+  SyntaxError: Unexpected identifier '$'
+      at checkSyntax (node:internal/main/check_syntax:72:5)
+
+  Node.js v24.20.0
+  … 11 lines omitted
+                                                                               …
+  error: Expected "}" but found "dataset"
+      at /Users/unixsuperhero/proj/portfolio/app.js:311:134
+
+  311 | .disabled=true;try{const response=await fetch('/api/ports/kill',{method…
+                                                                               …
+  error: "await" can only be used inside an "async" function
+      at /Users/unixsuperhero/proj/portfolio/app.js:311:326
+
+◆ Edited app.js (+1 −1)
+  311 -<script>document.querySelectorAll('.ports-kill').forEach(button=>button.a
+       ddEventListener('click',async()=>{const label=`${button.dataset.command}
+       (#${button.dataset.pid}) on port ${button.dataset.port}`;if(!confirm(`Kil
+       l ${label}? This sends SIGTERM to the process.`))return;button.disabled=t
+       rue;try{const response=await fetch('/api/ports/kill',{method:'POST',heade
+       rs:{'content-type':'application/json'},body:JSON.stringify({pid:Number(bu
+       tton.dataset.pid)})});if(response.ok){location.reload();return}button.dis
+       abled=false;alert(await response.text())}catch(error){button.disabled=fal
+       se;alert(String(error && error.message || error))}}));</script>` : `<div
+       class="empty">
+  311 +<script>document.querySelectorAll('.ports-kill').forEach(button=>button.a
+       ddEventListener('click',async()=>{const label=button.dataset.command+' (#
+       '+button.dataset.pid+') on port '+button.dataset.port;if(!confirm('Kill '
+       +label+'? This sends SIGTERM to the process.'))return;button.disabled=tru
+       e;try{const response=await fetch('/api/ports/kill',{method:'POST',headers
+       :{'content-type':'application/json'},body:JSON.stringify({pid:Number(butt
+       on.dataset.pid)})});if(response.ok){location.reload();return}button.disab
+       led=false;alert(await response.text())}catch(error){button.disabled=false
+       ;alert(String(error && error.message || error))}}));</script>` : `<div cl
+       ass="empty">
+
+◆ Edited app.js (+1 −1)
+  373 -<script>document.querySelectorAll('.ports-kill').forEach(button=>button.a
+       ddEventListener('click',async()=>{if(!confirm(`Kill ${button.dataset.comm
+       and} (#${button.dataset.pid}) on port ${button.dataset.port}? This sends
+       SIGTERM to the process.`))return;
+  373 +<script>document.querySelectorAll('.ports-kill').forEach(button=>button.a
+       ddEventListener('click',async()=>{if(!confirm('Kill '+button.dataset.comm
+       and+' (#'+button.dataset.pid+') on port '+button.dataset.port+'? This sen
+       ds SIGTERM to the process.'))return;
+
+◆ Ran command · Recheck syntax and rerun ports tests · ✓ · 30s
+├ node --check app.js && echo SYNTAX_OK && bun test test/ports.test.js 2>&1 |
+│ tail -n 20
+├ exit 0
+└ SYNTAX_OK
+  (pass) ports tree page rejects bad lookups [9.41ms]
+  (pass) api/ports/kill refuses unknown and invalid pids [10.17ms]
+  189 |       expect(response.status).toBe(200);
+  190 |       expect(await response.json()).toEqual({ ok: true, pid: victim.pid…
+  191 |       for (let attempt = 0; attempt < 100; attempt++) {
+  192 |         try { await Bun.file(marker).text(); break; } catch {}
+  193 |         await Bun.sleep(25);
+  … 5 lines omitted
+  (pass) mdoc imports HTML files verbatim with title from <title> [200.10ms]
+  (pass) api/ports degrades gracefully when the scanner fails [29.91ms]
+
+   8 pass
+   1 fail
+   41 expect() calls
+  Ran 9 tests across 1 file. [3.71s]
+  touch: /var/folders/fq/njpv8bjs42bf7c6t17qtwfpc0000gn/T/portfolio-ports-MoaDM…
+
+◆ Edited test/ports.test.js (+1 −1)
+  165 -  const victim = Bun.spawn(["sh", "-c", `trap "touch '${marker}'; exit 0"
+        TERM; sleep 30`]);
+  165 +  const victim = Bun.spawn(["sh", "-c", `trap "touch '${marker}'; exit 0"
+        TERM; sleep 30 & wait`]);
+
+◆ Read skill diagnosing-bugs · user · 8 KB
+
+◆ Ran command · Rerun ports tests after trap fix · ✓ · 30s
+├ bun test test/ports.test.js 2>&1 | tail -n 15
+├ exit 0
+└ test/ports.test.js:
+  (pass) api/ports returns scanner attribution shape [327.39ms]
+  (pass) ports page renders listeners with pane and session [10.34ms]
+  (pass) ports tree page shows parents, session, and children [9.52ms]
+  (pass) ports tree page flags orphans reparented to init [9.14ms]
+  (pass) ports tree page rejects bad lookups [8.99ms]
+  (pass) api/ports/kill refuses unknown and invalid pids [9.86ms]
+  (pass) api/ports/kill signals a real listener process [241.02ms]
+  (pass) mdoc imports HTML files verbatim with title from <title> [172.47ms]
+  (pass) api/ports degrades gracefully when the scanner fails [30.66ms]
+
+   9 pass
+   0 fail
+   41 expect() calls
+  Ran 9 tests across 1 file. [872.00ms]
+
+◆ Ran command · Run full test suite · ✓ · 33s
+├ bun test 2>&1 | tail -n 8
+├ exit 0
+└ (pass) api/ports/kill signals a real listener process [276.85ms]
+  (pass) mdoc imports HTML files verbatim with title from <title> [171.48ms]
+  (pass) api/ports degrades gracefully when the scanner fails [27.75ms]
+
+   15 pass
+   0 fail
+   69 expect() calls
+  Ran 15 tests across 2 files. [3.78s]
+
+◆ Done. The ports page now has an Actions column with a Tree link and a Kill
+  button per listener.
+
+  How it works:
+  • Tree link (/ports/tree?pid=…&port=…) shows a detail page: listener summary
+    with an open link, an ownership line (still owned by Herdr pane vs. cwd-only
+    match vs. no pane), an AI session line (live session id, stale hint, or
+    none), a Parents table walking up to init with badges for the listening
+    process, the Herdr shell, and PID 1, plus a direct-children table. Orphans
+    reparented to launchd get an explicit "daemonized or orphaned" note.
+  • Kill button asks for confirmation, sends SIGTERM via POST /api/ports/kill,
+    and reloads. The endpoint only signals PIDs present in a fresh scan, refuses
+    PID 1 and the Portfolio server itself, and supports {"signal":"KILL"} for
+    SIGKILL.
+  • bin/ports-scan now emits tree, children, and shell_pid per port (verified
+    against the live scan).
+
+  Changed app.js:275, bin/ports-scan:271, test/ports.test.js:103. Full suite: 15
+  pass, 0 fail, including a test that kills a real subprocess and proves it
+  received SIGTERM.
+
+◆ Worked for 5m 08s · 12:56 PM
+
+❯ now, looking at the tree, should be a page just like the current ports page,
+  except maybe the link to the site, unless the parents have ports open... i
+  want to know the dir, where they are running, etc.
+
+  Read app.js
+  Read app.js
+
+◆ Edited bin/ports-scan (+3 −2)
+  12 -   "tree": [{"pid","ppid","command"}] (listener first, walking up to init)
+      ,
+  13 -   "children": [{"pid","ppid","command"}] (direct children of the listener
+      )}
+  12 +   "tree": [{"pid","ppid","command","cwd","ports"}] (listener first, walki
+      ng
+  13 +     up to init; cwd per ancestor, ports = its own open [{host,port}]),
+  14 +   "children": [{"pid","ppid","command","cwd"}] (direct children of the li
+      stener)}
+
+◆ Edited bin/ports-scan (+27 −0)
+  131 +def batch_cwd(pids, warnings):
+  132 +    """cwd for many pids in one lsof call: {pid: cwd}."""
+  133 +    targets = sorted(set(pids))
+  134 +    if not targets:
+  135 +        return {}
+  136 +    code, out, err = run(
+  137 +        ["lsof", "-a", "-p", ",".join(map(str, targets)), "-d", "cwd", "-
+       F", "pn"],
+  138 +        timeout=8,
+  139 +    )
+  140 +    result = {}
+  141 +    if code != 0 or not out.strip():
+  142 +        detail = (err or "").strip().splitlines()
+  143 +        warnings.append(f"lsof batch cwd: {detail[0][:160] if detail else
+        'no output'}")
+  144 +        return result
+  145 +    current = None
+  146 +    for line in out.splitlines():
+  147 +        if line.startswith("p"):
+  148 +            try:
+  149 +                current = int(line[1:])
+  150 +            except ValueError:
+  151 +                current = None
+  152 +        elif line.startswith("n/") and current is not None:
+  153 +            result[current] = line[1:]
+  154 +            current = None
+  155 +    return result
+  156 +
+  157 +
+  158  def herdr_json(args, warnings):
+
+◆ Edited bin/ports-scan (+18 −0)
+  363 +    pid_ports = {}
+  364 +    for item in ports:
+  365 +        pid_ports.setdefault(item["pid"], []).append({"host": item["host"
+       ], "port": item["port"]})
+  366 +    tree_pids = set()
+  367 +    for item in ports:
+  368 +        for node in item["tree"]:
+  369 +            tree_pids.add(node["pid"])
+  370 +        for child in item["children"]:
+  371 +            tree_pids.add(child["pid"])
+  372 +    known_cwds = {item["pid"]: item["cwd"] for item in ports if item["cwd
+       "]}
+  373 +    fetched = batch_cwd(tree_pids - set(known_cwds), warnings)
+  374 +    cwd_of = {**fetched, **known_cwds}
+  375 +    for item in ports:
+  376 +        for node in item["tree"]:
+  377 +            node["cwd"] = cwd_of.get(node["pid"], "")
+  378 +            node["ports"] = pid_ports.get(node["pid"], [])
+  379 +        for child in item["children"]:
+  380 +            child["cwd"] = cwd_of.get(child["pid"], "")
+  381      payload = {
+
+◆ Ran command · Verify annotated tree output live · ✓ · 0.8s
+├ ./bin/ports-scan | python3 -c "import json,sys; d=json.load(sys.stdin); e=[p
+│ for p in d['ports'] if p['port']==4387][0];
+│ print(json.dumps({'tree':e['tree'],'children':e['children']},
+│ indent=1)[:1500])"
+├ exit 0
+└ {
+   "tree": [
+    {
+     "pid": 26786,
+     "ppid": 1,
+     "command": "/opt/homebrew/bin/bun run /Users/unixsuperhero/proj/portfolio/…
+     "cwd": "/Users/unixsuperhero/proj/portfolio",
+     "ports": [
+  … 8 lines omitted
+     "ppid": 0,
+     "command": "/sbin/launchd",
+     "cwd": "",
+     "ports": []
+    }
+   ],
+   "children": []
+  }
+
+◆ Edited app.js (+33 −21)
+  275 +function portSiteUrl(entry) {
+  276 +  const linkHost = !entry.host || ["*", "::", "0.0.0.0", "::1", "127.0.0.
+       1", "localhost"].includes(entry.host) ? "localhost" : entry.host;
+  277 +  const linkTarget = linkHost.includes(":") && !linkHost.startsWith("[")
+       ? `[${linkHost}]` : linkHost;
+  278 +  return `http://${linkTarget}:${entry.port}`;
+  279 +}
+  280 +
+  281 +function portTableCells(entry, relation) {
+  282 +  const herdr = entry.herdr;
+  283 +  const ai = entry.ai;
+  284 +  const portCell = entry.port != null
+  285 +    ? `<a href="${escapeHtml(portSiteUrl(entry))}" target="_blank" rel="n
+       oreferrer">${entry.port}</a>`
+  286 +    : "<span class='ports-dim'>—</span>";
+  287 +  const herdrLabel = herdr
+  288 +    ? `${escapeHtml(herdr.workspace_label || herdr.workspace_id || "")} $
+       {escapeHtml(herdr.pane_id || "")}${herdr.match === "cwd" ? " ~" : ""}`
+  289 +    : "<span class='ports-dim'>—</span>";
+  290 +  const herdrTitle = herdr ? escapeHtml(`tab ${herdr.tab_id ?? ""} · ${he
+       rdr.agent_status ?? ""} · match: ${herdr.match ?? "?"}`) : "";
+  291 +  const aiLabel = ai?.session
+  292 +    ? `${escapeHtml(ai.kind ?? "")} <code>${escapeHtml(String(ai.session)
+       .slice(0, 8))}…</code>`
+  293 +    : ai?.kind
+  294 +      ? escapeHtml(ai.kind)
+  295 +      : "<span class='ports-dim'>—</span>";
+  296 +  const aiTitle = escapeHtml(ai?.session ?? ai?.hint ?? "");
+  297 +  const fullCommand = entry.command_line || entry.command || "";
+  298 +  const relationBadge = relation ? ` <span class="ports-dim">· ${escapeHt
+       ml(relation)}</span>` : "";
+  299 +  return `<td class="ports-num">${portCell}</td>
+  300 +      <td>${entry.host ? escapeHtml(entry.host) : "<span class='ports-dim
+       '>—</span>"}</td>
+  301 +      <td title="${escapeHtml(fullCommand)}">${escapeHtml(entry.command |
+       | "?")} <span class="ports-dim">#${entry.pid}</span>${relationBadge}</td>
+  302 +      <td class="ports-path" title="${escapeHtml(entry.cwd || "")}">${esc
+       apeHtml(entry.cwd || "—")}</td>
+  303 +      <td title="${herdrTitle}">${herdrLabel}</td>
+  304 +      <td title="${aiTitle}">${aiLabel}</td>`;
+  305 +}
+  306 +
+  307  function portsPage() {
+      ⋮
+  313    const rows = snapshot.ports.map(entry => {
+  282 -    const herdr = entry.herdr;
+  283 -    const ai = entry.ai;
+  284 -    const linkHost = !entry.host || ["*", "::", "0.0.0.0", "::1", "127.0.
+       0.1", "localhost"].includes(entry.host) ? "localhost" : entry.host;
+  285 -    const linkTarget = linkHost.includes(":") && !linkHost.startsWith("["
+       ) ? `[${linkHost}]` : linkHost;
+  286 -    const portUrl = `http://${linkTarget}:${entry.port}`;
+  287 -    const herdrLabel = herdr
+  288 -      ? `${escapeHtml(herdr.workspace_label || herdr.workspace_id || "")}
+        ${escapeHtml(herdr.pane_id || "")}${herdr.match === "cwd" ? " ~" : ""}`
+  289 -      : "<span class='ports-dim'>—</span>";
+  290 -    const herdrTitle = herdr ? escapeHtml(`tab ${herdr.tab_id ?? ""} · ${
+       herdr.agent_status ?? ""} · match: ${herdr.match ?? "?"}`) : "";
+  291 -    const aiLabel = ai?.session
+  292 -      ? `${escapeHtml(ai.kind ?? "")} <code>${escapeHtml(String(ai.sessio
+       n).slice(0, 8))}…</code>`
+  293 -      : ai?.kind
+  294 -        ? escapeHtml(ai.kind)
+  295 -        : "<span class='ports-dim'>—</span>";
+  296 -    const aiTitle = escapeHtml(ai?.session ?? ai?.hint ?? "");
+  314      return `<tr>
+  298 -      <td class="ports-num"><a href="${escapeHtml(portUrl)}" target="_bla
+       nk" rel="noreferrer">${entry.port}</a></td>
+  299 -      <td>${escapeHtml(entry.host)}</td>
+  300 -      <td>${escapeHtml(entry.command)} <span class="ports-dim">#${entry.p
+       id}</span></td>
+  301 -      <td class="ports-path" title="${escapeHtml(entry.cwd || "")}">${esc
+       apeHtml(entry.cwd || "—")}</td>
+  302 -      <td title="${herdrTitle}">${herdrLabel}</td>
+  303 -      <td title="${aiTitle}">${aiLabel}</td>
+  315 +      ${portTableCells(entry, null)}
+  316        <td class="ports-actions"><a href="/ports/tree?pid=${entry.pid}&por
+       t=${entry.port}">Tree</a><button type="button" class="ports-kill" data-pi
+       d="${entry.pid}" data-port="${entry.port}" data-command="${escapeHtml(ent
+       ry.command)}">Kill</button></td>
+
+◆ Edited app.js (+34 −15)
+  347    const ai = entry.ai;
+  348 -  const linkHost = !entry.host || ["*", "::", "0.0.0.0", "::1", "127.0.0.
+       1", "localhost"].includes(entry.host) ? "localhost" : entry.host;
+  349 -  const linkTarget = linkHost.includes(":") && !linkHost.startsWith("[")
+       ? `[${linkHost}]` : linkHost;
+  350 -  const portUrl = `http://${linkTarget}:${entry.port}`;
+  348 +  const portUrl = portSiteUrl(entry);
+  349    const tree = Array.isArray(entry.tree) && entry.tree.length
+  350      ? entry.tree
+  353 -    : [{ pid: entry.pid, ppid: entry.ppid, command: entry.command_line ||
+        entry.command }];
+  351 +    : [{ pid: entry.pid, ppid: entry.ppid, command: entry.command_line ||
+        entry.command, cwd: entry.cwd || "", ports: [{ host: entry.host, port: e
+       ntry.port }] }];
+  352    const children = Array.isArray(entry.children) ? entry.children : [];
+      ⋮
+  366        : `No AI session attributed — no agent owns this process.`;
+  367 +  const describe = (node, relation) => {
+  368 +    const match = findPortEntry(snapshot, node.pid, null);
+  369 +    if (match && match !== entry) return { row: match, relation: `${relat
+       ion} · also listening` };
+  370 +    if (match) return { row: match, relation };
+  371 +    const argv0 = String(node.command || "").split(/\s+/)[0] || "";
+  372 +    const fallbackPort = (node.ports ?? [])[0];
+  373 +    return {
+  374 +      row: {
+  375 +        port: fallbackPort?.port ?? null,
+  376 +        host: fallbackPort?.host ?? "",
+  377 +        command: argv0.split("/").pop() || "?",
+  378 +        command_line: node.command || "",
+  379 +        pid: node.pid,
+  380 +        cwd: node.cwd || "",
+  381 +        herdr: node.pid === herdr?.shell_pid ? herdr : null,
+  382 +        ai: null,
+  383 +      },
+  384 +      relation,
+  385 +    };
+  386 +  };
+  387 +  const head = `<thead><tr><th>Port</th><th>Bind</th><th>Process</th><th>
+       Directory</th><th>Herdr pane</th><th>AI session</th></tr></thead>`;
+  388    const treeRows = tree.map((node, level) => {
+  370 -    const badges = [];
+  371 -    if (level === 0) badges.push("listening process");
+  372 -    if (herdr?.shell_pid != null && node.pid === herdr.shell_pid) badges.
+       push(`Herdr shell · pane ${herdr.pane_id ?? ""}`);
+  373 -    if (node.pid === 1) badges.push("init (launchd)");
+  374 -    return `<tr><td class="ports-num">${node.pid}</td><td class="ports-nu
+       m">${node.ppid ?? "—"}</td><td class="ports-path" title="${escapeHtml(nod
+       e.command || "")}">${escapeHtml(node.command || "—")}</td><td>${badges.le
+       ngth ? badges.map(escapeHtml).join(" · ") : "<span class='ports-dim'>—</s
+       pan>"}</td></tr>`;
+  389 +    const { row, relation } = describe(node, level === 0 ? "listener" : "
+       parent");
+  390 +    return `<tr>${portTableCells(row, relation)}</tr>`;
+  391    }).join("");
+  392    const childRows = children.length
+  377 -    ? children.map(child => `<tr><td class="ports-num">${child.pid}</td><
+       td class="ports-path" title="${escapeHtml(child.command || "")}">${escape
+       Html(child.command || "—")}</td></tr>`).join("")
+  378 -    : `<tr><td colspan="2"><span class="ports-dim">No child processes.</s
+       pan></td></tr>`;
+  379 -  const body = `<section class="page-head"><p><a href="/ports">← Ports</a
+       ></p><h1>Process tree · PID ${entry.pid}</h1><p><a href="${escapeHtml(por
+       tUrl)}" target="_blank" rel="noreferrer">Open http://${escapeHtml(linkTar
+       get)}:${entry.port}</a> · ${escapeHtml(entry.command)} · ${escapeHtml(ent
+       ry.command_line || "")}</p></section>
+  393 +    ? children.map(child => {
+  394 +      const { row, relation } = describe(child, "child");
+  395 +      return `<tr>${portTableCells(row, relation)}</tr>`;
+  396 +    }).join("")
+  397 +    : "";
+  398 +  const body = `<section class="page-head"><p><a href="/ports">← Ports</a
+       ></p><h1>Process tree · PID ${entry.pid}</h1><p><a href="${escapeHtml(por
+       tUrl)}" target="_blank" rel="noreferrer">Open ${escapeHtml(portUrl)}</a>
+       · ${escapeHtml(entry.command)} · ${escapeHtml(entry.command_line || "")}<
+       /p></section>
+  399      <p>${escapeHtml(ownership)}</p>
+  400      <p>${sessionLine}</p>
+  382 -    <section><h2>Parents</h2><div class="ports-wrap"><table class="ports-
+       table"><thead><tr><th>PID</th><th>PPID</th><th>Command</th><th>Notes</th>
+       </tr></thead><tbody>${treeRows}</tbody></table></div></section>
+  383 -    <section><h2>Children <span class="ports-dim">(direct)</span></h2><di
+       v class="ports-wrap"><table class="ports-table"><thead><tr><th>PID</th><t
+       h>Command</th></tr></thead><tbody>${childRows}</tbody></table></div></sec
+       tion>
+  401 +    <section><h2>Listener + parents</h2><div class="ports-wrap"><table cl
+       ass="ports-table">${head}<tbody>${treeRows}</tbody></table></div></sectio
+       n>
+  402 +    <section><h2>Children <span class="ports-dim">(direct)</span></h2>${c
+       hildren.length ? `<div class="ports-wrap"><table class="ports-table">${he
+       ad}<tbody>${childRows}</tbody></table></div>` : `<div class="empty"><stro
+       ng>No child processes.</strong></div>`}</section>
+  403      <p><button type="button" class="ports-kill" data-pid="${entry.pid}" d
+       ata-port="${entry.port}" data-command="${escapeHtml(entry.command)}">Kill
+        PID ${entry.pid} (SIGTERM)</button></p>
+  404      <script>document.querySelectorAll('.ports-kill').forEach(button=>butt
+       on.addEventListener('click',async()=>{if(!confirm('Kill '+button.dataset.
+       command+' (#'+button.dataset.pid+') on port '+button.dataset.port+'? This
+        sends SIGTERM to the process.'))return;button.disabled=true;try{const re
+       sponse=await fetch('/api/ports/kill',{method:'POST',headers:{'content-typ
+       e':'application/json'},body:JSON.stringify({pid:Number(button.dataset.pid
+       )})});if(response.ok){location.href='/ports';return}button.disabled=false
+       ;alert(await response.text())}catch(error){button.disabled=false;alert(St
+       ring(error && error.message || error))}}));</script>
+  386 -    <style>.ports-table{width:100%;border-collapse:collapse;font-size:.82
+       rem}.ports-table th{text-align:left;color:var(--text3);font-family:var(--
+       mono);font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;padd
+       ing:.5rem;border-bottom:1px solid var(--border)}.ports-table td{padding:.
+       5rem;border-bottom:1px solid var(--border);vertical-align:top;overflow-wr
+       ap:anywhere}.ports-num{font-family:var(--mono);font-weight:700}.ports-pat
+       h{max-width:34rem}.ports-dim{color:var(--text3)}.ports-wrap{overflow-x:au
+       to}.ports-table code{color:var(--accent2)}.ports-kill{color:#ff7b72;backg
+       round:none;border:1px solid var(--border2);border-radius:6px;padding:.3re
+       m .7rem;cursor:pointer;font-size:.8rem}.ports-kill:disabled{opacity:.5;cu
+       rsor:default}</style>`;
+  405 +    <style>.ports-table{width:100%;border-collapse:collapse;font-size:.82
+       rem}.ports-table th{text-align:left;color:var(--text3);font-family:var(--
+       mono);font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;padd
+       ing:.5rem;border-bottom:1px solid var(--border)}.ports-table td{padding:.
+       5rem;border-bottom:1px solid var(--border);vertical-align:top;overflow-wr
+       ap:anywhere}.ports-num{font-family:var(--mono);font-weight:700}.ports-pat
+       h{max-width:22rem}.ports-dim{color:var(--text3)}.ports-wrap{overflow-x:au
+       to}.ports-table code{color:var(--accent2)}.ports-kill{color:#ff7b72;backg
+       round:none;border:1px solid var(--border2);border-radius:6px;padding:.3re
+       m .7rem;cursor:pointer;font-size:.8rem}.ports-kill:disabled{opacity:.5;cu
+       rsor:default}</style>`;
+  406    return html(shell(`Process ${entry.pid} · Ports`, body, "ports"));
+
+◆ Edited app.js (+2 −1)
+  388    const treeRows = tree.map((node, level) => {
+  389 -    const { row, relation } = describe(node, level === 0 ? "listener" : "
+       parent");
+  389 +    if (level === 0) return `<tr>${portTableCells(entry, "listener")}</tr
+       >`;
+  390 +    const { row, relation } = describe(node, "parent");
+  391      return `<tr>${portTableCells(row, relation)}</tr>`;
+
+◆ Edited test/ports.test.js (+23 −7)
+  26        tree: [
+  27 -        { pid: 1234, ppid: 100, command: "bun run server.js" },
+  28 -        { pid: 100, ppid: 50, command: "herdr pane shell" },
+  29 -        { pid: 50, ppid: 1, command: "codex agent" },
+  30 -        { pid: 1, ppid: 0, command: "/sbin/launchd" },
+  27 +        { pid: 1234, ppid: 100, command: "bun run server.js", cwd: "/tmp/p
+      roj-a", ports: [{ host: "127.0.0.1", port: 8123 }] },
+  28 +        { pid: 100, ppid: 50, command: "herdr pane shell", cwd: "/tmp", po
+      rts: [{ host: "127.0.0.1", port: 8125 }] },
+  29 +        { pid: 50, ppid: 1, command: "codex agent", cwd: "/tmp", ports: []
+       },
+  30 +        { pid: 1, ppid: 0, command: "/sbin/launchd", cwd: "", ports: [] },
+  31 +      ],
+  32 +      children: [{ pid: 1235, ppid: 1234, command: "bun worker", cwd: "/tm
+      p/proj-a/worker" }],
+  33 +    },
+  34 +    {
+  35 +      host: "127.0.0.1", port: 8125, proto: "TCP", command: "herdr", pid:
+      100,
+  36 +      user: "tester", cwd: "/tmp", ppid: 50, command_line: "herdr pane she
+      ll",
+  37 +      herdr: {
+  38 +        workspace_id: "w1", workspace_label: "demo", tab_id: "w1:t1", pane
+      _id: "w1:p1",
+  39 +        agent: "codex", agent_status: "working", cwd: "/tmp/proj-a",
+  40 +        foreground_cwd: "/tmp/proj-a", match: "process", shell_pid: 100,
+  41 +      },
+  42 +      ai: { kind: "codex", session: "01a0dead-beef-0000-0000-000000000001"
+      , source: "herdr:codex" },
+  43 +      tree: [
+  44 +        { pid: 100, ppid: 50, command: "herdr pane shell", cwd: "/tmp", po
+      rts: [{ host: "127.0.0.1", port: 8125 }] },
+  45 +        { pid: 50, ppid: 1, command: "codex agent", cwd: "/tmp", ports: []
+       },
+  46 +        { pid: 1, ppid: 0, command: "/sbin/launchd", cwd: "", ports: [] },
+  47        ],
+  32 -      children: [{ pid: 1235, ppid: 1234, command: "bun worker" }],
+  48 +      children: [],
+  49      },
+     ⋮
+  54        tree: [
+  39 -        { pid: 5678, ppid: 1, command: "python3 -m http.server 8124" },
+  40 -        { pid: 1, ppid: 0, command: "/sbin/launchd" },
+  55 +        { pid: 5678, ppid: 1, command: "python3 -m http.server 8124", cwd:
+       "/tmp/other", ports: [{ host: "*", port: 8124 }] },
+  56 +        { pid: 1, ppid: 0, command: "/sbin/launchd", cwd: "", ports: [] },
+  57        ],
+
+◆ Edited test/ports.test.js (+1 −1)
+  120    expect(snapshot.herdr_available).toBe(true);
+  121 -  expect(snapshot.ports).toHaveLength(2);
+  121 +  expect(snapshot.ports).toHaveLength(3);
+
+◆ Edited test/ports.test.js (+10 −1)
+  148    expect(page).toContain("herdr pane shell");
+  149 -  expect(page).toContain("Herdr shell");
+  149    expect(page).toContain("01a0dead");
+  150    expect(page).toContain("bun worker");
+  151 +  expect(page).toContain("/tmp/proj-a/worker");
+  152    expect(page).toContain("Kill PID 1234");
+  153 +  expect(page).toContain("listener");
+  154 +  expect(page).toContain("parent");
+  155 +});
+  156 +
+  157 +test("ports tree page links parents that have ports open", async () => {
+  158 +  const page = await (await fetch(`${serverUrl}/ports/tree?pid=1234&port=
+       8123`)).text();
+  159 +  expect(page).toContain('href="http://localhost:8125"');
+  160 +  expect(page).toContain("also listening");
+  161 +  expect(page).toContain("/tmp</td>");
+  162  });
+
+◆ Ran command · Syntax-check and run ports tests · ✓ · 30s
+├ node --check app.js && echo SYNTAX_OK && bun test test/ports.test.js 2>&1 |
+│ tail -n 18
+├ exit 0
+└ SYNTAX_OK
+  }
+
+        at <anonymous> (/Users/unixsuperhero/proj/portfolio/test/ports.test.js:…
+  (fail) api/ports returns scanner attribution shape [325.95ms]
+  (pass) ports page renders listeners with pane and session [9.28ms]
+  (pass) ports tree page shows parents, session, and children [8.79ms]
+  (pass) ports tree page links parents that have ports open [8.05ms]
+  … 3 lines omitted
+  (pass) api/ports/kill signals a real listener process [251.02ms]
+  (pass) mdoc imports HTML files verbatim with title from <title> [176.79ms]
+  (pass) api/ports degrades gracefully when the scanner fails [31.33ms]
+
+   9 pass
+   1 fail
+   46 expect() calls
+  Ran 10 tests across 1 file. [893.00ms]
+
+◆ Ran command · Show attribution test failure detail · ✓ · 0.5s
+├ bun test test/ports.test.js -t "attribution shape" 2>&1 | head -n 40
+├ exit 0
+└ bun test v1.3.14 (d1632b29)
+
+  test/ports.test.js:
+  123 |   expect(first.port).toBe(8123);
+  124 |   expect(first.cwd).toBe("/tmp/proj-a");
+  125 |   expect(first.herdr.pane_id).toBe("w1:p1");
+  126 |   expect(first.herdr.match).toBe("process");
+  127 |   expect(first.ai.session).toContain("01a0dead");
+  … 17 lines omitted
+        at <anonymous> (/Users/unixsuperhero/proj/portfolio/test/ports.test.js:…
+  (fail) api/ports returns scanner attribution shape [356.67ms]
+
+   0 pass
+   9 filtered out
+   1 fail
+   8 expect() calls
+  Ran 1 test across 1 file. [416.00ms]
+
+◆ Edited test/ports.test.js (+6 −3)
+  122 -  const [first, second] = snapshot.ports;
+  123 -  expect(first.port).toBe(8123);
+  122 +  const byPort = Object.fromEntries(snapshot.ports.map(entry => [entry.po
+       rt, entry]));
+  123 +  const first = byPort[8123];
+  124    expect(first.cwd).toBe("/tmp/proj-a");
+      ⋮
+  127    expect(first.ai.session).toContain("01a0dead");
+  128 -  expect(second.herdr).toBeNull();
+  128 +  expect(first.tree).toHaveLength(4);
+  129 +  expect(first.tree[1].cwd).toBe("/tmp");
+  130 +  expect(byPort[8124].herdr).toBeNull();
+  131 +  expect(byPort[8125].pid).toBe(100);
+
+◆ Ran command · Run full test suite · ✓ · 33s
+├ bun test 2>&1 | tail -n 8
+├ exit 0
+└ (pass) api/ports/kill signals a real listener process [245.97ms]
+  (pass) mdoc imports HTML files verbatim with title from <title> [173.63ms]
+  (pass) api/ports degrades gracefully when the scanner fails [34.25ms]
+
+   16 pass
+   0 fail
+   76 expect() calls
+  Ran 16 tests across 2 files. [3.80s]
+
+◆ Done — the tree page is now a ports-style table. Full suite: 16 pass, 0 fail.
+
+  What changed:
+  • bin/ports-scan annotates every tree node with its working directory (one
+    batched lsof call for all ancestors, not one per PID) and the node's own
+    open ports, plus directory for each child.
+  • /ports/tree?pid=… renders the same columns as /ports — Port, Bind, Process,
+    Directory, Herdr pane, AI session — with the listener row first, then one
+    full row per parent, then a same-style children table. Each row is badged
+    listener, parent, or child.
+  • Site links appear wherever a process actually has a port open: if a parent
+    itself is listening (e.g. a supervisor holding its own port), its row shows
+    the clickable port and is marked parent · also listening. Parents with
+    nothing open show — in Port.
+  • The Herdr shell ancestor keeps its pane attribution, so you can see whether
+    the chain still leads to a live pane/session or ends at launchd (orphan note
+    stays at the top, with the Kill button).
+
+  Shared the row rendering between both pages (app.js:275 portTableCells), so
+  the tables can't drift apart.
+
+◆ Worked for 4m 08s · 1:03 PM
+
+◆ Recap: I rebuilt the process tree page to mirror the Ports table with parents,
+         directories and site links, and all 16 tests pass. Next action is a
+         live browser smoke check of the tree page.
+
+❯ help be write a small intro to a quick youtube video.
+
+  i think it will start something like this:
+
+  this is going to be the first in a series of videos that will cover a wide
+  range
+  of programming topics. they will cover simple things like how to write a good
+  class, and how to organize a full app so that you can onboard anyone in under
+  a
+  second, literally, and without showing any code.
+
+  i'm gonna briefly flash 20 problems that come from something i call procedural
+  thinking.
+  then i will quickly, and systematically wrefactor a busy service object, so it
+  reflects a different approach slash mentality. and within the span of a minute
+  or 2, all 20 of the original problem wil disappear. and then i'll go over
+  them.
+
+◆ Here's a tight intro built from your outline:
+
+  ──────────────────────────────────────────────────────────────────────────────
+
+  This is the first in a series covering a wide range of programming topics —
+  from simple things like how to write a good class, to how to organize a full
+  app so you can onboard anyone in under a second. Literally. Without showing
+  them any code.
+
+  Today I'm going to flash 20 problems on screen — all coming from one thing I
+  call procedural thinking.
+
+  Then I'm going to take a busy service object and refactor it, quickly and
+  systematically, into a different approach. A different mentality.
+
+  And within a minute or two, all 20 of those problems will be gone. Then I'll
+  go over each one.
+
+  Let's get into it.
+
+  ──────────────────────────────────────────────────────────────────────────────
+
+  A few notes:
+
+  • Runs about 30 seconds spoken, which is right for a quick video.
+  • I softened "without showing any code" with "them" so it parses on first
+    listen.
+  • If you want it punchier, you could cut the second paragraph to: "All 20 come
+    from one thing I call procedural thinking."
+
+❯ if you could make a series of videos to take someone from being a complete
+  newb to being stier software engineer, what lessons would u give
+
+◆ Read skill data-first-design · user · 12 KB
+
+◆ Here's how I'd structure it, shaped around your approach — the through-line of
+  the whole series is killing procedural thinking and replacing it with modeling
+  things:
+
+  Phase 1 — Think in data, not steps
+
+  1. Procedural thinking and what it costs you — the 20 problems, and why they
+     all have one root cause.
+  2. Find the thing — every program is about some meaningful thing; name it and
+     its information before writing any procedure.
+  3. Objects answer questions — one instance, many answers. Initialize once, ask
+     many things.
+  4. Name the answer, not the computation — query methods named after the value
+     returned, and only doing what the name suggests.
+  5. The busy service object teardown — your refactor video: one procedure in, a
+     modeled thing out, 20 problems gone.
+
+  Phase 2 — Build real models
+
+  6. Constructor context is part of the object — keep related information
+     together so debugging never means walking backward through code.
+  7. Private methods are a smell — they trap useful answers inside a procedure;
+     find the missing concept instead.
+  8. Model the whole system, not one form — surrounding things, collections,
+     relationships, histories.
+  9. Derived answers are still data — combining info without mutating state is
+     modeling, not procedure.
+  10. Separate mechanism from business specifics — the form engine vs.
+      SSO/POSOI-style details; variation through definitions, not branches in
+      the mechanism.
+
+  Phase 3 — Compose like an engineer
+
+  11. Vertical composition — lower-level capabilities composing into
+      higher-level concepts.
+  12. Horizontal reuse — the same concept answering different callers' different
+      questions (this is what makes an object useful vs. a one-call-site
+      service).
+  13. Atomic capabilities, unrestricted composition — expose the intermediate (
+      sum, not just squared_sum); never import the current caller's assumptions
+      into a lower level.
+  14. Query-order independence — callers ask in whatever order they need, no
+      preparatory call sequences.
+  15. Self-service UIs — expose intermediate capabilities through the interface
+      so users compose without a developer changing code per use.
+
+  Phase 4 — Operate like a senior
+
+  16. Onboard anyone in under a second without showing code — your full-app
+      organization video; the system map is the documentation.
+  17. Change-frequency design — business rules churn, mechanics don't; put the
+      churn where it's data, not procedure rewrites.
+  18. Debugging as a modeling diagnostic — every painful debug session points at
+      fragmented information; read it that way.
+  19. Review code for the mentality, not the style — what to actually look for
+      in a PR: verbs-as-subjects, single-use services, trapped answers.
+  20. When to break your own rules — genuinely unsettled distinctions,
+      performance realities, and knowing the difference between a principle and
+      a ban.
+
+  The arc: phases 1–2 make someone who writes good classes, phase 3 makes them
+  dangerous, phase 4 makes them senior — someone whose systems absorb change
+q  refactor works instead of just watching problems vanish.
+

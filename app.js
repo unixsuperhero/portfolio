@@ -272,6 +272,42 @@ function getPortsSnapshot() {
   }
 }
 
+function portSiteUrl(entry) {
+  const linkHost = !entry.host || ["*", "::", "0.0.0.0", "::1", "127.0.0.1", "localhost"].includes(entry.host) ? "localhost" : entry.host;
+  const linkTarget = linkHost.includes(":") && !linkHost.startsWith("[") ? `[${linkHost}]` : linkHost;
+  return `http://${linkTarget}:${entry.port}`;
+}
+
+function portTableCells(entry, relation) {
+  const herdr = entry.herdr;
+  const ai = entry.ai;
+  const portCell = entry.port != null
+    ? `<a href="${escapeHtml(portSiteUrl(entry))}" target="_blank" rel="noreferrer">${entry.port}</a>`
+    : "<span class='ports-dim'>—</span>";
+  const herdrLabel = herdr
+    ? `${escapeHtml(herdr.workspace_label || herdr.workspace_id || "")} ${escapeHtml(herdr.pane_id || "")}${herdr.match === "cwd" ? " ~" : ""}`
+    : "<span class='ports-dim'>—</span>";
+  const herdrTitle = herdr ? escapeHtml(`tab ${herdr.tab_id ?? ""} · ${herdr.agent_status ?? ""} · match: ${herdr.match ?? "?"}`) : "";
+  const aiLabel = ai?.session
+    ? `${escapeHtml(ai.kind ?? "")} <code>${escapeHtml(String(ai.session).slice(0, 8))}…</code>`
+    : ai?.kind
+      ? escapeHtml(ai.kind)
+      : "<span class='ports-dim'>—</span>";
+  const aiTitle = escapeHtml(ai?.session ?? ai?.hint ?? "");
+  const fullCommand = entry.command_line || entry.command || "";
+  const relationBadge = relation ? ` <span class="ports-dim">· ${escapeHtml(relation)}</span>` : "";
+  const uptime = entry.elapsed
+    ? `<span title="${escapeHtml(entry.started_at ? `started ${entry.started_at}` : "")}">${escapeHtml(entry.elapsed)}</span>`
+    : "<span class='ports-dim'>—</span>";
+  return `<td class="ports-num">${portCell}</td>
+      <td>${entry.host ? escapeHtml(entry.host) : "<span class='ports-dim'>—</span>"}</td>
+      <td title="${escapeHtml(fullCommand)}">${escapeHtml(entry.command || "?")} <span class="ports-dim">#${entry.pid}</span>${relationBadge}</td>
+      <td class="ports-uptime">${uptime}</td>
+      <td class="ports-path" title="${escapeHtml(entry.cwd || "")}">${escapeHtml(entry.cwd || "—")}</td>
+      <td title="${herdrTitle}">${herdrLabel}</td>
+      <td title="${aiTitle}">${aiLabel}</td>`;
+}
+
 function portsPage() {
   const snapshot = getPortsSnapshot();
   const herdrBadge = snapshot.herdr_available
@@ -279,37 +315,17 @@ function portsPage() {
     : `<span class="ports-badge warn">Herdr unavailable</span>`;
   const warnings = [...(snapshot.warnings ?? []), ...(snapshot.error ? [`scan error: ${snapshot.error}`] : [])];
   const rows = snapshot.ports.map(entry => {
-    const herdr = entry.herdr;
-    const ai = entry.ai;
-    const linkHost = !entry.host || ["*", "::", "0.0.0.0", "::1", "127.0.0.1", "localhost"].includes(entry.host) ? "localhost" : entry.host;
-    const linkTarget = linkHost.includes(":") && !linkHost.startsWith("[") ? `[${linkHost}]` : linkHost;
-    const portUrl = `http://${linkTarget}:${entry.port}`;
-    const herdrLabel = herdr
-      ? `${escapeHtml(herdr.workspace_label || herdr.workspace_id || "")} ${escapeHtml(herdr.pane_id || "")}${herdr.match === "cwd" ? " ~" : ""}`
-      : "<span class='ports-dim'>—</span>";
-    const herdrTitle = herdr ? escapeHtml(`tab ${herdr.tab_id ?? ""} · ${herdr.agent_status ?? ""} · match: ${herdr.match ?? "?"}`) : "";
-    const aiLabel = ai?.session
-      ? `${escapeHtml(ai.kind ?? "")} <code>${escapeHtml(String(ai.session).slice(0, 8))}…</code>`
-      : ai?.kind
-        ? escapeHtml(ai.kind)
-        : "<span class='ports-dim'>—</span>";
-    const aiTitle = escapeHtml(ai?.session ?? ai?.hint ?? "");
     return `<tr>
-      <td class="ports-num"><a href="${escapeHtml(portUrl)}" target="_blank" rel="noreferrer">${entry.port}</a></td>
-      <td>${escapeHtml(entry.host)}</td>
-      <td>${escapeHtml(entry.command)} <span class="ports-dim">#${entry.pid}</span></td>
-      <td class="ports-path" title="${escapeHtml(entry.cwd || "")}">${escapeHtml(entry.cwd || "—")}</td>
-      <td title="${herdrTitle}">${herdrLabel}</td>
-      <td title="${aiTitle}">${aiLabel}</td>
+      ${portTableCells(entry, null)}
       <td class="ports-actions"><a href="/ports/tree?pid=${entry.pid}&port=${entry.port}">Tree</a><button type="button" class="ports-kill" data-pid="${entry.pid}" data-port="${entry.port}" data-command="${escapeHtml(entry.command)}">Kill</button></td>
     </tr>`;
   }).join("");
   const body = `<section class="page-head"><h1>Ports</h1><p>${snapshot.ports.length} TCP listeners · scanned ${escapeHtml(snapshot.scanned_at ?? "")} · <a href="/api/ports">JSON</a></p></section>
     <p>${herdrBadge} <span class="ports-note">Process match = listener descends from the pane shell. A trailing ~ means same working directory only (e.g. this server runs under launchd, not Herdr).</span></p>
     ${warnings.length ? `<p class="settings-note warn">${warnings.map(escapeHtml).join("<br>")}</p>` : ""}
-    ${snapshot.ports.length ? `<div class="ports-wrap"><table class="ports-table"><thead><tr><th>Port</th><th>Bind</th><th>Process</th><th>Directory</th><th>Herdr pane</th><th>AI session</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${snapshot.ports.length ? `<div class="ports-wrap"><table class="ports-table"><thead><tr><th>Port</th><th>Bind</th><th>Process</th><th>Uptime</th><th>Directory</th><th>Herdr pane</th><th>AI session</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div>
     <script>document.querySelectorAll('.ports-kill').forEach(button=>button.addEventListener('click',async()=>{const label=button.dataset.command+' (#'+button.dataset.pid+') on port '+button.dataset.port;if(!confirm('Kill '+label+'? This sends SIGTERM to the process.'))return;button.disabled=true;try{const response=await fetch('/api/ports/kill',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pid:Number(button.dataset.pid)})});if(response.ok){location.reload();return}button.disabled=false;alert(await response.text())}catch(error){button.disabled=false;alert(String(error && error.message || error))}}));</script>` : `<div class="empty"><strong>No listeners found.</strong><span>The scanner reported zero TCP LISTEN sockets.</span></div>`}
-    <style>.ports-table{width:100%;border-collapse:collapse;font-size:.82rem}.ports-table th{text-align:left;color:var(--text3);font-family:var(--mono);font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;padding:.5rem;border-bottom:1px solid var(--border)}.ports-table td{padding:.5rem;border-bottom:1px solid var(--border);vertical-align:top;overflow-wrap:anywhere}.ports-num{font-family:var(--mono);font-weight:700}.ports-path{max-width:22rem}.ports-dim{color:var(--text3)}.ports-badge{border:1px solid var(--border2);border-radius:999px;padding:.2rem .6rem;font-size:.72rem}.ports-badge.ok{color:var(--accent2)}.ports-badge.warn{color:var(--gold)}.ports-note{color:var(--text3);font-size:.78rem}.ports-wrap{overflow-x:auto}.ports-table code{color:var(--accent2)}.ports-actions{white-space:nowrap}.ports-actions a{margin-right:.6rem}.ports-kill{color:#ff7b72;background:none;border:1px solid var(--border2);border-radius:6px;padding:.15rem .55rem;cursor:pointer;font-size:.78rem}.ports-kill:disabled{opacity:.5;cursor:default}</style>`;
+    <style>.ports-table{width:100%;border-collapse:collapse;font-size:.82rem}.ports-table th{text-align:left;color:var(--text3);font-family:var(--mono);font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;padding:.5rem;border-bottom:1px solid var(--border)}.ports-table td{padding:.5rem;border-bottom:1px solid var(--border);vertical-align:top;overflow-wrap:anywhere}.ports-num{font-family:var(--mono);font-weight:700}.ports-uptime{white-space:nowrap}.ports-path{max-width:22rem}.ports-dim{color:var(--text3)}.ports-badge{border:1px solid var(--border2);border-radius:999px;padding:.2rem .6rem;font-size:.72rem}.ports-badge.ok{color:var(--accent2)}.ports-badge.warn{color:var(--gold)}.ports-note{color:var(--text3);font-size:.78rem}.ports-wrap{overflow-x:auto}.ports-table code{color:var(--accent2)}.ports-actions{white-space:nowrap}.ports-actions a{margin-right:.6rem}.ports-kill{color:#ff7b72;background:none;border:1px solid var(--border2);border-radius:6px;padding:.15rem .55rem;cursor:pointer;font-size:.78rem}.ports-kill:disabled{opacity:.5;cursor:default}</style>`;
   return html(shell("Ports", body, "ports"));
 }
 
@@ -333,12 +349,10 @@ function portsTreePage(url) {
   if (!entry) return text("no TCP listener found for that pid", 404);
   const herdr = entry.herdr;
   const ai = entry.ai;
-  const linkHost = !entry.host || ["*", "::", "0.0.0.0", "::1", "127.0.0.1", "localhost"].includes(entry.host) ? "localhost" : entry.host;
-  const linkTarget = linkHost.includes(":") && !linkHost.startsWith("[") ? `[${linkHost}]` : linkHost;
-  const portUrl = `http://${linkTarget}:${entry.port}`;
+  const portUrl = portSiteUrl(entry);
   const tree = Array.isArray(entry.tree) && entry.tree.length
     ? entry.tree
-    : [{ pid: entry.pid, ppid: entry.ppid, command: entry.command_line || entry.command }];
+    : [{ pid: entry.pid, ppid: entry.ppid, command: entry.command_line || entry.command, cwd: entry.cwd || "", ports: [{ host: entry.host, port: entry.port }] }];
   const children = Array.isArray(entry.children) ? entry.children : [];
   const parentPid = tree[0]?.ppid;
   const reparentedToInit = parentPid === 1 || parentPid === 0;
@@ -354,24 +368,49 @@ function portsTreePage(url) {
     : ai?.kind
       ? `AI hint: ${escapeHtml(ai.kind)} <span class="ports-dim">${escapeHtml(ai.hint ?? ai.source ?? "")}</span> — no live session id, likely a leftover child.`
       : `No AI session attributed — no agent owns this process.`;
+  const describe = (node, relation) => {
+    const match = findPortEntry(snapshot, node.pid, null);
+    if (match && match !== entry) return { row: match, relation: `${relation} · also listening` };
+    if (match) return { row: match, relation };
+    const argv0 = String(node.command || "").split(/\s+/)[0] || "";
+    const fallbackPort = (node.ports ?? [])[0];
+    return {
+      row: {
+        port: fallbackPort?.port ?? null,
+        host: fallbackPort?.host ?? "",
+        command: argv0.split("/").pop() || "?",
+        command_line: node.command || "",
+        pid: node.pid,
+        cwd: node.cwd || "",
+        elapsed: node.elapsed ?? null,
+        elapsed_secs: node.elapsed_secs ?? null,
+        started_at: node.started_at ?? null,
+        herdr: node.pid === herdr?.shell_pid ? herdr : null,
+        ai: null,
+      },
+      relation,
+    };
+  };
+  const head = `<thead><tr><th>Port</th><th>Bind</th><th>Process</th><th>Uptime</th><th>Directory</th><th>Herdr pane</th><th>AI session</th></tr></thead>`;
   const treeRows = tree.map((node, level) => {
-    const badges = [];
-    if (level === 0) badges.push("listening process");
-    if (herdr?.shell_pid != null && node.pid === herdr.shell_pid) badges.push(`Herdr shell · pane ${herdr.pane_id ?? ""}`);
-    if (node.pid === 1) badges.push("init (launchd)");
-    return `<tr><td class="ports-num">${node.pid}</td><td class="ports-num">${node.ppid ?? "—"}</td><td class="ports-path" title="${escapeHtml(node.command || "")}">${escapeHtml(node.command || "—")}</td><td>${badges.length ? badges.map(escapeHtml).join(" · ") : "<span class='ports-dim'>—</span>"}</td></tr>`;
+    if (level === 0) return `<tr>${portTableCells(entry, "listener")}</tr>`;
+    const { row, relation } = describe(node, "parent");
+    return `<tr>${portTableCells(row, relation)}</tr>`;
   }).join("");
   const childRows = children.length
-    ? children.map(child => `<tr><td class="ports-num">${child.pid}</td><td class="ports-path" title="${escapeHtml(child.command || "")}">${escapeHtml(child.command || "—")}</td></tr>`).join("")
-    : `<tr><td colspan="2"><span class="ports-dim">No child processes.</span></td></tr>`;
-  const body = `<section class="page-head"><p><a href="/ports">← Ports</a></p><h1>Process tree · PID ${entry.pid}</h1><p><a href="${escapeHtml(portUrl)}" target="_blank" rel="noreferrer">Open http://${escapeHtml(linkTarget)}:${entry.port}</a> · ${escapeHtml(entry.command)} · ${escapeHtml(entry.command_line || "")}</p></section>
+    ? children.map(child => {
+      const { row, relation } = describe(child, "child");
+      return `<tr>${portTableCells(row, relation)}</tr>`;
+    }).join("")
+    : "";
+  const body = `<section class="page-head"><p><a href="/ports">← Ports</a></p><h1>Process tree · PID ${entry.pid}</h1><p><a href="${escapeHtml(portUrl)}" target="_blank" rel="noreferrer">Open ${escapeHtml(portUrl)}</a> · ${escapeHtml(entry.command)} · ${escapeHtml(entry.command_line || "")}</p></section>
     <p>${escapeHtml(ownership)}</p>
     <p>${sessionLine}</p>
-    <section><h2>Parents</h2><div class="ports-wrap"><table class="ports-table"><thead><tr><th>PID</th><th>PPID</th><th>Command</th><th>Notes</th></tr></thead><tbody>${treeRows}</tbody></table></div></section>
-    <section><h2>Children <span class="ports-dim">(direct)</span></h2><div class="ports-wrap"><table class="ports-table"><thead><tr><th>PID</th><th>Command</th></tr></thead><tbody>${childRows}</tbody></table></div></section>
+    <section><h2>Listener + parents</h2><div class="ports-wrap"><table class="ports-table">${head}<tbody>${treeRows}</tbody></table></div></section>
+    <section><h2>Children <span class="ports-dim">(direct)</span></h2>${children.length ? `<div class="ports-wrap"><table class="ports-table">${head}<tbody>${childRows}</tbody></table></div>` : `<div class="empty"><strong>No child processes.</strong></div>`}</section>
     <p><button type="button" class="ports-kill" data-pid="${entry.pid}" data-port="${entry.port}" data-command="${escapeHtml(entry.command)}">Kill PID ${entry.pid} (SIGTERM)</button></p>
     <script>document.querySelectorAll('.ports-kill').forEach(button=>button.addEventListener('click',async()=>{if(!confirm('Kill '+button.dataset.command+' (#'+button.dataset.pid+') on port '+button.dataset.port+'? This sends SIGTERM to the process.'))return;button.disabled=true;try{const response=await fetch('/api/ports/kill',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pid:Number(button.dataset.pid)})});if(response.ok){location.href='/ports';return}button.disabled=false;alert(await response.text())}catch(error){button.disabled=false;alert(String(error && error.message || error))}}));</script>
-    <style>.ports-table{width:100%;border-collapse:collapse;font-size:.82rem}.ports-table th{text-align:left;color:var(--text3);font-family:var(--mono);font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;padding:.5rem;border-bottom:1px solid var(--border)}.ports-table td{padding:.5rem;border-bottom:1px solid var(--border);vertical-align:top;overflow-wrap:anywhere}.ports-num{font-family:var(--mono);font-weight:700}.ports-path{max-width:34rem}.ports-dim{color:var(--text3)}.ports-wrap{overflow-x:auto}.ports-table code{color:var(--accent2)}.ports-kill{color:#ff7b72;background:none;border:1px solid var(--border2);border-radius:6px;padding:.3rem .7rem;cursor:pointer;font-size:.8rem}.ports-kill:disabled{opacity:.5;cursor:default}</style>`;
+    <style>.ports-table{width:100%;border-collapse:collapse;font-size:.82rem}.ports-table th{text-align:left;color:var(--text3);font-family:var(--mono);font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;padding:.5rem;border-bottom:1px solid var(--border)}.ports-table td{padding:.5rem;border-bottom:1px solid var(--border);vertical-align:top;overflow-wrap:anywhere}.ports-num{font-family:var(--mono);font-weight:700}.ports-uptime{white-space:nowrap}.ports-path{max-width:22rem}.ports-dim{color:var(--text3)}.ports-wrap{overflow-x:auto}.ports-table code{color:var(--accent2)}.ports-kill{color:#ff7b72;background:none;border:1px solid var(--border2);border-radius:6px;padding:.3rem .7rem;cursor:pointer;font-size:.8rem}.ports-kill:disabled{opacity:.5;cursor:default}</style>`;
   return html(shell(`Process ${entry.pid} · Ports`, body, "ports"));
 }
 
@@ -459,7 +498,8 @@ function itemRows(items) {
 }
 function railSection(title, type) {
   const items = db.query("SELECT * FROM items WHERE type = ? ORDER BY pinned DESC, datetime(created_at) DESC, id DESC").all(type);
-  return `<section class="rail-section"><header><h2>${title}</h2><span>${items.length}</span></header><div class="rail-items">${items.map(item => {
+  const label = ({ note: "note", pr: "PR", link: "link" })[type] || "item";
+  return `<section class="rail-section"><header><h2>${title}</h2><div class="rail-heading-actions"><span>${items.length}</span><button type="button" class="rail-add" data-add-type="${type}" aria-label="Add ${label}" title="Add ${label}">+</button></div></header><div class="rail-items">${items.map(item => {
     const external = ["link", "pr"].includes(item.type) ? ` target="_blank" rel="noreferrer"` : "";
     return `<article class="rail-item${item.pinned ? " is-pinned" : ""}${item.starred ? " is-starred" : ""}"><a href="${escapeHtml(itemHref(item))}"${external}>${escapeHtml(item.title)}</a>${item.description ? `<p>${escapeHtml(item.description)}</p>` : ""}<div><time>${escapeHtml(item.created_at.slice(0, 10))}</time>${item.pinned ? `<span>Pinned</span>` : ""}${item.starred ? `<span>Starred</span>` : ""}</div></article>`;
   }).join("") || `<div class="rail-empty">No ${title.toLowerCase()} yet.</div>`}</div></section>`;
@@ -470,7 +510,32 @@ function shell(title, body, active = "all") {
   const nav = [["all", "/", "Library"], ["starred", "/starred", "Starred"], ["tags", "/tags", "Tags"], ["ports", "/ports", "Ports"], ["new", "/new", "Add"], ["settings", "/settings", "Settings"]];
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} · Portfolios</title><link rel="stylesheet" href="/assets/app.css"></head><body>
     <header class="topbar"><a class="brand" href="/">丸の中で</a><nav>${nav.map(([key, href, label]) => `<a class="${active === key ? "active" : ""}" href="${href}">${label}</a>`).join("")}</nav></header>
-    <main>${body}</main><script>
+    <main>${body}</main>
+    <div class="item-modal" data-item-modal hidden>
+      <div class="item-modal-card" role="dialog" aria-modal="true" aria-labelledby="item-modal-title">
+        <div class="item-modal-head"><div><p class="eyebrow">Quick add</p><h2 id="item-modal-title">Add item</h2></div><button type="button" class="item-modal-close" data-item-modal-close aria-label="Close">×</button></div>
+        <form class="item-modal-form" method="post" action="/items">
+          <input type="hidden" name="return_to" value="/">
+          <input type="hidden" name="type" data-item-type>
+          <label>Title<input name="title" required autofocus></label>
+          <label>Description<input name="description"></label>
+          <label data-item-url>URL<input name="url" type="url" placeholder="https://"></label>
+          <label>Tags<input name="tags" placeholder="architecture, ruby"></label>
+          <label class="item-modal-content" data-item-content>Markdown<textarea name="content" rows="7" placeholder="# Notes"></textarea></label>
+          <div class="item-modal-actions"><button type="button" class="quiet" data-item-modal-close>Cancel</button><button class="primary">Add item</button></div>
+        </form>
+      </div>
+    </div><script>
+      const itemModal=document.querySelector('[data-item-modal]');
+      const itemType=itemModal?.querySelector('[data-item-type]');
+      const itemTitle=itemModal?.querySelector('#item-modal-title');
+      const itemUrl=itemModal?.querySelector('[data-item-url]');
+      const itemContent=itemModal?.querySelector('[data-item-content]');
+      const openItemModal=type=>{if(!itemModal)return;itemType.value=type;itemTitle.textContent='Add '+({note:'note',pr:'PR',link:'link'}[type]||'item');itemUrl.hidden=type==='note';itemContent.hidden=type==='link'||type==='pr';itemModal.hidden=false;itemModal.querySelector('input[name=title]').focus()};
+      document.querySelectorAll('[data-add-type]').forEach(button=>button.addEventListener('click',()=>openItemModal(button.dataset.addType)));
+      document.querySelectorAll('[data-item-modal-close]').forEach(button=>button.addEventListener('click',()=>{itemModal.hidden=true}));
+      itemModal?.addEventListener('click',event=>{if(event.target===itemModal)itemModal.hidden=true});
+      document.addEventListener('keydown',event=>{if(event.key==='Escape'&&itemModal&&!itemModal.hidden)itemModal.hidden=true});
       document.querySelectorAll('.row-tag-toggle').forEach(button=>button.addEventListener('click',()=>{const editor=button.closest('.item').querySelector('.row-tag-editor');editor.hidden=!editor.hidden;button.classList.toggle('active',!editor.hidden);button.setAttribute('aria-expanded',String(!editor.hidden));if(!editor.hidden)editor.querySelector('input').focus()}));
       document.querySelectorAll('.row-tag-add').forEach(button=>{const input=button.previousElementSibling;const add=async()=>{if(!input.value.trim())return;button.disabled=true;button.textContent='Adding…';const data=new FormData();data.set('tags',input.value);const response=await fetch('/items/'+button.dataset.id+'/tags',{method:'POST',body:data});if(response.ok)location.reload();else{button.disabled=false;button.textContent='Add';alert(await response.text())}};button.addEventListener('click',add);input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();add()}})});
       document.querySelectorAll('.toggle-button').forEach(button=>button.addEventListener('click',async()=>{const data=new FormData();data.set('field',button.dataset.field);const response=await fetch('/items/'+button.dataset.id+'/toggle',{method:'POST',body:data});if(response.ok)location.reload()}));
@@ -553,7 +618,7 @@ async function createItem(request) {
   }
   const tagNames = field(form, "tags").split(",").map(value => value.trim()).filter(Boolean);
   setTags(id, tagNames);
-  return { id, href: itemHref(db.query("SELECT * FROM items WHERE id = ?").get(id)) };
+  return { id, href: itemHref(db.query("SELECT * FROM items WHERE id = ?").get(id)), returnTo: field(form, "return_to") || null };
 }
 
 function documentTitle(content, sourcePath) {
@@ -824,7 +889,7 @@ const server = Bun.serve({
       if (request.method === "POST" && url.pathname === "/items") {
         const item = await createItem(request);
         if (item instanceof Response) return item;
-        return redirect(item.href);
+        return redirect(item.returnTo || item.href);
       }
       if (request.method === "POST" && url.pathname === "/api/items") {
         const item = await createItem(request);
