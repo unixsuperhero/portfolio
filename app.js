@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { basename, dirname, extname, isAbsolute, join, resolve, sep } from "node:path";
-import { mkdtemp, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { existsSync, watch } from "node:fs";
 import { tmpdir } from "node:os";
 
@@ -11,7 +11,6 @@ const LEGACY_ROOT = resolve(process.env.PORTFOLIO_LEGACY_ROOT ?? join(process.en
 const PORT = Number(process.env.PORT ?? 4387);
 const HOST = process.env.HOST ?? "127.0.0.1";
 const PORTS_SCAN_BIN = process.env.PORTS_SCAN_BIN ?? join(ROOT, "bin", "ports-scan");
-const OSASCRIPT_BIN = process.env.PORTFOLIO_OSASCRIPT_BIN ?? "/usr/bin/osascript";
 const MARKDOWN_READER = "markdown+lists_without_preceding_blankline-blank_before_header-blank_before_blockquote+autolink_bare_uris+emoji+mark+wikilinks_title_before_pipe";
 const WATCH_DEBOUNCE_MS = Number(process.env.PORTFOLIO_WATCH_DEBOUNCE_MS ?? 200);
 const db = new Database(DB_PATH, { create: true });
@@ -247,6 +246,7 @@ function pastryStatus() {
 }
 
 function settingsPage(error = "", statusCode = 200) {
+  const home = resolve(process.env.HOME ?? ROOT);
   const enabled = pastryEnabled();
   const status = pastryStatus();
   const directories = watchedDirectories();
@@ -276,36 +276,120 @@ function settingsPage(error = "", statusCode = 200) {
           <label for="watched-directory-path">Directory path</label>
           <div class="watch-path-control">
             <input id="watched-directory-path" name="path" required placeholder="/Users/you/Documents/docs">
-            <button type="button" class="folder-picker" data-folder-picker>Choose folder…</button>
+            <button type="button" class="folder-picker" data-folder-picker aria-expanded="false" aria-controls="directory-browser">Choose folder…</button>
           </div>
-          <span class="folder-picker-status" data-folder-picker-status role="status" aria-live="polite"></span>
+          <div class="directory-browser" id="directory-browser" data-directory-browser data-home="${escapeHtml(home)}" role="region" aria-labelledby="directory-browser-heading" hidden>
+            <div class="directory-browser-head">
+              <strong id="directory-browser-heading">Choose a directory</strong>
+              <button type="button" data-directory-close>Close</button>
+            </div>
+            <code class="directory-browser-path" data-directory-path></code>
+            <div class="directory-browser-actions">
+              <button type="button" data-directory-up disabled>Up</button>
+              <button type="button" data-directory-choose disabled>Choose this folder</button>
+            </div>
+            <div class="directory-browser-list" data-directory-list></div>
+            <p class="directory-browser-error" data-directory-error aria-live="polite"></p>
+          </div>
         </div>
         <label class="check"><input type="checkbox" name="recursive"> Include subdirectories</label>
         <button class="primary">Add directory</button>
       </form>
       <script>
-        document.querySelector('[data-folder-picker]')?.addEventListener('click',async event=>{
-          const button=event.currentTarget;
-          const input=button.form.elements.path;
-          const status=button.form.querySelector('[data-folder-picker-status]');
-          button.disabled=true;
-          button.textContent='Choosing…';
-          status.textContent='';
-          try{
-            const response=await fetch('/api/settings/choose-folder',{method:'POST'});
-            const data=await response.json().catch(()=>({}));
-            if(!response.ok)throw new Error(data.error||'The folder picker failed.');
-            if(data.cancelled)return;
-            if(typeof data.path!=='string')throw new Error('The folder picker returned an invalid path.');
-            input.value=data.path;
+        {
+          const button=document.querySelector('[data-folder-picker]');
+          const panel=document.querySelector('[data-directory-browser]');
+          const input=button?.form.elements.path;
+          const pathLabel=panel?.querySelector('[data-directory-path]');
+          const list=panel?.querySelector('[data-directory-list]');
+          const error=panel?.querySelector('[data-directory-error]');
+          const up=panel?.querySelector('[data-directory-up]');
+          const choose=panel?.querySelector('[data-directory-choose]');
+          const close=panel?.querySelector('[data-directory-close]');
+          let currentPath='';
+          let requestId=0;
+          const setOpen=open=>{
+            panel.hidden=!open;
+            button.setAttribute('aria-expanded',String(open));
+          };
+          const closeBrowser=()=>{
+            requestId++;
+            panel.removeAttribute('aria-busy');
+            setOpen(false);
+            button.focus();
+          };
+          const loadDirectory=async(path,fallbackHome=false)=>{
+            const id=++requestId;
+            error.textContent='';
+            choose.disabled=true;
+            panel.setAttribute('aria-busy','true');
+            try{
+              const response=await fetch('/api/settings/directories?'+new URLSearchParams({path}));
+              const data=await response.json().catch(()=>({}));
+              if(!response.ok)throw new Error(data.error||'The directory could not be read.');
+              if(id!==requestId)return;
+              currentPath=data.path;
+              pathLabel.textContent=data.path;
+              up.disabled=!data.parent;
+              up.dataset.path=data.parent||'';
+              choose.disabled=false;
+              const rows=data.directories.map(directory=>{
+                const row=document.createElement('button');
+                row.type='button';
+                row.className='directory-browser-row';
+                row.textContent=directory.name;
+                row.addEventListener('click',()=>loadDirectory(directory.path));
+                return row;
+              });
+              if(!rows.length){
+                const empty=document.createElement('p');
+                empty.className='directory-browser-empty';
+                empty.textContent='No subdirectories.';
+                rows.push(empty);
+              }
+              list.replaceChildren(...rows);
+            }catch(reason){
+              if(id!==requestId)return;
+              if(fallbackHome&&path!==panel.dataset.home)return loadDirectory(panel.dataset.home);
+              error.textContent=reason.message||'The directory could not be read.';
+            }finally{
+              if(id===requestId){
+                panel.removeAttribute('aria-busy');
+                choose.disabled=!currentPath;
+              }
+            }
+          };
+          button?.addEventListener('click',()=>{
+            if(!panel.hidden){
+              closeBrowser();
+              return;
+            }
+            currentPath='';
+            pathLabel.textContent='';
+            list.replaceChildren();
+            up.disabled=true;
+            choose.disabled=true;
+            setOpen(true);
+            const candidate=input.value.trim();
+            loadDirectory(candidate.startsWith('/')?candidate:panel.dataset.home,candidate.startsWith('/'));
+          });
+          up?.addEventListener('click',()=>up.dataset.path&&loadDirectory(up.dataset.path));
+          choose?.addEventListener('click',()=>{
+            if(!currentPath)return;
+            requestId++;
+            panel.removeAttribute('aria-busy');
+            input.value=currentPath;
+            setOpen(false);
             input.focus();
-          }catch(error){
-            status.textContent=error.message||'The folder picker failed.';
-          }finally{
-            button.disabled=false;
-            button.textContent='Choose folder…';
-          }
-        });
+          });
+          close?.addEventListener('click',closeBrowser);
+          panel?.addEventListener('keydown',event=>{
+            if(event.key==='Escape'){
+              event.preventDefault();
+              closeBrowser();
+            }
+          });
+        }
       </script>
       <div class="watch-list">${rows || `<div class="empty"><strong>No watched directories.</strong><span>Add one to pull documents into the library automatically.</span></div>`}</div>
       ${directories.length ? `<form method="post" action="/settings/watched-directories/sync"><button>Sync now</button></form>` : ""}
@@ -715,28 +799,31 @@ async function normalizeWatchedPath(value) {
   return path;
 }
 
-async function chooseWatchedDirectory() {
+async function listDirectories(url) {
+  const requested = url.searchParams.get("path");
+  if (!requested?.trim()) return Response.json({ error: "A directory path is required." }, { status: 400 });
+  if (!isAbsolute(requested)) return Response.json({ error: "Directory path must be absolute." }, { status: 400 });
+  const path = resolve(requested);
+  let info;
   try {
-    const child = Bun.spawn({
-      cmd: [OSASCRIPT_BIN, "-e", 'POSIX path of (choose folder with prompt "Choose a folder to watch")'],
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-      child.exited,
-    ]);
-    if (exitCode !== 0) {
-      if (exitCode === 1 && (stderr.includes("(-128)") || /user canceled/i.test(stderr))) return Response.json({ cancelled: true });
-      const detail = stderr.trim().split("\n")[0] || `osascript exited with status ${exitCode}`;
-      return Response.json({ error: `Could not open the folder picker: ${detail}` }, { status: 500 });
-    }
-    const path = stdout.trim();
-    if (!isAbsolute(path)) return Response.json({ error: "The folder picker did not return an absolute path." }, { status: 500 });
-    return Response.json({ path: resolve(path) });
+    info = await stat(path);
   } catch (error) {
-    return Response.json({ error: `Could not open the folder picker: ${error.message}` }, { status: 500 });
+    if (error.code === "ENOENT") return Response.json({ error: "Directory not found." }, { status: 404 });
+    if (error.code === "EACCES" || error.code === "EPERM") return Response.json({ error: "Directory is not readable." }, { status: 403 });
+    return Response.json({ error: "The directory could not be read." }, { status: 500 });
+  }
+  if (!info.isDirectory()) return Response.json({ error: "Path is not a directory." }, { status: 422 });
+  try {
+    const directories = (await readdir(path, { withFileTypes: true }))
+      .filter(entry => entry.isDirectory())
+      .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }) || left.name.localeCompare(right.name))
+      .map(entry => ({ name: entry.name, path: join(path, entry.name) }));
+    const parent = dirname(path);
+    return Response.json({ path, parent: parent === path ? null : parent, directories });
+  } catch (error) {
+    if (error.code === "ENOENT") return Response.json({ error: "Directory not found." }, { status: 404 });
+    if (error.code === "EACCES" || error.code === "EPERM") return Response.json({ error: "Directory is not readable." }, { status: 403 });
+    return Response.json({ error: "The directory could not be read." }, { status: 500 });
   }
 }
 
@@ -1063,7 +1150,7 @@ const server = Bun.serve({
       if (request.method === "GET" && url.pathname === "/api/ports") return Response.json(getPortsSnapshot());
       if (request.method === "POST" && url.pathname === "/api/ports/kill") return killPortProcess(request);
       if (request.method === "GET" && url.pathname === "/settings") return settingsPage();
-      if (request.method === "POST" && url.pathname === "/api/settings/choose-folder") return chooseWatchedDirectory();
+      if (request.method === "GET" && url.pathname === "/api/settings/directories") return listDirectories(url);
       if (request.method === "POST" && url.pathname === "/settings") {
         const form = await request.formData();
         setSetting("pastry_enabled", form.has("pastry_enabled") ? "1" : "0");

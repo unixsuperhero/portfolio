@@ -1,13 +1,11 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { chmod, copyFile, mkdir, mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 const root = new URL("..", import.meta.url).pathname;
 const directory = await mkdtemp(join(tmpdir(), "portfolio-watch-"));
 const fixture = join(directory, "app");
-const pickerBin = join(directory, "fake-osascript");
-const pickerMode = join(directory, "picker-mode");
 let serverUrl;
 let server;
 
@@ -40,15 +38,6 @@ beforeAll(async () => {
     copyFile(join(root, "templates", "document.html"), join(fixture, "templates", "document.html")),
     copyFile(join(root, "public", "app.css"), join(fixture, "public", "app.css")),
   ]);
-  await writeFile(pickerBin, `#!/bin/sh
-case "$(cat "$PORTFOLIO_PICKER_MODE")" in
-  select) printf '%s\n' "$PORTFOLIO_PICKER_PATH" ;;
-  cancel) printf 'execution error: User canceled. (-128)\n' >&2; exit 1 ;;
-  *) printf 'execution error: picker unavailable\n' >&2; exit 1 ;;
-esac
-`);
-  await chmod(pickerBin, 0o755);
-  await writeFile(pickerMode, "select");
   server = Bun.spawn({
     cmd: [process.execPath, "app.js"],
     cwd: fixture,
@@ -57,9 +46,6 @@ esac
       PORT: "0",
       PORTFOLIO_DB: join(directory, "portfolio.sqlite"),
       PORTFOLIO_WATCH_DEBOUNCE_MS: "20",
-      PORTFOLIO_OSASCRIPT_BIN: pickerBin,
-      PORTFOLIO_PICKER_MODE: pickerMode,
-      PORTFOLIO_PICKER_PATH: directory,
     },
     stdout: "pipe",
     stderr: "inherit",
@@ -118,19 +104,30 @@ test("pulls watched files and applies the recursive setting", async () => {
   expect(await itemFor(added)).toBeNull();
 });
 
-test("returns folder picker selections and cancellation", async () => {
-  await writeFile(pickerMode, "select");
-  const selected = await fetch(`${serverUrl}/api/settings/choose-folder`, { method: "POST" });
-  expect(selected.status).toBe(200);
-  expect(await selected.json()).toEqual({ path: directory });
+test("lists directories for the inline folder browser", async () => {
+  const browseRoot = join(directory, "browse");
+  await Promise.all([
+    mkdir(join(browseRoot, "zeta"), { recursive: true }),
+    mkdir(join(browseRoot, "Alpha"), { recursive: true }),
+    writeFile(join(directory, "not-a-directory.txt"), "file"),
+  ]);
 
-  await writeFile(pickerMode, "cancel");
-  const cancelled = await fetch(`${serverUrl}/api/settings/choose-folder`, { method: "POST" });
-  expect(cancelled.status).toBe(200);
-  expect(await cancelled.json()).toEqual({ cancelled: true });
+  const response = await fetch(`${serverUrl}/api/settings/directories?${new URLSearchParams({ path: browseRoot })}`);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({
+    path: browseRoot,
+    parent: directory,
+    directories: [
+      { name: "Alpha", path: join(browseRoot, "Alpha") },
+      { name: "zeta", path: join(browseRoot, "zeta") },
+    ],
+  });
 
-  await writeFile(pickerMode, "failure");
-  const failed = await fetch(`${serverUrl}/api/settings/choose-folder`, { method: "POST" });
-  expect(failed.status).toBe(500);
-  expect((await failed.json()).error).toContain("picker unavailable");
+  const relative = await fetch(`${serverUrl}/api/settings/directories?path=relative`);
+  expect(relative.status).toBe(400);
+
+  const file = await fetch(`${serverUrl}/api/settings/directories?${new URLSearchParams({ path: join(directory, "not-a-directory.txt") })}`);
+  expect(file.status).toBe(422);
 });
+
+
