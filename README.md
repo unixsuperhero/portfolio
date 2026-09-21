@@ -222,3 +222,63 @@ h-docs ports --json
 ```
 
 Attribution comes from `bin/ports-scan` (`lsof` + `ps` + `herdr`). A listener counts as a **process match** when it descends from a pane's shell; a trailing `~` means same working directory only. This server runs under `launchd`, so its own row shows `~`. When Herdr is unreachable the process and directory columns still work. Set `PORTS_SCAN_BIN` to override the scanner (used by tests).
+
+## Build portfolios from cards
+
+Open `http://127.0.0.1:4387/portfolios` to create a portfolio. A portfolio is a page of cards, three per row. Each card is a saved query over the library and lists every item that matches it. A long list scrolls inside its card.
+
+A card has these settings:
+
+- **Tags**: an item matches when it has any one of them. Leave it empty to match every item. A card can name a tag that no item carries yet.
+- **Types**: `document`, `note`, `link`, or `pr`. Checked types narrow the tag matches. Leave all unchecked to allow every type.
+- **Sort by** and **Direction**: created date, updated date, title, or type.
+- **Max items**: the most rows the card shows, from 1 to 1000. The header shows `20 of 340` when the card is capped.
+
+Open **Edit card** on a card to change it, move it earlier or later, or delete it. Deleting a card or a portfolio never deletes items.
+
+The same data is available as JSON, with each card's matching items:
+
+```bash
+curl http://127.0.0.1:4387/api/portfolios/1
+```
+
+## Track files and directories
+
+Items can be of type `file` or `dir`. They point at a path on disk, which does not have to exist. Every file and dir item, and every slot below, shares the same actions:
+
+- **Copy path** copies the path to the clipboard.
+- **Reveal in Finder** and **Open** create the file or directory first when it is missing, then run `open`.
+
+Add one from `http://127.0.0.1:4387/new`, or over HTTP. The title defaults to the last path segment:
+
+```bash
+curl -X POST http://127.0.0.1:4387/api/items -F type=dir -F path=~/.claude -F category=harness -F tags=ai
+```
+
+## Define categories
+
+Open `http://127.0.0.1:4387/categories`. A category names a kind of item and the **slots** every item of that category has. A slot is a file or dir with a name and a path, written one per line:
+
+```text
+tasks | file | TASKS.md
+logs | dir | ~/Library/Logs/thing
+```
+
+A relative slot path is inside the member's own path. An absolute or `~/` path stands alone. Slots are computed when a page renders, so changing a category changes every member at once, and a member's page shows each slot with the file and dir actions whether or not it exists yet. Open **Change path** under a slot to give one member a different path.
+
+`GET /api/items/<id>` returns the member's `slots` with their resolved paths and whether each exists, which is the payload to hand an agent for context.
+
+Deleting a category keeps its items. A category cannot change kind while it has members.
+
+## Discover projects
+
+Add a **project parent directory** on the settings page. A scan runs at startup, when a parent is added, and on **Scan now**. It adds each of these as a `dir` item in the `project` category with the `project` tag:
+
+- every direct child of a parent directory
+- any deeper directory, up to four levels down, with `.git` at its top level
+
+The walk stops at a repository, so nested repositories inside one are not added. Hidden directories and `node_modules` are skipped. A scan never removes a project; delete the item to drop one. The `project` category starts with one slot, `tasks | file | TASKS.md`, and you can edit it like any other category.
+
+## Upgrading an older database
+
+The first start after this version rebuilds the `items` table to accept the `file` and `dir` types. It writes a copy of the database to `portfolio.sqlite.before-kinds` first and keeps every id, tag, and search index entry. Delete the copy once you are happy with the upgrade.

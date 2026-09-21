@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { basename, dirname, extname, isAbsolute, join, resolve, sep } from "node:path";
-import { mkdtemp, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { existsSync, watch } from "node:fs";
 import { tmpdir } from "node:os";
 
@@ -13,8 +13,36 @@ const HOST = process.env.HOST ?? "127.0.0.1";
 const PORTS_SCAN_BIN = process.env.PORTS_SCAN_BIN ?? join(ROOT, "bin", "ports-scan");
 const MARKDOWN_READER = "markdown+lists_without_preceding_blankline-blank_before_header-blank_before_blockquote+autolink_bare_uris+emoji+mark+wikilinks_title_before_pipe";
 const WATCH_DEBOUNCE_MS = Number(process.env.PORTFOLIO_WATCH_DEBOUNCE_MS ?? 200);
+const OPEN_BIN = process.env.PORTFOLIO_OPEN_BIN ?? "open";
+const PBCOPY_BIN = process.env.PORTFOLIO_PBCOPY_BIN ?? "pbcopy";
+const ITEM_TYPES = ["document", "note", "link", "pr", "file", "dir"];
+const PATH_TYPES = ["file", "dir"];
 const db = new Database(DB_PATH, { create: true });
-db.exec(await Bun.file(join(ROOT, "schema.sql")).text());
+const schema = await Bun.file(join(ROOT, "schema.sql")).text();
+migrateItemKinds();
+db.exec(schema);
+
+// SQLite cannot widen a CHECK constraint, so a database from before the file
+// and dir types gets its items table rebuilt. Row ids are kept, so taggings,
+// watched_items, and the external-content FTS index stay valid. The schema run
+// that follows restores the indexes and triggers dropped with the old table.
+function migrateItemKinds() {
+  const current = db.query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'items'").get()?.sql;
+  if (!current || current.includes("'dir'")) return;
+  const backup = `${DB_PATH}.before-kinds`;
+  if (!existsSync(backup)) db.query("VACUUM INTO ?").run(backup);
+  const create = schema.match(/CREATE TABLE IF NOT EXISTS items \([\s\S]*?\n\);/)[0].replace("IF NOT EXISTS items", "items_next");
+  const columns = db.query("PRAGMA table_info(items)").all().map(column => column.name).join(", ");
+  db.exec("PRAGMA foreign_keys = OFF");
+  db.transaction(() => {
+    db.exec(create);
+    db.exec(`INSERT INTO items_next(${columns}) SELECT ${columns} FROM items`);
+    db.exec("DROP TABLE items");
+    db.exec("ALTER TABLE items_next RENAME TO items");
+  })();
+  db.exec("PRAGMA foreign_keys = ON");
+  console.error(`portfolio: rebuilt items for file and dir types; backup at ${backup}`);
+}
 
 const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const redirect = (location, status = 303) => new Response(null, { status, headers: { location } });
@@ -250,6 +278,7 @@ function settingsPage(error = "", statusCode = 200) {
   const enabled = pastryEnabled();
   const status = pastryStatus();
   const directories = watchedDirectories();
+  const projectParents = db.query("SELECT project_parents.*, (SELECT count(*) FROM items WHERE items.path LIKE project_parents.path || '/%') count FROM project_parents ORDER BY path").all();
   const rows = directories.map(directory => {
     const state = watchStates.get(directory.id);
     const detail = state?.error
@@ -394,6 +423,13 @@ function settingsPage(error = "", statusCode = 200) {
       <div class="watch-list">${rows || `<div class="empty"><strong>No watched directories.</strong><span>Add one to pull documents into the library automatically.</span></div>`}</div>
       ${directories.length ? `<form method="post" action="/settings/watched-directories/sync"><button>Sync now</button></form>` : ""}
       <p class="settings-note">Removing a watch or excluding its subdirectories removes uncovered documents from Portfolio. Source files are never deleted here.</p>
+    </section>
+    <section class="settings-section">
+      <h2>Project parent directories</h2>
+      <p class="settings-note">Every direct child of a parent directory is a project. So is any deeper directory, up to ${PROJECT_SCAN_DEPTH} levels, with <code>.git</code> at its top level. A scan adds new projects as <code>dir</code> items in the <a href="/categories">project</a> category; it never removes one.</p>
+      <form class="watch-add" method="post" action="/settings/project-parents"><label>Directory path<input name="path" required placeholder="~/proj"></label><button class="primary">Add and scan</button></form>
+      <div class="watch-list">${projectParents.map(parent => `<div class="watch-row"><div class="watch-path"><code>${escapeHtml(parent.path)}</code><span class="watch-status">${parent.count} projects</span></div><span></span><form method="post" action="/settings/project-parents/${parent.id}/delete"><button class="danger" onclick="return confirm('Stop scanning this directory? Its projects stay in the library.')">Remove</button></form></div>`).join("")}</div>
+      ${projectParents.length ? `<form method="post" action="/settings/project-parents/scan"><button>Scan now</button></form>` : ""}
     </section>
     <section class="settings-section">
       <h2>Pastry uploads</h2>
@@ -657,7 +693,7 @@ function railSection(title, type) {
 
 
 function shell(title, body, active = "all") {
-  const nav = [["all", "/", "Library"], ["starred", "/starred", "Starred"], ["tags", "/tags", "Tags"], ["ports", "/ports", "Ports"], ["new", "/new", "Add"], ["settings", "/settings", "Settings"]];
+  const nav = [["all", "/", "Library"], ["starred", "/starred", "Starred"], ["tags", "/tags", "Tags"], ["portfolios", "/portfolios", "Portfolios"], ["categories", "/categories", "Categories"], ["ports", "/ports", "Ports"], ["new", "/new", "Add"], ["settings", "/settings", "Settings"]];
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} · Portfolios</title><link rel="stylesheet" href="/assets/app.css"></head><body>
     <header class="topbar"><a class="brand" href="/">丸の中で</a><nav>${nav.map(([key, href, label]) => `<a class="${active === key ? "active" : ""}" href="${href}">${label}</a>`).join("")}</nav></header>
     <main>${body}</main>
@@ -710,9 +746,10 @@ function listItems(url, forced = {}) {
     params.push(contents ? phrase : `{title description} : (${phrase})`);
   }
   if (tag) { join += " JOIN taggings filter_tagging ON filter_tagging.item_id = items.id"; where.push("filter_tagging.tag_id = ?"); params.push(tag); }
+  if (forced.category) { where.push("items.category_id = ?"); params.push(forced.category); }
   if (pinned) where.push("items.pinned = 1");
   if (starred) where.push("items.starred = 1");
-  if (type && ["document", "note", "link", "pr"].includes(type)) { where.push("items.type = ?"); params.push(type); }
+  if (type && ITEM_TYPES.includes(type)) { where.push("items.type = ?"); params.push(type); }
   return db.query(`SELECT DISTINCT items.* FROM items${join} WHERE ${where.join(" AND ")} ORDER BY items.pinned DESC, datetime(items.created_at) DESC, items.id DESC`).all(...params);
 }
 
@@ -733,7 +770,7 @@ function libraryPage(url, options = {}) {
   const checked = key => url.searchParams.has(key) ? " checked" : "";
   const heading = options.heading ?? "Your working library";
   const subhead = options.subhead ?? `${db.query("SELECT count(*) count FROM items").get().count} items, searchable and close at hand.`;
-  const typeFilter = options.rails ? "" : `<select name="type" aria-label="Item type"><option value="">All types</option>${["document", "note", "link", "pr"].map(type => `<option${url.searchParams.get("type") === type ? " selected" : ""}>${type}</option>`).join("")}</select>`;
+  const typeFilter = options.rails ? "" : `<select name="type" aria-label="Item type"><option value="">All types</option>${ITEM_TYPES.map(type => `<option${url.searchParams.get("type") === type ? " selected" : ""}>${type}</option>`).join("")}</select>`;
   const center = `<div class="library-center"><form class="filters" method="get"><label class="search"><span>Search</span><input type="search" name="q" value="${escapeHtml(q)}" placeholder="Title, description, or content"><button>Search</button></label>
       <div class="filter-row"><label><input type="checkbox" name="contents"${checked("contents")}> Search contents</label><label><input type="checkbox" name="pinned"${checked("pinned")}> Pinned only</label><label><input type="checkbox" name="starred"${checked("starred")}> Starred only</label>
       ${typeFilter}<button class="quiet">Apply filters</button></div></form>
@@ -745,6 +782,258 @@ function libraryPage(url, options = {}) {
   return shell(heading, `<div class="${options.rails ? "library-shell" : ""}"><section class="page-head"><h1>${escapeHtml(heading)}</h1><p>${escapeHtml(subhead)}</p></section>${content}</div>`, options.active ?? "all");
 }
 
+const CARD_SORTS = { created_at: "datetime(items.created_at)", updated_at: "datetime(items.updated_at)", title: "items.title COLLATE NOCASE", type: "items.type" };
+const CARD_SORT_LABELS = { created_at: "Created", updated_at: "Updated", title: "Title", type: "Type" };
+const placeholders = values => values.map(() => "?").join(", ");
+
+function portfolioCards(portfolioId) {
+  return db.query("SELECT * FROM cards WHERE portfolio_id = ? ORDER BY position, id").all(portfolioId)
+    .map(card => ({ ...card, tags: JSON.parse(card.tags), types: JSON.parse(card.types) }));
+}
+
+// Tags are OR-ed together; types narrow that set. An empty list means "any".
+function cardItems(card) {
+  const where = ["1=1"], params = [];
+  if (card.tags.length) {
+    where.push(`items.id IN (SELECT taggings.item_id FROM taggings JOIN tags ON tags.id = taggings.tag_id WHERE tags.name IN (${placeholders(card.tags)}))`);
+    params.push(...card.tags);
+  }
+  if (card.types.length) { where.push(`items.type IN (${placeholders(card.types)})`); params.push(...card.types); }
+  const from = `FROM items WHERE ${where.join(" AND ")}`;
+  const total = db.query(`SELECT count(*) count ${from}`).get(...params).count;
+  const items = db.query(`SELECT items.id, items.type, items.title, items.description, items.url, items.source_path, items.pinned, items.starred, items.created_at, items.updated_at, items.content != '' content
+    ${from} ORDER BY ${CARD_SORTS[card.sort_key]} ${card.sort_dir === "asc" ? "ASC" : "DESC"}, items.id DESC LIMIT ?`).all(...params, card.max_items);
+  return { total, items };
+}
+
+function cardFields(form) {
+  const sortKey = field(form, "sort_key");
+  const types = ITEM_TYPES.filter(type => form.getAll("types").includes(type));
+  return {
+    title: field(form, "title"),
+    tags: JSON.stringify([...new Set(field(form, "tags").split(",").map(value => value.trim()).filter(Boolean))]),
+    types: JSON.stringify(types.length === ITEM_TYPES.length ? [] : types),
+    sortKey: Object.hasOwn(CARD_SORTS, sortKey) ? sortKey : "created_at",
+    sortDir: field(form, "sort_dir") === "asc" ? "asc" : "desc",
+    maxItems: Math.min(Math.max(Number.parseInt(field(form, "max_items"), 10) || 100, 1), 1000),
+  };
+}
+
+function moveCard(card, direction) {
+  const neighbor = direction === "left"
+    ? db.query("SELECT id, position FROM cards WHERE portfolio_id = ? AND position < ? ORDER BY position DESC LIMIT 1").get(card.portfolio_id, card.position)
+    : db.query("SELECT id, position FROM cards WHERE portfolio_id = ? AND position > ? ORDER BY position LIMIT 1").get(card.portfolio_id, card.position);
+  if (!neighbor) return;
+  const setPosition = db.query("UPDATE cards SET position = ? WHERE id = ?");
+  db.transaction(() => { setPosition.run(neighbor.position, card.id); setPosition.run(card.position, neighbor.id); })();
+}
+
+function cardForm(action, card, submitLabel) {
+  return `<form class="card-form" method="post" action="${action}">
+    <label>Title<input name="title" required value="${escapeHtml(card.title)}"></label>
+    <label>Tags — matches any<input name="tags" value="${escapeHtml(card.tags.join(", "))}" placeholder="yt, slides"></label>
+    <div class="card-types"><span>Types — none checked means every type</span>${ITEM_TYPES.map(type => `<label><input type="checkbox" name="types" value="${type}"${card.types.includes(type) ? " checked" : ""}> ${type}</label>`).join("")}</div>
+    <div class="card-form-row">
+      <label>Sort by<select name="sort_key">${Object.entries(CARD_SORT_LABELS).map(([key, label]) => `<option value="${key}"${card.sort_key === key ? " selected" : ""}>${label}</option>`).join("")}</select></label>
+      <label>Direction<select name="sort_dir"><option value="desc"${card.sort_dir === "desc" ? " selected" : ""}>Descending</option><option value="asc"${card.sort_dir === "asc" ? " selected" : ""}>Ascending</option></select></label>
+      <label>Max items<input name="max_items" inputmode="numeric" value="${card.max_items}"></label>
+    </div>
+    <button class="primary">${submitLabel}</button>
+  </form>`;
+}
+
+function cardSection(card) {
+  const { total, items } = cardItems(card);
+  const rows = items.map(item => {
+    const external = ["link", "pr"].includes(item.type) ? ` target="_blank" rel="noreferrer"` : "";
+    return `<article class="rail-item${item.pinned ? " is-pinned" : ""}${item.starred ? " is-starred" : ""}"><a href="${escapeHtml(itemHref(item))}"${external}>${escapeHtml(item.title)}</a>${item.description ? `<p>${escapeHtml(item.description)}</p>` : ""}<div><span class="kind">${icon(item.type)}</span><time>${escapeHtml(item[card.sort_key === "updated_at" ? "updated_at" : "created_at"].slice(0, 10))}</time>${item.pinned ? `<span>Pinned</span>` : ""}${item.starred ? `<span>Starred</span>` : ""}</div></article>`;
+  }).join("") || `<div class="rail-empty">Nothing matches this card yet.</div>`;
+  const query = [...card.tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`), ...card.types.map(type => `<span class="kind">${icon(type)}</span>`)].join("") || `<span>everything</span>`;
+  return `<section class="rail-section portfolio-card" data-card="${card.id}">
+    <header><h2>${escapeHtml(card.title)}</h2><div class="rail-heading-actions"><span>${total > items.length ? `${items.length} of ${total}` : total}</span></div></header>
+    <div class="card-query">${query}<span class="card-sort">${CARD_SORT_LABELS[card.sort_key]} ${card.sort_dir === "asc" ? "↑" : "↓"}</span></div>
+    <div class="rail-items">${rows}</div>
+    <details class="card-edit"><summary>Edit card</summary>${cardForm(`/cards/${card.id}`, card, "Save card")}
+      <div class="card-actions">
+        <form method="post" action="/cards/${card.id}/move"><button name="direction" value="left" title="Move earlier">←</button><button name="direction" value="right" title="Move later">→</button></form>
+        <form method="post" action="/cards/${card.id}/delete"><button class="danger">Delete card</button></form>
+      </div>
+    </details>
+  </section>`;
+}
+
+function portfoliosPage() {
+  const portfolios = db.query("SELECT portfolios.*, count(cards.id) card_count FROM portfolios LEFT JOIN cards ON cards.portfolio_id = portfolios.id GROUP BY portfolios.id ORDER BY portfolios.name").all();
+  const list = portfolios.map(portfolio => `<a class="portfolio-row" href="/portfolios/${portfolio.id}"><strong>${escapeHtml(portfolio.name)}</strong><span>${escapeHtml(portfolio.description)}</span><em>${portfolio.card_count} ${portfolio.card_count === 1 ? "card" : "cards"}</em></a>`).join("")
+    || `<div class="empty"><strong>No portfolios yet.</strong><span>Name one below, then add cards to it.</span></div>`;
+  return shell("Portfolios", `<section class="page-head"><h1>Portfolios</h1><p>Pages of cards, each card a saved query over your items.</p></section>
+    <div class="portfolio-list">${list}</div>
+    <form class="editor" method="post" action="/portfolios"><label>Name<input name="name" required></label><label>Description<input name="description"></label><button class="primary">Add portfolio</button></form>`, "portfolios");
+}
+
+function portfolioPage(portfolio) {
+  const cards = portfolioCards(portfolio.id);
+  const blank = { title: "", tags: [], types: [], sort_key: "created_at", sort_dir: "desc", max_items: 100 };
+  return shell(portfolio.name, `<div class="library-shell"><section class="page-head"><h1>${escapeHtml(portfolio.name)}</h1><p>${escapeHtml(portfolio.description)}</p></section>
+    <div class="portfolio-grid">${cards.map(cardSection).join("")}
+      <section class="rail-section portfolio-card"><details class="card-edit"${cards.length ? "" : " open"}><summary>+ Add card</summary>${cardForm(`/portfolios/${portfolio.id}/cards`, blank, "Add card")}</details></section>
+    </div>
+    <details class="portfolio-manage"><summary>Manage portfolio</summary>
+      <form class="editor" method="post" action="/portfolios/${portfolio.id}"><label>Name<input name="name" required value="${escapeHtml(portfolio.name)}"></label><label>Description<input name="description" value="${escapeHtml(portfolio.description)}"></label><button class="primary">Save portfolio</button></form>
+      <div class="danger-zone"><form method="post" action="/portfolios/${portfolio.id}/delete" onsubmit="return confirm('Delete this portfolio and its cards? Items are kept.')"><button class="danger">Delete portfolio</button></form></div>
+    </details></div>`, "portfolios");
+}
+
+const PATH_ACTIONS = { copy: "Copy path", reveal: "Reveal in Finder", open: "Open" };
+const PROJECT_SCAN_DEPTH = 4;
+const expandPath = value => value === "~" ? (process.env.HOME ?? "") : value.startsWith("~/") ? join(process.env.HOME ?? "", value.slice(2)) : value;
+const abbreviatePath = path => process.env.HOME && path.startsWith(process.env.HOME + sep) ? `~${path.slice(process.env.HOME.length)}` : path;
+
+// A file or dir item does not have to exist on disk, so this never stats it.
+function normalizeItemPath(value) {
+  const path = expandPath(value);
+  if (!isAbsolute(path)) throw new Error("path must be absolute or start with ~/");
+  return resolve(path);
+}
+
+function listCategories() {
+  return db.query("SELECT categories.*, count(items.id) member_count FROM categories LEFT JOIN items ON items.category_id = categories.id GROUP BY categories.id ORDER BY categories.name").all()
+    .map(category => ({ ...category, slots: JSON.parse(category.slots) }));
+}
+
+// One slot per line: name | file or dir | path
+function parseSlots(value) {
+  const slots = value.split("\n").map(line => line.trim()).filter(Boolean).map(line => {
+    const [name, kind, path] = line.split("|").map(part => part.trim());
+    if (!name || !PATH_TYPES.includes(kind) || !path) throw new Error(`slot "${line}" must read: name | file or dir | path`);
+    return { name, kind, path };
+  });
+  if (new Set(slots.map(slot => slot.name.toLowerCase())).size !== slots.length) throw new Error("slot names must be unique");
+  return slots;
+}
+const formatSlots = slots => slots.map(slot => `${slot.name} | ${slot.kind} | ${slot.path}`).join("\n");
+
+// Slots are never stored per member. A relative slot path hangs off the member's
+// own path; an absolute or ~/ path stands alone; a member can override either.
+function memberSlots(item) {
+  if (!item.category_id) return [];
+  const overrides = JSON.parse(item.slot_paths);
+  return JSON.parse(db.query("SELECT slots FROM categories WHERE id = ?").get(item.category_id).slots).map(slot => {
+    const expanded = expandPath(overrides[slot.name] || slot.path);
+    const path = isAbsolute(expanded) ? resolve(expanded) : item.path ? resolve(item.path, expanded) : null;
+    return { ...slot, path, overridden: Boolean(overrides[slot.name]), exists: Boolean(path) && existsSync(path) };
+  });
+}
+
+// Every file and dir shares these, whether it is an item or a slot. Copying
+// works on a path that does not exist; reveal and open make it first.
+async function runPathAction(action, target) {
+  if (action === "copy") {
+    const pbcopy = Bun.spawn([PBCOPY_BIN], { stdin: "pipe" });
+    pbcopy.stdin.write(target.path);
+    pbcopy.stdin.end();
+    await pbcopy.exited;
+    return;
+  }
+  if (!existsSync(target.path)) {
+    await mkdir(target.kind === "dir" ? target.path : dirname(target.path), { recursive: true });
+    if (target.kind === "file") await writeFile(target.path, "");
+  }
+  await Bun.spawn([OPEN_BIN, ...(action === "reveal" ? ["-R"] : []), target.path]).exited;
+}
+
+function pathRow(item, label, target, slotName = "") {
+  const actions = target.path ? `<form class="path-actions" method="post" action="/items/${item.id}/path-action"><input type="hidden" name="slot" value="${escapeHtml(slotName)}">${Object.entries(PATH_ACTIONS).map(([action, text]) => `<button name="action" value="${action}">${text}</button>`).join("")}</form>` : "";
+  const override = slotName ? `<details class="slot-override"><summary>Change path</summary><form method="post" action="/items/${item.id}/slot-path"><input type="hidden" name="slot" value="${escapeHtml(slotName)}"><input name="path" value="${target.overridden ? escapeHtml(abbreviatePath(target.path)) : ""}" placeholder="Blank uses the category's path" aria-label="Path for ${escapeHtml(slotName)}"><button>Save</button></form></details>` : "";
+  return `<div class="path-row"><div class="path-label"><strong>${escapeHtml(label)}</strong><span class="kind">${icon(target.kind)}</span>${target.exists ? "" : `<span class="path-missing">${target.path ? "not created yet" : "needs an absolute path"}</span>`}</div>
+    <code>${escapeHtml(target.path ? abbreviatePath(target.path) : "")}</code>${actions}${override}</div>`;
+}
+
+function slotsSection(item) {
+  const slots = memberSlots(item);
+  if (!slots.length) return "";
+  return `<section class="manage-tags"><h2>${escapeHtml(db.query("SELECT name FROM categories WHERE id = ?").get(item.category_id).name)} slots</h2><div class="path-list">${slots.map(slot => pathRow(item, slot.name, slot, slot.name)).join("")}</div></section>`;
+}
+
+function pathItemPage(item) {
+  const category = item.category_id ? db.query("SELECT * FROM categories WHERE id = ?").get(item.category_id) : null;
+  const tags = tagsFor(item.id);
+  return shell(item.title, `<section class="detail-head"><a href="${category ? `/categories/${category.id}` : "/"}">${category ? `All ${escapeHtml(category.name)} items` : "Back to library"}</a><h1>${escapeHtml(item.title)}</h1>${item.description ? `<p>${escapeHtml(item.description)}</p>` : ""}
+      ${tags.length ? `<div class="tag-list">${tags.map(tag => `<a class="tag" href="/tags/${tag.id}">${escapeHtml(tag.name)}</a>`).join("")}</div>` : ""}</section>
+    <div class="path-list">${pathRow(item, item.type === "dir" ? "Directory" : "File", { kind: item.type, path: item.path, exists: existsSync(item.path) })}</div>
+    ${slotsSection(item)}
+    <p class="settings-note"><a href="/items/${item.id}/manage">Edit this item</a></p>`, category ? "categories" : "all");
+}
+
+function categoriesPage() {
+  const categories = listCategories();
+  const form = (action, category, label) => `<form class="editor" method="post" action="${action}"><label>Name<input name="name" required value="${escapeHtml(category.name)}"></label>
+    <label>Kind of item<select name="kind">${ITEM_TYPES.map(type => `<option${category.kind === type ? " selected" : ""}>${type}</option>`).join("")}</select></label>
+    <label>Slots — one per line: name | file or dir | path<textarea name="slots" rows="4" placeholder="tasks | file | TASKS.md&#10;logs | dir | ~/Library/Logs/thing">${escapeHtml(formatSlots(category.slots))}</textarea></label><button class="primary">${label}</button></form>`;
+  const list = categories.map(category => `<details><summary><span>${escapeHtml(category.name)} <span class="kind">${icon(category.kind)}</span></span><strong>${category.member_count}</strong></summary><div>
+      <p class="settings-note"><a href="/categories/${category.id}">Show all ${category.member_count} ${escapeHtml(category.name)} items</a></p>${form(`/categories/${category.id}`, category, "Save category")}
+      <div class="danger-zone"><form method="post" action="/categories/${category.id}/delete" onsubmit="return confirm('Delete this category? Its items are kept, without a category.')"><button class="danger">Delete category</button></form></div>
+    </div></details>`).join("") || `<div class="empty"><strong>No categories yet.</strong><span>Define one below.</span></div>`;
+  return shell("Categories", `<section class="page-head"><h1>Categories</h1><p>What every item of a kind has. A slot is a file or dir each member gets, created or not.</p></section>
+    <div class="accordions">${list}</div><section class="manage-tags"><h2>Add a category</h2>${form("/categories", { name: "", kind: "dir", slots: [] }, "Add category")}</section>`, "categories");
+}
+
+function categoryFields(form) {
+  const name = field(form, "name"), kind = field(form, "kind");
+  if (!name) throw new Error("name is required");
+  if (!ITEM_TYPES.includes(kind)) throw new Error("invalid kind");
+  return [name, kind, JSON.stringify(parseSlots(String(form.get("slots") ?? "")))];
+}
+
+// A project is any direct child of a parent dir, or a deeper dir with .git at
+// its top level. The walk stops at a repository, so it never crawls a monorepo.
+async function discoverProjects(parent) {
+  const found = [];
+  async function walk(directory, depth) {
+    let entries;
+    try { entries = await readdir(directory, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith(".") || entry.name === "node_modules") continue;
+      const path = join(directory, entry.name);
+      const repository = existsSync(join(path, ".git"));
+      if (depth === 1 || repository) found.push(path);
+      if (!repository && depth < PROJECT_SCAN_DEPTH) await walk(path, depth + 1);
+    }
+  }
+  await walk(parent, 1);
+  return found;
+}
+
+async function scanProjects() {
+  const parents = db.query("SELECT path FROM project_parents ORDER BY path").all();
+  if (!parents.length) return;
+  db.query("INSERT INTO categories(name, kind, slots) VALUES ('project', 'dir', ?) ON CONFLICT(name) DO NOTHING").run(JSON.stringify([{ name: "tasks", kind: "file", path: "TASKS.md" }]));
+  const category = db.query("SELECT id FROM categories WHERE name = 'project'").get();
+  const tracked = db.query("SELECT 1 FROM items WHERE path = ?");
+  const insert = db.query("INSERT INTO items(type, title, description, path, category_id) VALUES ('dir', ?, ?, ?, ?) RETURNING id");
+  for (const parent of parents) {
+    for (const path of await discoverProjects(parent.path)) {
+      if (tracked.get(path)) continue;
+      setTags(insert.get(basename(path), abbreviatePath(path), path, category.id).id, ["project"]);
+    }
+  }
+}
+
+// Reads what only file, dir, and categorized items carry: { path, categoryId } or { error }.
+function pathAndCategory(type, form, itemId = 0) {
+  let path = null;
+  try { if (PATH_TYPES.includes(type)) path = normalizeItemPath(field(form, "path")); } catch (error) { return { error: error.message }; }
+  if (path && db.query("SELECT 1 FROM items WHERE path = ? AND id != ?").get(path, itemId)) return { error: "another item already tracks that path" };
+  const categoryName = field(form, "category");
+  const category = categoryName ? db.query("SELECT id, kind FROM categories WHERE name = ?").get(categoryName) : null;
+  if (categoryName && !category) return { error: `no category named "${categoryName}"` };
+  if (category && category.kind !== type) return { error: `category "${categoryName}" holds ${category.kind} items` };
+  return { path, categoryId: category?.id ?? null };
+}
+const setPathAndCategory = db.query("UPDATE items SET path = ?, category_id = ? WHERE id = ?");
+
+const categorySelect = selectedId => `<label>Category<select name="category"><option value="">None</option>${listCategories().map(category => `<option value="${escapeHtml(category.name)}"${category.id === selectedId ? " selected" : ""}>${escapeHtml(category.name)} (${category.kind})</option>`).join("")}</select></label>`;
+
 async function createItem(request) {
   const form = await request.formData();
   const upload = form.get("file");
@@ -752,7 +1041,9 @@ async function createItem(request) {
   let content = field(form, "content");
   let sourcePath = field(form, "source_path") || null;
   if (upload instanceof File && upload.size) content = await upload.text();
-  let title = field(form, "title");
+  const extra = pathAndCategory(type, form);
+  if (extra.error) return text(extra.error, 422);
+  let title = field(form, "title") || (extra.path ? basename(extra.path) : "");
   if (!title && content) title = content.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? (upload instanceof File ? upload.name.replace(/\.md$/i, "") : "Untitled");
   if (!title) return text("title is required", 422);
   const toc = field(form, "toc") !== "false" && field(form, "toc") !== "0";
@@ -766,6 +1057,7 @@ async function createItem(request) {
   } else {
     id = upsertItem({ type, title, description: field(form, "description") || field(form, "desc"), content, rendered_html: "", url: field(form, "url") || null, source_path: sourcePath, toc: toc ? 1 : 0 });
   }
+  setPathAndCategory.run(extra.path, extra.categoryId, id);
   const tagNames = field(form, "tags").split(",").map(value => value.trim()).filter(Boolean);
   setTags(id, tagNames);
   return { id, href: itemHref(db.query("SELECT * FROM items WHERE id = ?").get(id)), returnTo: field(form, "return_to") || null };
@@ -1049,18 +1341,22 @@ async function updateItem(item, form) {
   const type = field(form, "type");
   const title = field(form, "title");
   const content = String(form.get("content") ?? "");
-  if (!["document", "note", "link", "pr"].includes(type)) throw new Error("invalid item type");
+  if (!ITEM_TYPES.includes(type)) throw new Error("invalid item type");
   if (!title) throw new Error("title is required");
+  const extra = pathAndCategory(type, form, item.id);
+  if (extra.error) throw new Error(extra.error);
   const toc = form.has("toc");
   const htmlBacked = item.source_path?.toLowerCase().endsWith(".html") && !content;
   const rendered = ["document", "note"].includes(type) && content ? renderMarkdown(content, title, toc, item.source_path) : (htmlBacked ? item.rendered_html : "");
   const nextContent = htmlBacked ? item.content : content;
   db.query(`UPDATE items SET type = ?, title = ?, description = ?, content = ?, rendered_html = ?, url = ?, toc = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
     .run(type, title, field(form, "description"), nextContent, rendered, field(form, "url") || null, toc ? 1 : 0, item.id);
+  setPathAndCategory.run(extra.path, extra.categoryId, item.id);
   if (form.has("sync_source") && item.source_path?.toLowerCase().endsWith(".md")) await Bun.write(item.source_path, content);
 }
 
 await reloadWatchedDirectories();
+scanProjects().catch(error => console.error(error));
 
 const server = Bun.serve({
   hostname: HOST,
@@ -1079,6 +1375,7 @@ const server = Bun.serve({
           description: item.description,
           url: item.url,
           source_path: item.source_path,
+          path: item.path,
           pinned: Boolean(item.pinned),
           starred: Boolean(item.starred),
           created_at: item.created_at,
@@ -1092,7 +1389,7 @@ const server = Bun.serve({
       if (request.method === "GET" && apiItemMatch) {
         const item = db.query("SELECT * FROM items WHERE id = ?").get(Number(apiItemMatch[1]));
         if (!item) return Response.json({ error: "not found" }, { status: 404 });
-        return Response.json({ ...item, href: itemHref(item), tags: tagsFor(item.id).map(tag => tag.name) });
+        return Response.json({ ...item, slot_paths: undefined, href: itemHref(item), tags: tagsFor(item.id).map(tag => tag.name), slots: memberSlots(item) });
       }
       if (request.method === "DELETE" && apiItemMatch) {
         const id = Number(apiItemMatch[1]);
@@ -1145,6 +1442,121 @@ const server = Bun.serve({
         if (!tag) return text("not found", 404);
         return html(libraryPage(url, { tag: tag.id, heading: tag.name, subhead: "Everything collected under this tag.", active: "tags" }));
       }
+      if (request.method === "GET" && url.pathname === "/portfolios") return html(portfoliosPage());
+      if (request.method === "POST" && url.pathname === "/portfolios") {
+        const form = await request.formData();
+        const name = field(form, "name");
+        if (!name) return text("name is required", 422);
+        if (db.query("SELECT 1 FROM portfolios WHERE name = ?").get(name)) return text("a portfolio with that name already exists", 422);
+        const { id } = db.query("INSERT INTO portfolios(name, description) VALUES (?, ?) RETURNING id").get(name, field(form, "description"));
+        return redirect(`/portfolios/${id}`);
+      }
+      const portfolioMatch = url.pathname.match(/^(\/api)?\/portfolios\/(\d+)(?:\/(delete|cards))?$/);
+      if (portfolioMatch) {
+        const [, api, id, action] = portfolioMatch;
+        const portfolio = db.query("SELECT * FROM portfolios WHERE id = ?").get(Number(id));
+        if (!portfolio) return text("not found", 404);
+        if (request.method === "GET" && api && !action) return Response.json({ ...portfolio, cards: portfolioCards(portfolio.id).map(card => ({ ...card, ...cardItems(card) })) });
+        if (request.method === "GET" && !api && !action) return html(portfolioPage(portfolio));
+        if (request.method === "POST" && !api) {
+          if (action === "delete") {
+            db.query("DELETE FROM portfolios WHERE id = ?").run(portfolio.id);
+            return redirect("/portfolios");
+          }
+          const form = await request.formData();
+          if (action === "cards") {
+            const card = cardFields(form);
+            if (!card.title) return text("title is required", 422);
+            db.query("INSERT INTO cards(portfolio_id, title, tags, types, sort_key, sort_dir, max_items, position) VALUES (?, ?, ?, ?, ?, ?, ?, (SELECT coalesce(max(position), 0) + 1 FROM cards WHERE portfolio_id = ?))")
+              .run(portfolio.id, card.title, card.tags, card.types, card.sortKey, card.sortDir, card.maxItems, portfolio.id);
+            return redirect(`/portfolios/${portfolio.id}`);
+          }
+          const name = field(form, "name");
+          if (!name) return text("name is required", 422);
+          if (db.query("SELECT 1 FROM portfolios WHERE name = ? AND id != ?").get(name, portfolio.id)) return text("a portfolio with that name already exists", 422);
+          db.query("UPDATE portfolios SET name = ?, description = ? WHERE id = ?").run(name, field(form, "description"), portfolio.id);
+          return redirect(`/portfolios/${portfolio.id}`);
+        }
+      }
+      const cardMatch = url.pathname.match(/^\/cards\/(\d+)(?:\/(delete|move))?$/);
+      if (request.method === "POST" && cardMatch) {
+        const card = db.query("SELECT * FROM cards WHERE id = ?").get(Number(cardMatch[1]));
+        if (!card) return text("not found", 404);
+        if (cardMatch[2] === "delete") db.query("DELETE FROM cards WHERE id = ?").run(card.id);
+        else if (cardMatch[2] === "move") moveCard(card, field(await request.formData(), "direction"));
+        else {
+          const next = cardFields(await request.formData());
+          if (!next.title) return text("title is required", 422);
+          db.query("UPDATE cards SET title = ?, tags = ?, types = ?, sort_key = ?, sort_dir = ?, max_items = ? WHERE id = ?")
+            .run(next.title, next.tags, next.types, next.sortKey, next.sortDir, next.maxItems, card.id);
+        }
+        return redirect(`/portfolios/${card.portfolio_id}`);
+      }
+      if (request.method === "GET" && url.pathname === "/categories") return html(categoriesPage());
+      if (request.method === "POST" && url.pathname === "/categories") {
+        let name, kind, slots;
+        try { [name, kind, slots] = categoryFields(await request.formData()); } catch (error) { return text(error.message, 422); }
+        if (db.query("SELECT 1 FROM categories WHERE name = ?").get(name)) return text("a category with that name already exists", 422);
+        db.query("INSERT INTO categories(name, kind, slots) VALUES (?, ?, ?)").run(name, kind, slots);
+        return redirect("/categories");
+      }
+      const categoryMatch = url.pathname.match(/^\/categories\/(\d+)(\/delete)?$/);
+      if (categoryMatch) {
+        const category = db.query("SELECT * FROM categories WHERE id = ?").get(Number(categoryMatch[1]));
+        if (!category) return text("not found", 404);
+        if (request.method === "GET" && !categoryMatch[2]) return html(libraryPage(url, { category: category.id, heading: category.name, subhead: `Every ${category.kind} item in this category.`, active: "categories" }));
+        if (request.method === "POST" && categoryMatch[2]) {
+          db.query("DELETE FROM categories WHERE id = ?").run(category.id);
+          return redirect("/categories");
+        }
+        if (request.method === "POST") {
+          let name, kind, slots;
+          try { [name, kind, slots] = categoryFields(await request.formData()); } catch (error) { return text(error.message, 422); }
+          if (db.query("SELECT 1 FROM categories WHERE name = ? AND id != ?").get(name, category.id)) return text("a category with that name already exists", 422);
+          if (kind !== category.kind && db.query("SELECT 1 FROM items WHERE category_id = ? LIMIT 1").get(category.id)) return text(`this category still has ${category.kind} items, so its kind cannot change`, 422);
+          db.query("UPDATE categories SET name = ?, kind = ?, slots = ? WHERE id = ?").run(name, kind, slots, category.id);
+          return redirect("/categories");
+        }
+      }
+      const pathActionMatch = url.pathname.match(/^\/items\/(\d+)\/(path-action|slot-path)$/);
+      if (request.method === "POST" && pathActionMatch) {
+        const item = db.query("SELECT * FROM items WHERE id = ?").get(Number(pathActionMatch[1]));
+        if (!item) return text("not found", 404);
+        const form = await request.formData();
+        const slotName = field(form, "slot");
+        const slot = slotName ? memberSlots(item).find(candidate => candidate.name === slotName) : null;
+        if (slotName && !slot) return text("no such slot", 404);
+        if (pathActionMatch[2] === "slot-path") {
+          if (!slot) return text("slot is required", 422);
+          const overrides = JSON.parse(item.slot_paths);
+          if (field(form, "path")) overrides[slot.name] = field(form, "path"); else delete overrides[slot.name];
+          db.query("UPDATE items SET slot_paths = ? WHERE id = ?").run(JSON.stringify(overrides), item.id);
+        } else {
+          const target = slot ?? (PATH_TYPES.includes(item.type) ? { kind: item.type, path: item.path } : null);
+          if (!target?.path) return text("nothing to act on", 422);
+          if (!Object.hasOwn(PATH_ACTIONS, field(form, "action"))) return text("invalid action", 422);
+          await runPathAction(field(form, "action"), target);
+        }
+        return redirect(request.headers.get("referer") || `/items/${item.id}`);
+      }
+      if (request.method === "POST" && url.pathname === "/settings/project-parents") {
+        try {
+          db.query("INSERT OR IGNORE INTO project_parents(path) VALUES (?)").run(await normalizeWatchedPath(field(await request.formData(), "path")));
+        } catch (error) {
+          return settingsPage(error.message, 422);
+        }
+        await scanProjects();
+        return redirect("/settings");
+      }
+      if (request.method === "POST" && url.pathname === "/settings/project-parents/scan") {
+        await scanProjects();
+        return redirect("/settings");
+      }
+      const projectParentMatch = url.pathname.match(/^\/settings\/project-parents\/(\d+)\/delete$/);
+      if (request.method === "POST" && projectParentMatch) {
+        db.query("DELETE FROM project_parents WHERE id = ?").run(Number(projectParentMatch[1]));
+        return redirect("/settings");
+      }
       if (request.method === "GET" && url.pathname === "/ports") return portsPage();
       if (request.method === "GET" && url.pathname === "/ports/tree") return portsTreePage(url);
       if (request.method === "GET" && url.pathname === "/api/ports") return Response.json(getPortsSnapshot());
@@ -1196,7 +1608,7 @@ const server = Bun.serve({
         return redirect("/settings");
       }
       if (request.method === "GET" && url.pathname === "/new") {
-        return html(shell("Add an item", `<section class="page-head"><h1>Add an item</h1><p>Documents and notes use Markdown. Links and PRs point outward.</p></section><form class="editor" method="post" action="/items"><label>Type<select name="type"><option value="note">Note</option><option value="document">Document</option><option value="link">Link</option><option value="pr">PR</option></select></label><label>Title<input name="title" required></label><label>Description<input name="description"></label><label>URL<input name="url" type="url" placeholder="https://"></label><label>Tags<input name="tags" placeholder="architecture, portfolio-name"></label><label>Markdown<textarea name="content" rows="16"></textarea></label><button class="primary">Save item</button></form>`, "new"));
+        return html(shell("Add an item", `<section class="page-head"><h1>Add an item</h1><p>Documents and notes use Markdown. Links and PRs point outward. Files and dirs point at your disk.</p></section><form class="editor" method="post" action="/items"><label>Type<select name="type"><option value="note">Note</option><option value="document">Document</option><option value="link">Link</option><option value="pr">PR</option><option value="file">File</option><option value="dir">Dir</option></select></label><label>Title<input name="title" placeholder="Files and dirs default to their name"></label><label>Description<input name="description"></label><label>URL<input name="url" type="url" placeholder="https://"></label><label>Path — file and dir items<input name="path" placeholder="~/proj/thing"></label>${categorySelect(null)}<label>Tags<input name="tags" placeholder="architecture, portfolio-name"></label><label>Markdown<textarea name="content" rows="16"></textarea></label><button class="primary">Save item</button></form>`, "new"));
       }
       const manageMatch = url.pathname.match(/^\/items\/(\d+)\/manage$/);
       if (request.method === "GET" && manageMatch) {
@@ -1205,7 +1617,8 @@ const server = Bun.serve({
         const tags = tagsFor(item.id);
         const source = item.source_path ? `<div class="source-file"><strong>Tracked source</strong><code>${escapeHtml(item.source_path)}</code></div>` : `<div class="source-file"><strong>Tracked source</strong><span>No source file</span></div>`;
         const body = `<section class="detail-head"><a href="${escapeHtml(itemHref(item))}">Open item</a><h1>Edit item</h1>${source}</section>
-          <form class="editor" method="post" action="/items/${item.id}/manage"><label>Type<select name="type">${["document", "note", "link", "pr"].map(type => `<option value="${type}"${item.type === type ? " selected" : ""}>${type}</option>`).join("")}</select></label><label>Title<input name="title" value="${escapeHtml(item.title)}" required></label><label>Description<input name="description" value="${escapeHtml(item.description)}"></label><label>URL<input name="url" type="url" value="${escapeHtml(item.url || "")}"></label><label>Markdown<textarea name="content" rows="18">${escapeHtml(item.content)}</textarea></label><label class="check"><input type="checkbox" name="toc"${item.toc ? " checked" : ""}> Include table of contents</label>${item.source_path?.toLowerCase().endsWith(".md") ? `<label class="check"><input type="checkbox" name="sync_source" checked> Write Markdown changes to tracked source file</label>` : ""}<button class="primary">Save changes</button></form>
+          <form class="editor" method="post" action="/items/${item.id}/manage"><label>Type<select name="type">${ITEM_TYPES.map(type => `<option value="${type}"${item.type === type ? " selected" : ""}>${type}</option>`).join("")}</select></label><label>Title<input name="title" value="${escapeHtml(item.title)}" required></label><label>Description<input name="description" value="${escapeHtml(item.description)}"></label><label>URL<input name="url" type="url" value="${escapeHtml(item.url || "")}"></label><label>Path — file and dir items<input name="path" value="${escapeHtml(item.path ? abbreviatePath(item.path) : "")}" placeholder="~/proj/thing"></label>${categorySelect(item.category_id)}<label>Markdown<textarea name="content" rows="18">${escapeHtml(item.content)}</textarea></label><label class="check"><input type="checkbox" name="toc"${item.toc ? " checked" : ""}> Include table of contents</label>${item.source_path?.toLowerCase().endsWith(".md") ? `<label class="check"><input type="checkbox" name="sync_source" checked> Write Markdown changes to tracked source file</label>` : ""}<button class="primary">Save changes</button></form>
+          ${PATH_TYPES.includes(item.type) ? "" : slotsSection(item)}
           <section class="manage-tags"><h2>Tags</h2><div class="tag-list">${tags.map(tag => `<form method="post" action="/items/${item.id}/tags/remove"><input type="hidden" name="tag_id" value="${tag.id}"><button class="tag" title="Remove ${escapeHtml(tag.name)}">${escapeHtml(tag.name)} ×</button></form>`).join("")}</div><form class="tag-editor" method="post" action="/items/${item.id}/tags"><label>Add tags<input name="tags" placeholder="comma, separated"></label><button>Add</button></form></section>
           <section class="danger-zone"><h2>Delete</h2><form method="post" action="/items/${item.id}/delete"><button name="delete_files" value="0">Remove from database</button>${item.source_path ? `<button class="danger" name="delete_files" value="1" onclick="return confirm('Permanently delete the tracked source file too?')">Remove and delete source file</button>` : ""}</form></section>`;
         return html(shell(`Edit ${item.title}`, body));
@@ -1228,6 +1641,7 @@ const server = Bun.serve({
       if (request.method === "GET" && itemMatch) {
         const item = db.query("SELECT * FROM items WHERE id = ?").get(Number(itemMatch[1]));
         if (!item) return text("not found", 404);
+        if (PATH_TYPES.includes(item.type)) return html(pathItemPage(item));
         if (!item.rendered_html && item.content) {
           item.rendered_html = renderMarkdown(item.content, item.title, Boolean(item.toc), item.source_path);
           db.query("UPDATE items SET rendered_html = ? WHERE id = ?").run(item.rendered_html, item.id);
