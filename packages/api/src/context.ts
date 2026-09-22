@@ -1,4 +1,5 @@
 import type { Store } from "@portfolio/db";
+import type { PrPoller } from "@portfolio/github";
 import type { PortsSnapshot } from "@portfolio/ports";
 import { scanPorts as scanPortsDefault } from "@portfolio/ports";
 import type { RenderOptions } from "@portfolio/render";
@@ -15,6 +16,8 @@ export interface ApiOptions {
   watcher?: DirectoryWatcher;
   /** Overrides the ports scanner, mainly for tests. Defaults to @portfolio/ports' scanPorts(). */
   scanPorts?: () => PortsSnapshot;
+  /** When set, the /api/prs routes poll GitHub through it. Unset: empty lists, status.polling/gh_ok false. */
+  prPoller?: PrPoller;
 }
 
 export interface Ctx {
@@ -25,6 +28,7 @@ export interface Ctx {
   ports: { snapshot: PortsSnapshot | null; at: number; ttlMs: number };
   watcher?: DirectoryWatcher;
   scanPorts: () => PortsSnapshot;
+  prPoller?: PrPoller;
 }
 
 export function createContext(store: Store, options: ApiOptions = {}): Ctx {
@@ -36,6 +40,7 @@ export function createContext(store: Store, options: ApiOptions = {}): Ctx {
     ports: { snapshot: null, at: 0, ttlMs: options.portsTtlMs ?? 10_000 },
     watcher: options.watcher,
     scanPorts: options.scanPorts ?? scanPortsDefault,
+    prPoller: options.prPoller,
   };
 }
 

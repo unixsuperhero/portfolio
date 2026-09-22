@@ -15,6 +15,7 @@ import {
   listPortfoliosRoute, moveCardRoute, patchPortfolioRoute, updateCardRoute,
 } from "./portfolios.ts";
 import { getPortsRoute, killPortRoute } from "./ports.ts";
+import { listPrEventsRoute, listPrsRoute, markPrEventsSeenRoute, patchPrRoute, refreshPrsRoute, watchPrRoute } from "./prs.ts";
 import {
   addProjectParentRoute, getProjectRoute, listProjectParentsRoute, listProjectsRoute, removeProjectParentRoute,
   scanProjectsRoute,
@@ -75,6 +76,13 @@ const ROUTES: [string, string, (ctx: ReturnType<typeof createContext>, request: 
 
   ["GET", "/api/ports", getPortsRoute],
   ["POST", "/api/ports/kill", killPortRoute],
+
+  ["GET", "/api/prs", listPrsRoute],
+  ["POST", "/api/prs/refresh", refreshPrsRoute],
+  ["POST", "/api/prs/watch", watchPrRoute],
+  ["PATCH", "/api/prs/:id", patchPrRoute],
+  ["GET", "/api/prs/events", listPrEventsRoute],
+  ["POST", "/api/prs/events/seen", markPrEventsSeenRoute],
 
   ["GET", "/api/projects", listProjectsRoute],
   ["GET", "/api/projects/:id", getProjectRoute],

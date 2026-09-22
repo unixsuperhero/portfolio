@@ -177,6 +177,21 @@ export function createPrPoller(options: PollerOptions) {
       await tick();
       return this.status();
     },
+    /** Fetches and stores exactly one PR (one GraphQL request), e.g. when watching a URL not already tracked. */
+    async fetchOne(ref: PrRef): Promise<Pr> {
+      const fetchedAt = now().toISOString();
+      const globalIgnored = db.settings.getGithubIgnoredChecks();
+      const data = (await gh.graphql(watchedQuery([ref]))) as WatchedResponse;
+      const [node] = watchedNodes(data);
+      if (!node) throw new Error("PR not found");
+      const previous = db.github.findPrByUrl(node.url);
+      const parsed = finalize(parsePrNode(node, { ignored_checks: previous?.ignored_checks ?? [], watched: previous?.watched ?? false, item_id: previous?.item_id ?? null, lists: previous?.lists ?? [] }, fetchedAt), globalIgnored);
+      const id = db.github.upsertPr(parsed);
+      const next: Pr = { ...parsed, id };
+      db.github.insertEvents(diffPr(previous, next, globalIgnored, fetchedAt));
+      if (data.rateLimit) state.rate = { remaining: data.rateLimit.remaining, reset_at: data.rateLimit.resetAt };
+      return next;
+    },
   };
 }
 

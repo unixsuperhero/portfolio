@@ -12,6 +12,7 @@
     "@portfolio/db": "workspace:*",
     "@portfolio/render": "workspace:*",
     "@portfolio/watch": "workspace:*",
-    "@portfolio/ports": "workspace:*"
+    "@portfolio/ports": "workspace:*",
+    "@portfolio/github": "workspace:*"
   }
 }

@@ -1,4 +1,5 @@
 import { openStore } from "@portfolio/db";
+import { createPrPoller, ghAuth, ghGraphql } from "@portfolio/github";
 import { renderMarkdown } from "@portfolio/render";
 import { DirectoryWatcher } from "@portfolio/watch";
 import { createApi } from "./index.ts";
@@ -16,10 +17,18 @@ const store = openStore();
 const watcher = new DirectoryWatcher(store.db, (markdown, options) => renderMarkdown(markdown, options));
 await watcher.reload();
 
+const auth = await ghAuth();
+const prPoller = auth.ok
+  ? createPrPoller({ db: store, gh: { graphql: query => ghGraphql(query) }, log: message => console.log(`prs: ${message}`), login: auth.login, ghOk: true })
+  : undefined;
+if (prPoller) prPoller.start();
+else console.log("prs: gh auth failed, PR polling disabled");
+
 const api = createApi(store, {
   render: async (markdown, options) => renderMarkdown(markdown, options),
   log: message => console.log(message),
   watcher,
+  prPoller,
 });
 
 const server = Bun.serve({
@@ -35,5 +44,5 @@ const server = Bun.serve({
 
 console.log(`@portfolio/api listening on http://${server.hostname}:${server.port}`);
 
-process.on("SIGTERM", () => { watcher.close(); store.close(); process.exit(0); });
-process.on("SIGINT", () => { watcher.close(); store.close(); process.exit(0); });
+process.on("SIGTERM", () => { prPoller?.stop(); watcher.close(); store.close(); process.exit(0); });
+process.on("SIGINT", () => { prPoller?.stop(); watcher.close(); store.close(); process.exit(0); });
