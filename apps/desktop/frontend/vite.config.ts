@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import { writeFileSync } from "node:fs";
 import react from "@vitejs/plugin-react";
 import wails from "@wailsio/runtime/plugins/vite";
 
@@ -11,3 +12,9 @@ export default defineConfig({
   },
   plugins: [react(), wails("./bindings")],
 });
+
+// vite empties dist on every build; Go embeds all:frontend/dist and needs at least one
+// file there before the first build, so the placeholder is written back afterwards.
+function keepDist() {
+  return { name: "keep-dist", closeBundle() { writeFileSync("dist/.gitkeep", "# keeps the embed target present before the first frontend build\n"); } };
+}
