@@ -7,7 +7,8 @@ export class PortfolioApiError extends Error {
   constructor(public status: number, message: string, public body?: unknown) { super(message); }
 }
 
-export interface ClientOptions { fetch?: typeof fetch; headers?: Record<string, string> }
+export type Fetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+export interface ClientOptions { fetch?: Fetcher; headers?: Record<string, string> }
 
 export type PortfolioCardView = Card & CardResult;
 export type PortfolioView = Portfolio & { cards: PortfolioCardView[] };
@@ -30,7 +31,7 @@ export const desktopServer = (): string => `http://127.0.0.1:${API_PORT}`;
 
 export class PortfolioClient {
   readonly base: string;
-  private fetcher: typeof fetch;
+  private fetcher: Fetcher;
   private headers: Record<string, string>;
 
   constructor(base: string = defaultServer(), options: ClientOptions = {}) {
