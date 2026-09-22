@@ -13,7 +13,7 @@ const store = openStore(":memory:");             // tests
 
 | Function | Notes |
 |----------|-------|
-| `openDatabase(path?, { schema, create, readonly, migrate, log })` | applies the schema; rebuilds the `items` table for pre file/dir databases (backup at `<db>.before-kinds`); adds `cards.kind`/`cards.config` to a pre-kind database via `migrateCardColumns` |
+| `openDatabase(path?, { schema, create, readonly, migrate, log })` | applies the schema; rebuilds the `items` table for pre file/dir databases (backup at `<db>.before-kinds`); adds `cards.kind`/`cards.config` to a pre-kind database via `migrateCardColumns`; adds `reminders.days` to a pre-weekday database via `migrateReminderColumns` |
 | `defaultDatabasePath()` | `PORTFOLIO_DB`, else `<PORTFOLIO_HOME or ~/proj/portfolio>/portfolio.sqlite` |
 | `openStore(path?, options?)` | `{ db, items, tags, portfolios, categories, settings, watched, projects, tasks, close }` with every function pre-bound |
 | `SCHEMA_PATH`, `readSchema()` | the packaged schema |
@@ -46,7 +46,7 @@ const store = openStore(":memory:");             // tests
 
 `projects.ts`: `listProjectParents` (with counts), `addProjectParent`, `removeProjectParent`.
 
-`tasks.ts`: `listTasks(db, { all? })` (active only unless `all`), `getTask`, `createTask(db, TaskInput)`, `updateTask(db, id, patch)` (title, notes, recurrence, item_id, active, reminders), `deleteTask`, `setReminders(db, taskId, ats)` (replaces a task's reminders; validates `"HH:MM"` for daily, `"YYYY-MM-DDTHH:MM"` for once), `completeTask`/`uncompleteTask(db, id, on = today)`, `listCompletions`, `taskView(db, task, today?)` → `TaskView` with `completed_today`, `last_completed`, and a daily `streak` (consecutive days ending today or yesterday), `listTaskViews`, `dueReminders(db, { now?, minutes = 60 })` (excludes anything already completed), `todayTasks(db, today?)` (daily tasks plus once tasks due today).
+`tasks.ts`: `listTasks(db, { all? })` (active only unless `all`), `getTask`, `createTask(db, TaskInput)`, `updateTask(db, id, patch)` (title, notes, recurrence, item_id, active, reminders), `deleteTask`, `setReminders(db, taskId, reminders)` (replaces a task's reminders; each entry is `"HH:MM"`/`"YYYY-MM-DDTHH:MM"` or `{ at, days? }`; validates the `at` format per recurrence and `days` as integers 0-6, de-duplicated and sorted; rejects `days` on once-tasks), `completeTask`/`uncompleteTask(db, id, on = today)`, `listCompletions`, `taskView(db, task, today?)` → `TaskView` with `completed_today`, `last_completed`, and a daily `streak` (consecutive days ending today or yesterday), `listTaskViews`, `dueReminders(db, { now?, minutes = 60 })` (excludes anything already completed, and a daily reminder whose non-empty `days` excludes `now`'s local weekday), `todayTasks(db, today?)` (daily tasks with no reminders or at least one reminder firing on `today`'s weekday, plus once tasks due today).
 
 ## Example
 

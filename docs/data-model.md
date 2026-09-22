@@ -232,24 +232,26 @@ A task is a to-do with zero or more reminders. `recurrence: "daily"` repeats eve
 
 ```js
 const task = { id: 1, title: "Stretch", notes: "", recurrence: "daily", item_id: null, active: 1, created_at: "…" };
-const reminder = { id: 1, task_id: 1, at: "08:30" };                 // daily: "HH:MM" local
-// a "once" task's reminder instead reads "YYYY-MM-DDTHH:MM" local, e.g. "2026-09-22T08:30"
+const reminder = { id: 1, task_id: 1, at: "08:30", days: "[1,3,5]" };  // daily: "HH:MM" local; days is a JSON array of weekdays, "[]" = every day
+// a "once" task's reminder instead reads "YYYY-MM-DDTHH:MM" local, e.g. "2026-09-22T08:30", and never sets days
 const completion = { id: 1, task_id: 1, on: "2026-09-22", at: "2026-09-22 08:41:00" };  // one row per (task, day)
 ```
+
+`TaskInput.reminders` accepts either a plain `"HH:MM"`/`"YYYY-MM-DDTHH:MM"` string or `{ at, days? }`, where `days` is `number[]` (0 = Sunday … 6 = Saturday), validated to integers 0-6, de-duplicated and sorted. Once-tasks reject `days` with an error. Omitted or `[]` fires every day.
 
 The JSON API and the React components use `TaskView`, which folds in the reminders and computed completion state:
 
 ```js
 const view = {
   id: 1, title: "Stretch", notes: "", recurrence: "daily", item_id: null, active: true, created_at: "…",
-  reminders: [{ id: 1, at: "08:30" }],
+  reminders: [{ id: 1, at: "08:30", days: [1, 3, 5] }],   // days: number[], [] = every day
   completed_today: true,     // daily: a completion for today; once: any completion at all
   last_completed: "2026-09-22",   // or null
   streak: 4,                 // daily only: consecutive days ending today or yesterday
 };
 ```
 
-`dueReminders(db, { now?, minutes = 60 })` returns `{ task: TaskView, reminder, due_at }` for every reminder within `minutes` of `now` that isn't already completed — a daily reminder's `due_at` is today's date plus its `"HH:MM"`; a once reminder's `due_at` is its own datetime. `todayTasks(db, today?)` returns every daily task plus any once task with a reminder dated today.
+`dueReminders(db, { now?, minutes = 60 })` returns `{ task: TaskView, reminder, due_at }` for every reminder within `minutes` of `now` that isn't already completed — a daily reminder's `due_at` is today's date plus its `"HH:MM"`; a once reminder's `due_at` is its own datetime. A daily reminder with a non-empty `days` is skipped unless today's local weekday (from `now`) is in the list. `todayTasks(db, today?)` returns every daily task that has no reminders or has at least one reminder firing on `today`'s weekday, plus any once task with a reminder dated today.
 
 ## Project view
 
