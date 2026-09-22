@@ -275,3 +275,65 @@ classes styled in `terminal.css`. `GhosttyTerminal.tsx` mounts a `GhosttyTermina
 `onData` → `PtyService.Write`, `onResize` → `PtyService.Resize`, and `pty:data` events → `surface.write`
 through a per-tab `TextDecoder("utf-8", { stream: true })` after base64 decoding. Theme colours come
 from the CSS tokens (`--bg`, `--text`, `--accent`) read once at mount, with a 16-colour ANSI palette.
+
+## Pull requests (added 2026-09-22)
+
+A top-level "PRs" page and a `prs` card kind. GitHub is reached ONLY through the `gh` CLI
+(`gh api graphql`), from the API sidecar, never from the frontend or Go.
+
+```js
+// packages/github: pure parsing + diffing, and one runner that shells out to gh.
+const pr = {
+  id: 7,                                  // row id in github_prs
+  url: "https://github.com/acme/app/pull/12", owner: "acme", repo: "app", number: 12,
+  title: "Add widgets", author: "jearsh", is_draft: false,
+  state: "open" | "closed" | "merged",
+  review_decision: "approved" | "changes_requested" | "review_required" | null,
+  updated_at: "2026-09-22T14:00:00Z",
+  comments: 4,                            // issue comments + review comments + reviews
+  checks: [{ name: "ci/test", status: "success" | "failure" | "pending" | "skipped" | "cancelled" | "neutral", url: "…", ignored: false }],
+  checks_summary: "success" | "failure" | "pending" | "none",   // over NON-ignored checks only
+  watched: true, ignored_checks: ["codecov/patch"],             // per PR; settings.github_ignored_checks is global (glob patterns like "codecov/*")
+  lists: ["mine", "review_requested"],    // which search lists it currently appears in ([] for watched-only)
+  item_id: 42 | null,                     // the library `pr` item, created when watched
+  fetched_at: "2026-09-22T14:02:00Z",
+};
+const prEvent = { id: 1, pr_id: 7, kind: "state" | "comments" | "checks" | "review", message: "acme/app#12 merged", at: "…", seen: false };
+const prStatus = { last_poll_at, next_poll_at, rate: { remaining, reset_at } | null, polling: true, error: null | string, gh_ok: true, login: "jearsh" };
+```
+
+Schema: `github_prs` (id, url UNIQUE, owner, repo, number, title, author, is_draft, state, review_decision, updated_at,
+comments, checks JSON, lists JSON, watched 0/1, ignored_checks JSON, item_id nullable FK, fetched_at) and
+`github_pr_events` (id, pr_id FK cascade, kind, message, at, seen 0/1). Settings keys: `github_ignored_checks` (JSON array),
+`github_poll_minutes` (default 2).
+
+Polling (in `packages/api/src/server.ts`, started only when `gh auth status` succeeds):
+- One GraphQL request refreshes both search lists: `search(query:"is:pr is:open author:@me")` and
+  `search(query:"is:pr is:open review-requested:@me")` as two aliases, first 50 each, plus `rateLimit { remaining resetAt }`.
+- One GraphQL request refreshes every watched PR not already in those results: `repository(owner,name){ pullRequest(number) }`
+  aliases, batched (≤ 25 per request).
+- Cadence: every `github_poll_minutes` (2) when at least one PR is watched, else every 10 minutes; also on
+  `POST /api/prs/refresh` (rate-limited to once per 30s). Never more than 2 requests per cycle. If `rateLimit.remaining < 200`
+  skip cycles until `resetAt`. On error: exponential backoff up to 15 minutes, error surfaced in `prStatus`.
+- Diffing (pure, tested): compare the stored row to the new one and append events for: state change, review_decision change,
+  comments increase (message says how many new), and checks_summary change computed over non-ignored checks (global + per PR).
+
+Routes:
+```text
+GET    /api/prs                        → { mine: Pr[], review_requested: Pr[], watched: Pr[], status: PrStatus }
+POST   /api/prs/refresh                → same as GET after a forced poll (429 { error } when called within 30s)
+POST   /api/prs/watch { url, watched }  → Pr        (creates the github_prs row from a URL if unknown, fetches it once; creates/links a library `pr` item when watched)
+PATCH  /api/prs/:id { ignored_checks }  → Pr
+GET    /api/prs/events?since=<id>      → { events: PrEvent[] }   (unseen and newer than since)
+POST   /api/prs/events/seen { ids }    → { ok }
+GET/PATCH /api/settings                 gain github_ignored_checks: string[] and github_poll_minutes: number
+```
+
+Frontend: sidebar entry "PRs" → `/prs` page with three portfolio-style cards (same `DashboardCard` chrome as the portfolio page):
+"Mine", "Review requested", "Watched". A PR row: state badge, `owner/repo#n`, title, review decision, checks pill
+(✓ / ✗ / ● with counts, hover lists checks; ignored ones shown struck through), comment count, "Watch"/"Unwatch" toggle,
+"Ignore checks…" opens a small editor (per-PR list + link to global list in Settings). Links carry `data-url` so the
+context menu and in-app browser work. `prs` card kind: `config: { list: "mine" | "review_requested" | "watched" }` renders the
+same rows inside a portfolio. Notifications: the existing 60s reminder poll gains `GET /api/prs/events` (own state only):
+each new event → in-app toast + `native.notify` + a short WebAudio ping (`src/lib/sound.ts`, no audio asset), then
+`POST /api/prs/events/seen`. Settings page: global ignored checks (one per line) and poll minutes.
