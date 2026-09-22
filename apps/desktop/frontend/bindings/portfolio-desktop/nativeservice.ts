@@ -8,7 +8,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 /**
  * CopyText copies text to the system clipboard, via the Wails clipboard API
@@ -51,6 +51,23 @@ export function OpenUrl(url: string): $CancellablePromise<void> {
  */
 export function OpenWith(path: string, app: string): $CancellablePromise<void> {
     return $Call.ByID(25271730, path, app);
+}
+
+/**
+ * PickDirectory shows a native directory picker. start "" defaults to
+ * $HOME; title "" defaults to "Choose a directory". Cancel returns "" and a
+ * nil error.
+ */
+export function PickDirectory(title: string, start: string): $CancellablePromise<string> {
+    return $Call.ByID(1129700750, title, start);
+}
+
+/**
+ * PickFile shows a native file picker. start "" defaults to $HOME; title ""
+ * defaults to "Choose a file". Cancel returns "" and a nil error.
+ */
+export function PickFile(title: string, start: string): $CancellablePromise<string> {
+    return $Call.ByID(1673420489, title, start);
 }
 
 /**

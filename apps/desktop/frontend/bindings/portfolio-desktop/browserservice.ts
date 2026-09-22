@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -25,8 +25,10 @@ export function Close(name: string): $CancellablePromise<void> {
 /**
  * List returns every currently tracked in-app browser window.
  */
-export function List(): $CancellablePromise<$models.BrowserWindow[] | null> {
-    return $Call.ByID(946478789);
+export function List(): $CancellablePromise<$models.BrowserWindow[]> {
+    return $Call.ByID(946478789).then(($result: any) => {
+        return $$createType1($result);
+    });
 }
 
 /**
@@ -36,3 +38,7 @@ export function List(): $CancellablePromise<$models.BrowserWindow[] | null> {
 export function Open(rawURL: string): $CancellablePromise<string> {
     return $Call.ByID(1368667045, rawURL);
 }
+
+// Private type creation functions
+const $$createType0 = $models.BrowserWindow.createFrom;
+const $$createType1 = $Create.Array($$createType0);

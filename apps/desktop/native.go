@@ -75,6 +75,54 @@ func (n *NativeService) Home() string {
 	return os.Getenv("HOME")
 }
 
+// PickDirectory shows a native directory picker. start "" defaults to
+// $HOME; title "" defaults to "Choose a directory". Cancel returns "" and a
+// nil error.
+func (n *NativeService) PickDirectory(title string, start string) (string, error) {
+	if title == "" {
+		title = "Choose a directory"
+	}
+	if start == "" {
+		start = os.Getenv("HOME")
+	}
+
+	app := application.Get()
+	if app == nil {
+		return "", fmt.Errorf("native: application not initialized")
+	}
+
+	return app.Dialog.OpenFile().
+		SetTitle(title).
+		SetDirectory(start).
+		CanChooseDirectories(true).
+		CanChooseFiles(false).
+		CanCreateDirectories(true).
+		PromptForSingleSelection()
+}
+
+// PickFile shows a native file picker. start "" defaults to $HOME; title ""
+// defaults to "Choose a file". Cancel returns "" and a nil error.
+func (n *NativeService) PickFile(title string, start string) (string, error) {
+	if title == "" {
+		title = "Choose a file"
+	}
+	if start == "" {
+		start = os.Getenv("HOME")
+	}
+
+	app := application.Get()
+	if app == nil {
+		return "", fmt.Errorf("native: application not initialized")
+	}
+
+	return app.Dialog.OpenFile().
+		SetTitle(title).
+		SetDirectory(start).
+		CanChooseFiles(true).
+		CanChooseDirectories(false).
+		PromptForSingleSelection()
+}
+
 // osascriptQuote produces an AppleScript string literal for s, escaping
 // backslashes and double quotes.
 func osascriptQuote(s string) string {

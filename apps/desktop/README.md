@@ -31,7 +31,7 @@ Four Go services are registered in `main.go` and bound to the frontend at
 - **BrowserService** (`browserservice.ts`) — `Open`, `List`, `Close` for the in-app
   browser windows opened from the context menu.
 - **NativeService** (`nativeservice.ts`) — `Reveal`, `OpenPath`, `OpenWith`, `OpenUrl`,
-  `CopyText`, `Notify`, `Home` for native macOS integrations.
+  `CopyText`, `Notify`, `Home`, `PickDirectory`, `PickFile` for native macOS integrations.
 
 Two typed custom events are emitted and available from `frontend/bindings/.../models.ts`:
 
