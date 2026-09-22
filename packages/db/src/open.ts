@@ -41,12 +41,21 @@ export function migrateItemKinds(db: Database, path: string, schema: string, log
   return true;
 }
 
+/** Adds the kind and config columns to an older cards table. A table that does not exist yet is left for `schema` to create with them already. */
+export function migrateCardColumns(db: Database): void {
+  const columns = db.query<{ name: string }, []>("PRAGMA table_info(cards)").all().map(column => column.name);
+  if (!columns.length) return;
+  if (!columns.includes("kind")) db.exec("ALTER TABLE cards ADD COLUMN kind TEXT NOT NULL DEFAULT 'query'");
+  if (!columns.includes("config")) db.exec("ALTER TABLE cards ADD COLUMN config TEXT NOT NULL DEFAULT '{}'");
+}
+
 /** Opens (and creates) a Portfolio database and applies the schema. ":memory:" works for tests. */
 export function openDatabase(path: string = defaultDatabasePath(), options: OpenOptions = {}): Database {
   const db = options.readonly ? new Database(path, { readonly: true }) : new Database(path, { create: options.create ?? true, readwrite: true });
   if (options.readonly) return db;
   const schema = options.schema ?? readSchema();
   if (options.migrate ?? true) migrateItemKinds(db, path, schema, options.log);
+  migrateCardColumns(db);
   db.exec(schema);
   return db;
 }

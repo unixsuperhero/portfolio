@@ -7,6 +7,7 @@ import * as categories from "./categories.ts";
 import * as settings from "./settings.ts";
 import * as watched from "./watched.ts";
 import * as projects from "./projects.ts";
+import * as tasks from "./tasks.ts";
 
 type Bound<T> = { [K in keyof T]: T[K] extends (db: Database, ...rest: infer A) => infer R ? (...rest: A) => R : never };
 
@@ -29,6 +30,7 @@ export function openStore(path?: string, options?: OpenOptions) {
     settings: bind(db, settings),
     watched: bind(db, watched),
     projects: bind(db, projects),
+    tasks: bind(db, tasks),
     close: () => db.close(),
   };
 }

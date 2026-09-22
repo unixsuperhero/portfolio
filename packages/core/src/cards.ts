@@ -1,4 +1,4 @@
-import { CARD_MAX_ITEMS, ITEM_TYPES, isCardSortKey, isItemType } from "./constants.ts";
+import { CARD_MAX_ITEMS, ITEM_TYPES, isCardKind, isCardSortKey, isItemType } from "./constants.ts";
 import { parseTags } from "./text.ts";
 import type { CardSortKey, CardSpec, ItemType, ItemView, SortDir } from "./types.ts";
 
@@ -9,11 +9,25 @@ export interface CardInput {
   sort_key?: string;
   sort_dir?: string;
   max_items?: string | number;
+  kind?: string;
+  config?: unknown;
 }
 
-export const BLANK_CARD: CardSpec = { title: "", tags: [], types: [], sort_key: "created_at", sort_dir: "desc", max_items: CARD_MAX_ITEMS.default };
+export const BLANK_CARD: CardSpec = { title: "", tags: [], types: [], sort_key: "created_at", sort_dir: "desc", max_items: CARD_MAX_ITEMS.default, kind: "query", config: {} };
 
-/** Cleans form or JSON input into a CardSpec. Every type checked collapses to "any". */
+/** Accepts a config object as-is, or JSON text; anything else (or bad JSON) collapses to {}. */
+function normalizeCardConfig(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  if (typeof value !== "string") return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Cleans form or JSON input into a CardSpec. Every type checked collapses to "any"; an unknown kind becomes "query". */
 export function normalizeCard(input: CardInput): CardSpec {
   const rawTypes = Array.isArray(input.types) ? input.types : parseTags(input.types);
   const types = ITEM_TYPES.filter(type => rawTypes.includes(type));
@@ -25,12 +39,14 @@ export function normalizeCard(input: CardInput): CardSpec {
     sort_key: isCardSortKey(input.sort_key) ? input.sort_key : "created_at",
     sort_dir: input.sort_dir === "asc" ? "asc" : "desc",
     max_items: Math.min(Math.max(Number.isFinite(max) ? max : CARD_MAX_ITEMS.default, CARD_MAX_ITEMS.min), CARD_MAX_ITEMS.max),
+    kind: isCardKind(input.kind) ? input.kind : "query",
+    config: normalizeCardConfig(input.config),
   };
 }
 
-/** Parses a stored row whose tags and types are JSON text. */
-export function parseCardRow<T extends { tags: string; types: string }>(row: T): Omit<T, "tags" | "types"> & { tags: string[]; types: ItemType[] } {
-  return { ...row, tags: JSON.parse(row.tags), types: JSON.parse(row.types).filter(isItemType) };
+/** Parses a stored row whose tags, types, and config are JSON text. */
+export function parseCardRow<T extends { tags: string; types: string; config: string }>(row: T): Omit<T, "tags" | "types" | "config"> & { tags: string[]; types: ItemType[]; config: Record<string, unknown> } {
+  return { ...row, tags: JSON.parse(row.tags), types: JSON.parse(row.types).filter(isItemType), config: JSON.parse(row.config || "{}") };
 }
 
 export const cardMatches = (card: Pick<CardSpec, "tags" | "types">, item: Pick<ItemView, "type" | "tags">): boolean => {

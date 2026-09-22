@@ -6,4 +6,5 @@ export * from "./categories.ts";
 export * from "./settings.ts";
 export * from "./watched.ts";
 export * from "./projects.ts";
+export * from "./tasks.ts";
 export * from "./store.ts";

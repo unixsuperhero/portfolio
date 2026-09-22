@@ -79,6 +79,8 @@ CREATE TABLE IF NOT EXISTS cards (
   id INTEGER PRIMARY KEY,
   portfolio_id INTEGER NOT NULL REFERENCES portfolios(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'query',
+  config TEXT NOT NULL DEFAULT '{}',
   tags TEXT NOT NULL DEFAULT '[]',
   types TEXT NOT NULL DEFAULT '[]',
   sort_key TEXT NOT NULL DEFAULT 'created_at' CHECK (sort_key IN ('created_at', 'updated_at', 'title', 'type')),
@@ -122,3 +124,10 @@ CREATE TABLE IF NOT EXISTS project_parents (
 
 CREATE INDEX IF NOT EXISTS items_sort ON items(pinned DESC, created_at DESC);
 CREATE INDEX IF NOT EXISTS taggings_item ON taggings(item_id);
+
+CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY, title TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '',
+  recurrence TEXT NOT NULL CHECK (recurrence IN ('daily','once')), item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS reminders (id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS completions (id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  "on" TEXT NOT NULL, at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (task_id, "on"));

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { abbreviatePath, cardMatches, describeCard, detect, detectUrl, documentTitle, escapeHtml, expandPath, formatSlots, itemHref, kindLabel, localMarkdownLink, normalizeCard, normalizeItemPath, parseSlots, parseTags, resolveSlots, runCard, slugify, textTitle } from "../src/index.ts";
+import { abbreviatePath, BLANK_CARD, cardMatches, describeCard, detect, detectUrl, documentTitle, escapeHtml, expandPath, formatSlots, itemHref, kindLabel, localMarkdownLink, normalizeCard, normalizeItemPath, parseCardRow, parseSlots, parseTags, resolveSlots, runCard, slugify, textTitle } from "../src/index.ts";
 import type { ItemView } from "../src/index.ts";
 
 const HOME = "/Users/me";
@@ -71,7 +71,7 @@ describe("cards", () => {
   const view = (id: number, type: ItemView["type"], title: string, tags: string[]): ItemView => ({ id, type, title, description: "", url: null, source_path: null, path: null, pinned: false, starred: false, created_at: `2026-01-0${id}`, updated_at: `2026-01-0${id}`, href: `/items/${id}`, tags });
   const items = [view(1, "link", "Banana", ["yt"]), view(2, "link", "apple", ["slides"]), view(3, "pr", "Cherry", ["yt", "slides"]), view(4, "link", "Untagged", [])];
   test("normalize", () => {
-    expect(normalizeCard({ title: " X ", tags: "YT, slides", types: ["link", "bogus"], sort_key: "bogus", sort_dir: "asc", max_items: "5000" })).toEqual({ title: "X", tags: ["YT", "slides"], types: ["link"], sort_key: "created_at", sort_dir: "asc", max_items: 1000 });
+    expect(normalizeCard({ title: " X ", tags: "YT, slides", types: ["link", "bogus"], sort_key: "bogus", sort_dir: "asc", max_items: "5000" })).toEqual({ title: "X", tags: ["YT", "slides"], types: ["link"], sort_key: "created_at", sort_dir: "asc", max_items: 1000, kind: "query", config: {} });
     expect(normalizeCard({ types: ["document", "note", "link", "pr", "file", "dir"] }).types).toEqual([]);
     expect(normalizeCard({}).max_items).toBe(100);
   });
@@ -95,5 +95,23 @@ describe("items", () => {
     expect(itemHref({ id: 3, type: "document", url: null, content: "", source_path: "/d/r.html" }, { legacyHref: () => "/legacy/r.html" })).toBe("/legacy/r.html");
     expect(itemHref({ id: 3, type: "document", url: null, content: "", source_path: "/d/r.html" })).toBe("/items/3");
     expect(kindLabel("pr")).toBe("PR");
+  });
+});
+
+describe("card kind and config", () => {
+  test("BLANK_CARD defaults to query with empty config", () => {
+    expect(BLANK_CARD).toMatchObject({ kind: "query", config: {} });
+  });
+  test("normalizeCard accepts an object or JSON text config, and falls back to query for an unknown kind", () => {
+    expect(normalizeCard({ title: "x", kind: "clock", config: { format: "24h" } })).toMatchObject({ kind: "clock", config: { format: "24h" } });
+    expect(normalizeCard({ title: "x", kind: "clock", config: '{"format":"12h"}' })).toMatchObject({ config: { format: "12h" } });
+    expect(normalizeCard({ title: "x", kind: "not-a-kind" })).toMatchObject({ kind: "query" });
+    expect(normalizeCard({ title: "x", config: "not json" })).toMatchObject({ config: {} });
+    expect(normalizeCard({ title: "x", config: "[1,2]" })).toMatchObject({ config: {} });
+    expect(normalizeCard({ title: "x" })).toMatchObject({ config: {} });
+  });
+  test("parseCardRow parses tags, types, and config JSON", () => {
+    const row = { id: 1, portfolio_id: 1, position: 0, title: "x", tags: '["a"]', types: '["note"]', config: '{"scope":"today"}', sort_key: "created_at" as const, sort_dir: "desc" as const, max_items: 10, kind: "reminders" as const };
+    expect(parseCardRow(row)).toMatchObject({ tags: ["a"], types: ["note"], config: { scope: "today" } });
   });
 });

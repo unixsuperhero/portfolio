@@ -2,6 +2,8 @@ export type ItemType = "document" | "note" | "link" | "pr" | "file" | "dir";
 export type PathType = "file" | "dir";
 export type CardSortKey = "created_at" | "updated_at" | "title" | "type";
 export type SortDir = "asc" | "desc";
+export type CardKind = "query" | "reminders" | "ports" | "clock" | "note" | "services";
+export type Recurrence = "daily" | "once";
 
 export interface Item {
   id: number;
@@ -60,6 +62,10 @@ export interface CardSpec {
   sort_key: CardSortKey;
   sort_dir: SortDir;
   max_items: number;
+  /** "query" runs the saved search; every other kind is a dashboard widget. */
+  kind: CardKind;
+  /** Per-kind JSON config; see CARD_KINDS in constants.ts. */
+  config: Record<string, unknown>;
 }
 
 export interface Card extends CardSpec {
@@ -127,4 +133,82 @@ export interface ItemFilter {
   tagName?: string;
   category?: number;
   limit?: number;
+}
+
+export interface Task {
+  id: number;
+  title: string;
+  notes: string;
+  recurrence: Recurrence;
+  item_id: number | null;
+  active: 0 | 1;
+  created_at: string;
+}
+
+export interface Reminder {
+  id: number;
+  task_id: number;
+  /** Daily: "HH:MM" local. Once: "YYYY-MM-DDTHH:MM" local. */
+  at: string;
+}
+
+export interface Completion {
+  id: number;
+  task_id: number;
+  on: string;
+  at: string;
+}
+
+export interface TaskInput {
+  title: string;
+  notes?: string;
+  recurrence: Recurrence;
+  item_id?: number | null;
+  reminders?: string[];
+}
+
+/** The shape the JSON API and the React components use: booleans, computed streak and completion. */
+export interface TaskView {
+  id: number;
+  title: string;
+  notes: string;
+  recurrence: Recurrence;
+  item_id: number | null;
+  active: boolean;
+  created_at: string;
+  reminders: { id: number; at: string }[];
+  completed_today: boolean;
+  last_completed: string | null;
+  /** Daily only: consecutive days ending today or yesterday. */
+  streak: number;
+}
+
+export interface DueReminder {
+  task: TaskView;
+  reminder: { id: number; at: string };
+  due_at: string;
+}
+
+export interface ProjectServices {
+  runner: "bun" | "pnpm" | "yarn" | "npm" | null;
+  scripts: Record<string, string>;
+  make_targets: string[];
+}
+
+export interface ProjectView {
+  id: number;
+  title: string;
+  path: string;
+  description: string;
+  tags: string[];
+  services: ProjectServices;
+  ports: unknown[];
+  slots: ResolvedSlot[];
+}
+
+export interface Settings {
+  home_portfolio_id: number | null;
+  pastry_enabled: boolean;
+  watched_directories: { id: number; path: string; recursive: boolean }[];
+  project_parents: { id: number; path: string; count: number }[];
 }

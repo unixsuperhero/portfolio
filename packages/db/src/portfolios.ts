@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { itemHref, normalizeCard, parseCardRow, toItemView } from "@portfolio/core";
-import type { Card, CardResult, CardSpec, Item, Portfolio } from "@portfolio/core";
+import type { Card, CardResult, CardSpec, Item, ItemView, Portfolio } from "@portfolio/core";
 import type { CardInput } from "@portfolio/core";
 import { tagNamesFor } from "./tags.ts";
 
@@ -33,7 +33,7 @@ export function updatePortfolio(db: Database, id: number, patch: { name?: string
 /** Deletes a portfolio and its cards. Items are never touched. */
 export const deletePortfolio = (db: Database, id: number): boolean => db.query("DELETE FROM portfolios WHERE id = ?").run(id).changes > 0;
 
-type CardRow = Omit<Card, "tags" | "types"> & { tags: string; types: string };
+type CardRow = Omit<Card, "tags" | "types" | "config"> & { tags: string; types: string; config: string };
 
 export const portfolioCards = (db: Database, portfolioId: number): Card[] => db.query<CardRow, [number]>("SELECT * FROM cards WHERE portfolio_id = ? ORDER BY position, id").all(portfolioId).map(parseCardRow) as Card[];
 export const getCard = (db: Database, id: number): Card | null => {
@@ -44,9 +44,9 @@ export const getCard = (db: Database, id: number): Card | null => {
 export function createCard(db: Database, portfolioId: number, input: CardInput): number {
   const card = normalizeCard(input);
   if (!card.title) throw new Error("title is required");
-  return db.query<{ id: number }, [number, string, string, string, string, string, number, number]>(
-    "INSERT INTO cards(portfolio_id, title, tags, types, sort_key, sort_dir, max_items, position) VALUES (?, ?, ?, ?, ?, ?, ?, (SELECT coalesce(max(position), 0) + 1 FROM cards WHERE portfolio_id = ?)) RETURNING id",
-  ).get(portfolioId, card.title, JSON.stringify(card.tags), JSON.stringify(card.types), card.sort_key, card.sort_dir, card.max_items, portfolioId)!.id;
+  return db.query<{ id: number }, [number, string, string, string, string, string, string, string, number, number]>(
+    "INSERT INTO cards(portfolio_id, title, kind, config, tags, types, sort_key, sort_dir, max_items, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT coalesce(max(position), 0) + 1 FROM cards WHERE portfolio_id = ?)) RETURNING id",
+  ).get(portfolioId, card.title, card.kind, JSON.stringify(card.config), JSON.stringify(card.tags), JSON.stringify(card.types), card.sort_key, card.sort_dir, card.max_items, portfolioId)!.id;
 }
 
 export function updateCard(db: Database, id: number, input: CardInput): boolean {
@@ -54,8 +54,8 @@ export function updateCard(db: Database, id: number, input: CardInput): boolean 
   if (!current) return false;
   const card = normalizeCard({ ...current, ...input });
   if (!card.title) throw new Error("title is required");
-  db.query("UPDATE cards SET title = ?, tags = ?, types = ?, sort_key = ?, sort_dir = ?, max_items = ? WHERE id = ?")
-    .run(card.title, JSON.stringify(card.tags), JSON.stringify(card.types), card.sort_key, card.sort_dir, card.max_items, id);
+  db.query("UPDATE cards SET title = ?, kind = ?, config = ?, tags = ?, types = ?, sort_key = ?, sort_dir = ?, max_items = ? WHERE id = ?")
+    .run(card.title, card.kind, JSON.stringify(card.config), JSON.stringify(card.tags), JSON.stringify(card.types), card.sort_key, card.sort_dir, card.max_items, id);
   return true;
 }
 
@@ -87,7 +87,7 @@ export function cardItems(db: Database, card: CardSpec, hrefFor: (item: Item) =>
   return { total, items: rows.map(item => toItemView(item, tagNamesFor(db, item.id), hrefFor(item))) };
 }
 
-/** A portfolio with every card and its matching items, the JSON API's payload. */
+/** A portfolio with every card and its matching items, the JSON API's payload. Only "query" cards run SQL; every other kind is a widget with no item list. */
 export function portfolioView(db: Database, portfolio: Portfolio, hrefFor?: (item: Item) => string) {
-  return { ...portfolio, cards: portfolioCards(db, portfolio.id).map(card => ({ ...card, ...cardItems(db, card, hrefFor) })) };
+  return { ...portfolio, cards: portfolioCards(db, portfolio.id).map(card => (card.kind === "query" ? { ...card, ...cardItems(db, card, hrefFor) } : { ...card, items: [] as ItemView[], total: 0 })) };
 }

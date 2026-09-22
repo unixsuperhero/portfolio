@@ -1,5 +1,6 @@
+import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
-import { addProjectParent, addWatchedDirectory, cardItems, categoryMembers, claimItem, countByType, createCard, createCategory, createPortfolio, deleteCard, deleteItems, deletePortfolio, ensureCategory, getCard, getItem, listItems, listProjectParents, listTags, memberSlots, moveCard, openDatabase, openStore, portfolioCards, portfolioView, removeTags, removeWatchedDirectory, setPathAndCategory, setSlotOverride, setTags, toggleItemField, updateCard, updateCategory, updateItem, upsertItem, viewItem } from "../src/index.ts";
+import { addProjectParent, addWatchedDirectory, cardItems, categoryMembers, claimItem, completeTask, countByType, createCard, createCategory, createPortfolio, createTask, deleteCard, deleteItems, deletePortfolio, deleteTask, dueReminders, ensureCategory, getCard, getHomePortfolioId, getItem, getTask, listItems, listProjectParents, listTags, listTaskViews, listTasks, memberSlots, migrateCardColumns, moveCard, openDatabase, openStore, portfolioCards, portfolioView, readSchema, removeTags, removeWatchedDirectory, setHomePortfolioId, setPathAndCategory, setReminders, setSlotOverride, setTags, taskView, todayTasks, toggleItemField, uncompleteTask, updateCard, updateCategory, updateItem, updateTask, upsertItem, viewItem } from "../src/index.ts";
 
 const fresh = () => openDatabase(":memory:");
 
@@ -110,6 +111,93 @@ describe("store", () => {
     expect(store.settings.getFlag("pastry_enabled")).toBe(false);
     store.settings.setFlag("pastry_enabled", true);
     expect(store.settings.getFlag("pastry_enabled")).toBe(true);
+    expect(store.tasks).toBeDefined();
     store.close();
+  });
+});
+
+describe("card kind and config", () => {
+  test("createCard/updateCard persist kind and config; non-query cards skip the SQL query", () => {
+    const db = fresh();
+    const pid = createPortfolio(db, "Dash");
+    const cardId = createCard(db, pid, { title: "Clock", kind: "clock", config: { format: "24h" } });
+    expect(getCard(db, cardId)).toMatchObject({ kind: "clock", config: { format: "24h" } });
+    expect(updateCard(db, cardId, { title: "Clock", kind: "clock", config: { format: "12h" } })).toBe(true);
+    expect(getCard(db, cardId)).toMatchObject({ config: { format: "12h" } });
+    const view = portfolioView(db, { id: pid, name: "Dash", description: "", created_at: "" });
+    expect(view.cards[0]).toMatchObject({ kind: "clock", items: [], total: 0 });
+  });
+
+  test("migrateCardColumns adds kind and config to a pre-existing cards table", () => {
+    const raw = new Database(":memory:");
+    const schema = readSchema().replace(/kind TEXT NOT NULL DEFAULT 'query',\s*\n\s*config TEXT NOT NULL DEFAULT '\{\}',\s*\n/, "");
+    raw.exec(schema);
+    expect(raw.query("PRAGMA table_info(cards)").all().map((c: any) => c.name)).not.toContain("kind");
+    migrateCardColumns(raw);
+    const columns = raw.query("PRAGMA table_info(cards)").all().map((c: any) => c.name);
+    expect(columns).toContain("kind");
+    expect(columns).toContain("config");
+    raw.close();
+  });
+});
+
+describe("settings: home portfolio", () => {
+  test("get/set, and clearing with null", () => {
+    const db = fresh();
+    expect(getHomePortfolioId(db)).toBeNull();
+    setHomePortfolioId(db, 3);
+    expect(getHomePortfolioId(db)).toBe(3);
+    setHomePortfolioId(db, null);
+    expect(getHomePortfolioId(db)).toBeNull();
+  });
+});
+
+describe("tasks", () => {
+  test("create, validate, update, reminders, complete/uncomplete, views", () => {
+    const db = fresh();
+    expect(() => createTask(db, { title: "", recurrence: "daily" })).toThrow(/title/);
+    expect(() => createTask(db, { title: "x", recurrence: "weekly" as never })).toThrow(/recurrence/);
+    const id = createTask(db, { title: "Stretch", recurrence: "daily", reminders: ["08:30"] });
+    expect(() => setReminders(db, id, ["8:30"])).toThrow(/HH:MM/);
+    expect(getTask(db, id)).toMatchObject({ title: "Stretch", recurrence: "daily", active: 1 });
+    expect(listTasks(db).map(t => t.id)).toEqual([id]);
+    expect(updateTask(db, id, { active: false })).toBe(true);
+    expect(listTasks(db)).toHaveLength(0);
+    expect(listTasks(db, { all: true })).toHaveLength(1);
+    expect(updateTask(db, 999, { title: "x" })).toBe(false);
+
+    const once = createTask(db, { title: "Ship it", recurrence: "once", reminders: ["2026-09-22T08:30"] });
+    expect(() => setReminders(db, once, ["08:30"])).toThrow(/YYYY-MM-DDTHH:MM/);
+
+    let view = completeTask(db, id, "2026-09-20");
+    expect(view.last_completed).toBe("2026-09-20");
+    completeTask(db, id, "2026-09-21");
+    view = completeTask(db, id, "2026-09-22");
+    expect(taskView(db, getTask(db, id)!, "2026-09-22")).toMatchObject({ completed_today: true, streak: 3 });
+    view = uncompleteTask(db, id, "2026-09-22");
+    expect(view.completed_today).toBe(false);
+
+    const onceView = completeTask(db, once, "2026-09-22");
+    expect(onceView.completed_today).toBe(true);
+    expect(onceView.streak).toBe(0);
+
+    expect(listTaskViews(db, { all: true }).map(t => t.id)).toEqual([id, once]);
+    expect(deleteTask(db, once)).toBe(true);
+    expect(getTask(db, once)).toBeNull();
+  });
+
+  test("dueReminders and todayTasks", () => {
+    const db = fresh();
+    const daily = createTask(db, { title: "Stretch", recurrence: "daily", reminders: ["08:30"] });
+    const once = createTask(db, { title: "Ship it", recurrence: "once", reminders: ["2026-09-22T09:00"] });
+    const now = new Date("2026-09-22T08:35:00");
+    const due = dueReminders(db, { now, minutes: 60 });
+    expect(due.map(d => d.task.id).sort()).toEqual([daily, once].sort());
+    expect(dueReminders(db, { now, minutes: 4 })).toHaveLength(0);
+    completeTask(db, daily, "2026-09-22");
+    expect(dueReminders(db, { now, minutes: 60 }).map(d => d.task.id)).toEqual([once]);
+    const today = todayTasks(db, "2026-09-22");
+    expect(today.map(t => t.id).sort()).toEqual([daily, once].sort());
+    expect(todayTasks(db, "2026-01-01").map(t => t.id)).toEqual([daily]);
   });
 });
