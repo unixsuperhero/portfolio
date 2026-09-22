@@ -1,0 +1,49 @@
+/* Styling for the plain classes ghostty/surface.ts assigns in place of the
+   Tailwind classes it uses in t3code. Uses this app's CSS tokens
+   (--bg, --surface, --border, --text, --mono) from @portfolio/ui/tokens.css. */
+
+.ghostty-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: text;
+}
+
+.ghostty-input {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  padding: 0;
+  border: 0;
+  resize: none;
+  pointer-events: none;
+}
+
+.ghostty-scrollbar {
+  position: absolute;
+  top: 4px;
+  right: 1px;
+  bottom: 4px;
+  z-index: 1;
+  width: 10px;
+  cursor: default;
+  touch-action: none;
+}
+
+.ghostty-scrollbar-thumb {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  top: 0;
+  border-radius: 3px;
+  background: var(--border2);
+  transition: background-color 120ms ease-out;
+}
+
+.ghostty-scrollbar:hover .ghostty-scrollbar-thumb,
+.ghostty-scrollbar:focus-visible .ghostty-scrollbar-thumb {
+  background: var(--text3);
+}
