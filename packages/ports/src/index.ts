@@ -67,6 +67,17 @@ export function killListener(pid: number, options: { signal?: "TERM" | "KILL" | 
   return { ok: true, status: 200, message: "signalled", pid, signal };
 }
 
+export interface ProjectRef { id: number; path: string }
+
+/** Each snapshot entry annotated with the project whose path is the longest prefix of its cwd, or null. */
+export function matchPortsToProjects<T extends { cwd: string }>(snapshot: PortsSnapshot, projects: ProjectRef[]): (T & { project: ProjectRef | null })[] {
+  const sorted = [...projects].sort((a, b) => b.path.length - a.path.length);
+  return (snapshot.ports as unknown as T[]).map(entry => {
+    const project = sorted.find(candidate => entry.cwd === candidate.path || entry.cwd.startsWith(candidate.path + "/")) ?? null;
+    return { ...entry, project };
+  });
+}
+
 /** Text table rows for a terminal listing. */
 export const portRows = (snapshot: PortsSnapshot) => snapshot.ports.map(entry => ({
   port: entry.port ?? "", host: entry.host || "", process: `${entry.command} #${entry.pid}`, uptime: entry.elapsed ?? "", cwd: entry.cwd || "",

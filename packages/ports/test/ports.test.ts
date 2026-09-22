@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { findByPort, findPortEntry, killListener, portRows, portSiteUrl, scanPorts } from "../src/index.ts";
+import { findByPort, findPortEntry, killListener, matchPortsToProjects, portRows, portSiteUrl, scanPorts } from "../src/index.ts";
 
 const snapshot = { scanned_at: "t", herdr_available: false, warnings: [], ports: [
   { port: 4387, host: "127.0.0.1", command: "bun", pid: 100, cwd: "/p", herdr: { pane_id: "p1", workspace_label: "W", match: "cwd" }, ai: { kind: "claude", session: "abcdefgh-1234" } },
@@ -26,6 +26,14 @@ test("kill guards", () => {
   expect(killListener(process.pid, { snapshot })).toMatchObject({ status: 403 });
   expect(killListener(999, { snapshot })).toMatchObject({ status: 404 });
   expect(killListener(5, { snapshot: { ...snapshot, ports: [], error: "boom" } })).toMatchObject({ status: 502 });
+});
+
+test("matchPortsToProjects picks the longest matching project path prefix", () => {
+  const projects = [{ id: 1, path: "/p" }, { id: 2, path: "/p/sub" }, { id: 3, path: "/other" }];
+  const matched = matchPortsToProjects({ ...snapshot, ports: [{ ...snapshot.ports[0], cwd: "/p/sub/app" }, { ...snapshot.ports[1], cwd: "/p" }, { ...snapshot.ports[2], cwd: "/elsewhere" }] }, projects);
+  expect(matched[0].project).toEqual({ id: 2, path: "/p/sub" });
+  expect(matched[1].project).toEqual({ id: 1, path: "/p" });
+  expect(matched[2].project).toBeNull();
 });
 
 test("scanPorts reads a scanner script and survives failure", () => {

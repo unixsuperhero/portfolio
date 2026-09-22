@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { addProjectParent, addWatchedDirectory, getItem, listItems, openDatabase, setWatchedRecursive, tagNamesFor } from "@portfolio/db";
-import { discoverProjects, reconcile, scanProjects } from "../src/index.ts";
+import { discoverProjects, projectServices, reconcile, scanProjects, serviceCommand } from "../src/index.ts";
 
 const render = (markdown: string, { title }: { title: string }) => `<h1>${title}</h1>${markdown.length}`;
 
@@ -51,4 +51,24 @@ test("project discovery stops at repositories", async () => {
   const item = listItems(db, { type: "dir" }).find(i => i.title === "repo")!;
   expect(tagNamesFor(db, item.id)).toEqual(["project"]);
   expect(item.category_id).not.toBeNull();
+});
+
+test("projectServices reads scripts, picks a runner from the lockfile, and lists Makefile targets", () => {
+  const dir = mkdtempSync(join(tmpdir(), "services-"));
+  writeFileSync(join(dir, "package.json"), JSON.stringify({ scripts: { dev: "vite", build: "vite build" } }));
+  writeFileSync(join(dir, "bun.lock"), "");
+  writeFileSync(join(dir, "Makefile"), ".PHONY: build\nbuild:\n\techo hi\ndeploy: build\n\techo deploy\n.hidden:\n\techo no\n");
+  const services = projectServices(dir);
+  expect(services).toMatchObject({ runner: "bun", scripts: { dev: "vite", build: "vite build" }, make_targets: ["build", "deploy"] });
+  expect(serviceCommand(services, "dev", "--port 3000")).toBe("bun run dev --port 3000");
+  expect(serviceCommand(services, "deploy")).toBe("make deploy");
+
+  const npmDir = mkdtempSync(join(tmpdir(), "services-npm-"));
+  writeFileSync(join(npmDir, "package.json"), JSON.stringify({ scripts: { dev: "next dev" } }));
+  const npmServices = projectServices(npmDir);
+  expect(npmServices.runner).toBe("npm");
+  expect(serviceCommand(npmServices, "dev", "--port 3000")).toBe("npm run dev -- --port 3000");
+
+  const noneDir = mkdtempSync(join(tmpdir(), "services-none-"));
+  expect(projectServices(noneDir)).toEqual({ runner: null, scripts: {}, make_targets: [] });
 });
