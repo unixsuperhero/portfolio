@@ -62,7 +62,7 @@ export function createPrPoller(options: PollerOptions) {
     backoffMs: BASE_BACKOFF_MS,
     skipUntil: 0,
     lastRefreshAt: 0,
-    ticking: false,
+    inflight: null as Promise<void> | null,
     timer: null as ReturnType<typeof setTimeout> | null,
   };
 
@@ -85,13 +85,17 @@ export function createPrPoller(options: PollerOptions) {
   }
 
   async function tick(): Promise<void> {
-    if (state.ticking) return;
+    if (state.inflight) return state.inflight;
+    state.inflight = runTick().finally(() => { state.inflight = null; });
+    return state.inflight;
+  }
+
+  async function runTick(): Promise<void> {
     const nowMs = now().getTime();
     if (state.skipUntil > nowMs) {
       state.nextPollAt = new Date(state.skipUntil).toISOString();
       return;
     }
-    state.ticking = true;
     try {
       const fetchedAt = now().toISOString();
       const globalIgnored = db.settings.getGithubIgnoredChecks();
@@ -132,8 +136,6 @@ export function createPrPoller(options: PollerOptions) {
       state.backoffMs = Math.min(state.backoffMs * 2, MAX_BACKOFF_MS);
       state.nextPollAt = new Date(now().getTime() + state.backoffMs).toISOString();
       log(`poll error: ${state.error}`);
-    } finally {
-      state.ticking = false;
     }
   }
 
@@ -174,7 +176,10 @@ export function createPrPoller(options: PollerOptions) {
       const nowMs = now().getTime();
       if (nowMs - state.lastRefreshAt < REFRESH_MIN_GAP_MS) throw new PollTooSoonError(REFRESH_MIN_GAP_MS - (nowMs - state.lastRefreshAt));
       state.lastRefreshAt = nowMs;
+      // A poll already in flight is awaited rather than skipped, so the caller
+      // always gets fresh data; the schedule then restarts from now.
       await tick();
+      if (state.timer) scheduleNext();
       return this.status();
     },
     /** Fetches and stores exactly one PR (one GraphQL request), e.g. when watching a URL not already tracked. */
