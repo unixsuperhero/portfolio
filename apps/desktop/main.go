@@ -4,6 +4,8 @@ import (
 	"embed"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -60,6 +62,15 @@ func main() {
 		// PORTFOLIO_INSPECT=1 opens the WebKit inspector with the window, for debugging the page.
 		OpenInspectorOnStartup: os.Getenv("PORTFOLIO_INSPECT") == "1",
 	})
+
+	// A SIGTERM or SIGINT (a killed dev run, a stopped launcher) quits through
+	// the application so services shut down and the sidecar is not orphaned.
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		<-signals
+		app.Quit()
+	}()
 
 	// Run the application. This blocks until the application has been exited.
 	err := app.Run()
