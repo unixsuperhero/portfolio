@@ -15,3 +15,9 @@ export const setHomePortfolioId = (db: Database, id: number | null): void => {
   if (id === null) db.query("DELETE FROM settings WHERE key = 'home_portfolio_id'").run();
   else setSetting(db, "home_portfolio_id", String(id));
 };
+
+export const getGithubIgnoredChecks = (db: Database): string[] => JSON.parse(getSetting(db, "github_ignored_checks", "[]"));
+export const setGithubIgnoredChecks = (db: Database, checks: string[]): void => setSetting(db, "github_ignored_checks", JSON.stringify(checks));
+
+export const getGithubPollMinutes = (db: Database): number => Number(getSetting(db, "github_poll_minutes", "2")) || 2;
+export const setGithubPollMinutes = (db: Database, minutes: number): void => setSetting(db, "github_poll_minutes", String(Math.max(1, Math.floor(minutes))));
