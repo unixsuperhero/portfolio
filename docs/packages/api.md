@@ -26,7 +26,22 @@ const response = await api(new Request("http://x/api/items"));
 
 ## Routes
 
-Every route in the contract is implemented: items (list/create/get/patch/delete, tags, `path-action`/`slot-path`, lazy HTML rendering cached back onto the row), `detect`/`quick` add, portfolios and cards (with `kind`/`config`), categories, settings/home/directories, watched directories (add/remove/sync), ports (cached snapshot, each entry annotated with its project via `matchPortsToProjects`), projects and project parents, and tasks/reminders. See the contract for exact paths, bodies, and response shapes — this package does not restate them.
+Every route in the contract is implemented: items (list/create/get/patch/delete, tags, `path-action`/`slot-path`, lazy HTML rendering cached back onto the row), `detect`/`quick` add, portfolios and cards (with `kind`/`config`), categories, settings/home/directories, watched directories (add/remove/sync), ports (cached snapshot, each entry annotated with its project via `matchPortsToProjects`), projects and project parents, tasks/reminders, and PRs (`/api/prs`). See the contract for exact paths, bodies, and response shapes — this package does not restate them.
+
+## PRs
+
+`prs.ts` wires `/api/prs*` to the `prPoller` option (a `@portfolio/github` `PrPoller`). With no `prPoller`, `GET /api/prs` returns `{ mine: [], review_requested: [], watched: [], status }` where `status` is idle (`polling: false, gh_ok: false`) — the routes never touch `gh` themselves.
+
+| Route | Notes |
+|-------|-------|
+| `GET /api/prs` | `{ mine, review_requested, watched, status }` straight from `store.github.listPrs()` and `prPoller.status()` |
+| `POST /api/prs/refresh` | forces a poll through `prPoller.refresh()`, then returns the same shape as `GET`; 429 when called again within 30s |
+| `POST /api/prs/watch { url, watched }` | `url` must match `github.com/:owner/:repo/pull/:number` (422 otherwise); an untracked PR is fetched once via `prPoller.fetchOne()` (503 with no poller), then `store.github.setWatched` links or creates the library `pr` item |
+| `PATCH /api/prs/:id { ignored_checks }` | `store.github.setIgnoredChecks`, which also recomputes each check's `ignored` flag |
+| `GET /api/prs/events?since=<id>` | `store.github.listUnseenEvents(since)` |
+| `POST /api/prs/events/seen { ids }` | `store.github.markEventsSeen(ids)` |
+
+`server.ts` calls `ghAuth()` on startup; when it succeeds it builds a `createPrPoller` (wrapping `ghGraphql`) and starts it, and passes it to `createApi` as `prPoller`. `GET`/`PATCH /api/settings` carry `github_ignored_checks: string[]` and `github_poll_minutes: number` alongside the existing keys.
 
 Errors are `{ error: string }` with a 4xx/5xx status. An uncaught handler error becomes a 500 with the error's message; `readJson` fails a bad JSON body the same way.
 

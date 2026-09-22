@@ -189,8 +189,42 @@ const settings = {
   pastry_enabled: false,
   watched_directories: [{ id: 1, path: "/Users/me/notes/docs", recursive: true }],
   project_parents: [{ id: 1, path: "/Users/me/proj", count: 12 }],
+  github_ignored_checks: ["codecov/*"],   // global glob patterns; a PR's own ignored_checks add to these
+  github_poll_minutes: 2,                 // cadence while at least one PR is watched; 10 minutes fixed otherwise
 };
 ```
+
+## Pull request (Pr) and PrEvent
+
+One row in `github_prs`, reached only through `gh api graphql` (see [@portfolio/github](packages/github.md)).
+
+```js
+const pr = {
+  id: 7,
+  url: "https://github.com/acme/app/pull/12", owner: "acme", repo: "app", number: 12,
+  title: "Add widgets", author: "jearsh", is_draft: false,
+  state: "open",                                    // "open" | "closed" | "merged"
+  review_decision: "review_required",               // "approved" | "changes_requested" | "review_required" | null
+  updated_at: "2026-09-22T14:00:00Z",
+  comments: 4,                                       // issue comments + review comments + reviews
+  checks: [{ name: "ci/test", status: "success", url: "…", ignored: false }],
+  checks_summary: "success",                          // "success" | "failure" | "pending" | "none", over non-ignored checks only
+  watched: true, ignored_checks: ["codecov/patch"],   // per PR; settings.github_ignored_checks is global
+  lists: ["mine"],                                     // which search lists it currently appears in ([] for watched-only)
+  item_id: 42,                                         // the library `pr` item, created when watched (or null)
+  fetched_at: "2026-09-22T14:02:00Z",
+};
+
+const prEvent = {
+  id: 1, pr_id: 7,
+  kind: "checks",                    // "state" | "comments" | "checks" | "review"
+  message: "acme/app#12 checks failure",
+  at: "2026-09-22T14:02:00Z",
+  seen: false,
+};
+```
+
+`checks[].status` is one of `"success" | "failure" | "pending" | "skipped" | "cancelled" | "neutral"`. `diffPr(previous, next, globalIgnored)` (in `@portfolio/github`) drafts a `PrEvent` for a state change, a `review_decision` change, a comment-count increase, or a `checks_summary` change (computed over the global + per-PR ignored glob patterns); a PR seen for the first time produces no events. `store.github.setWatched(db, id, watched)` creates (or re-links) the library `pr` item the first time a PR is watched — unwatching leaves the item in place.
 
 ## Task, Reminder, and Completion
 
