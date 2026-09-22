@@ -337,3 +337,34 @@ context menu and in-app browser work. `prs` card kind: `config: { list: "mine" |
 same rows inside a portfolio. Notifications: the existing 60s reminder poll gains `GET /api/prs/events` (own state only):
 each new event → in-app toast + `native.notify` + a short WebAudio ping (`src/lib/sound.ts`, no audio asset), then
 `POST /api/prs/events/seen`. Settings page: global ignored checks (one per line) and poll minutes.
+
+## Native pickers, reminder days, projects filters (added 2026-09-22, round 2)
+
+```go
+// native.go — additions. Both return "" (no error) when the user cancels.
+func (n *NativeService) PickDirectory(title string, start string) (string, error)   // Wails v3 open dialog, CanChooseDirectories
+func (n *NativeService) PickFile(title string, start string) (string, error)        // CanChooseFiles
+```
+
+Frontend: every form field that holds a file or directory path renders `src/components/PathField.tsx`
+(`{ value, onChange, kind: "file" | "dir", label?, placeholder? }`): a read-mostly text input plus a
+"Choose…" button. Inside Wails the button calls the picker above (start = current value or $HOME);
+in a plain browser it falls back to the existing directory-browser modal for dirs and a plain input for
+files. Fields: Settings (watched directories, project parents), Library quick-add path, item create
+and edit (path), slot overrides on the item page, category slot editor (absolute paths only).
+
+```js
+// Reminders gain weekdays; once-tasks pick a date.
+const reminder = { id: 1, at: "08:30", days: [1, 3, 5] };   // 0 = Sunday … 6 = Saturday; [] = every day
+// TaskInput.reminders accepts either "08:30" or { at: "08:30", days?: [1,3,5] }; once-tasks use "YYYY-MM-DDTHH:MM".
+// dueReminders / todayTasks: a daily reminder with non-empty days fires only on those weekdays (local time).
+// A daily task counts as "today" when at least one reminder fires today, or when it has no reminders.
+// Schema: ALTER TABLE reminders ADD COLUMN days TEXT NOT NULL DEFAULT '[]' (migration in open.ts + both schema files).
+```
+
+Reminders form: `<input type="time">` per reminder row, add/remove rows, weekday toggle buttons per row
+for daily tasks, `<input type="datetime-local">` for once tasks. The list shows `08:30 · Mon Wed Fri`.
+
+Projects page: client-side over `GET /api/projects`. Search box (`q` in the URL) matches title, path,
+tags, script names. Sort: name, recently updated, running ports, script count. Filters: runner
+(bun / pnpm / yarn / npm / none), "has running ports", tag. State lives in the URL query so it survives reload.
