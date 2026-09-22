@@ -3,7 +3,7 @@
 A typed wrapper around `bin/ports-scan` (the Python script that joins `lsof`, `ps`, and Herdr). It never throws from a scan; failures come back inside the snapshot.
 
 ```ts
-import { scanPorts, findByPort, findPortEntry, portSiteUrl, killListener, portRows } from "@portfolio/ports";
+import { scanPorts, findByPort, findPortEntry, portSiteUrl, killListener, portRows, matchPortsToProjects } from "@portfolio/ports";
 ```
 
 | Function | Does |
@@ -14,6 +14,7 @@ import { scanPorts, findByPort, findPortEntry, portSiteUrl, killListener, portRo
 | `findPortEntry(snapshot, pid, port?)`, `findByPort(snapshot, port)` | lookups |
 | `killListener(pid, { signal, snapshot, self })` | refuses pid ≤ 1 and this process, requires the pid to be a current listener, maps `ESRCH`/`EPERM` to 404/403; returns `{ ok, status, message }` |
 | `portRows(snapshot)` | flat rows for a terminal table |
+| `matchPortsToProjects(snapshot, projects)` | annotates each entry with `{ project: { id, path } \| null }` — the project whose path is the longest prefix of the entry's `cwd` (or equal to it) |
 
 The types (`PortEntry`, `PortsSnapshot`, `HerdrPane`, `AiSession`, `TreeNode`) document the scanner's JSON; see the [data model](../data-model.md#ports-snapshot).
 

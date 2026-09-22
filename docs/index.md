@@ -23,8 +23,9 @@ There are three levels, and every level is complete on its own:
 - [@portfolio/core](packages/core.md) — types, constants, detection, paths, slots, cards, text helpers
 - [@portfolio/db](packages/db.md) — SQLite schema, migration, and repos for every table
 - [@portfolio/render](packages/render.md) — Markdown to HTML through Pandoc, link rewriting, link crawling
-- [@portfolio/watch](packages/watch.md) — watched directories and project discovery
-- [@portfolio/ports](packages/ports.md) — TCP listener snapshots and safe kills
+- [@portfolio/watch](packages/watch.md) — watched directories, project discovery, and per-project services
+- [@portfolio/ports](packages/ports.md) — TCP listener snapshots, safe kills, and matching ports to projects
+- [@portfolio/api](packages/api.md) — the desktop app's JSON HTTP API, a route table over db/watch/ports/render
 - [@portfolio/client](packages/client.md) — fetch client for the HTTP API
 - [@portfolio/cli-kit](packages/cli-kit.md) — the hiiro-style CLI framework for Bun
 - [@portfolio/cli](packages/cli.md) — shared helpers the `pf-*` tools use

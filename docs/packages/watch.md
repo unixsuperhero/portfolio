@@ -3,7 +3,7 @@
 Two jobs: keep documents from watched directories in sync with the database, and discover projects under parent directories. Both are the server's behavior lifted out so a CLI or a different server can run them.
 
 ```ts
-import { scanDirectory, reconcile, DirectoryWatcher, discoverProjects, scanProjects } from "@portfolio/watch";
+import { scanDirectory, reconcile, DirectoryWatcher, discoverProjects, scanProjects, projectServices, serviceCommand } from "@portfolio/watch";
 ```
 
 ## Watched directories
@@ -25,6 +25,13 @@ A directory that fails to scan keeps its previous claims, so a temporarily unmou
 |----------|------|
 | `discoverProjects(parent, depth = 4)` | every direct child, plus any deeper directory with `.git` at its top; stops descending at a repository; skips hidden directories and `node_modules` |
 | `scanProjects(db, home?)` | ensures the `project` category (kind `dir`, one slot `tasks \| file \| TASKS.md`), adds new projects as `dir` items with the `project` tag, returns the added paths; never removes |
+
+## Services
+
+| Function | Does |
+|----------|------|
+| `projectServices(path)` | `{ runner, scripts, make_targets }` for one project: `scripts` is `package.json`'s `scripts` object; `runner` is picked from the lockfile (`bun.lock(b)` → `"bun"`, `pnpm-lock.yaml` → `"pnpm"`, `yarn.lock` → `"yarn"`, `package-lock.json` or a bare `package.json` → `"npm"`, none of those → `null`); `make_targets` is every `name:` line in a `Makefile`, excluding `.PHONY` and anything starting with `.` |
+| `serviceCommand(services, name, args = "")` | the exact shell line to run one script or make target, e.g. `serviceCommand(services, "dev", "--port 3000")` → `"bun run dev --port 3000"` (`"npm run dev -- --port 3000"` for npm; `"make build"` for a make target) |
 
 ## Example
 

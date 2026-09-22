@@ -72,6 +72,8 @@ const portfolio = { id: 1, name: "YouTube", description: "everything for the cha
 const card = {
   id: 3, portfolio_id: 1, position: 2,
   title: "Scripts",
+  kind: "query",                  // "query" | "reminders" | "ports" | "clock" | "note" | "services"
+  config: {},                     // JSON object, shape depends on kind (see below)
   tags: ["yt", "slides"],        // OR: an item matches with any one; [] means any tag
   types: ["document"],           // AND: narrows the tag matches; [] means any type
   sort_key: "title",             // "created_at" | "updated_at" | "title" | "type"
@@ -80,13 +82,25 @@ const card = {
 };
 ```
 
-Running a card gives:
+`kind: "query"` is what every card was before dashboard widgets existed; `tags`/`types`/`sort_key`/`sort_dir`/`max_items` only matter for that kind. The other kinds are widgets with their own `config`:
+
+```js
+// reminders: { scope: "today" | "all" }
+// ports:     { project_id: undefined }        // omitted or absent = every listener
+// clock:     { format: "24h" | "12h" }
+// note:      { text: "some **markdown**" }    // edited in place
+// services:  { project_id: 12 }               // scripts of one project, with run buttons
+```
+
+Running a `query` card gives:
 
 ```js
 const result = { total: 37, items: [/* ItemView, at most max_items */] };
 ```
 
-`cardItems(db, card)` runs it in SQL; `runCard(card, itemViews)` runs the same rules in memory (the demo and any client-side UI use that). `normalizeCard(formInput)` turns loose input into a valid spec: tags de-duplicated, every type checked collapses to `[]`, unknown sort keys fall back to `created_at`, max clamped.
+Every other kind always gets `{ total: 0, items: [] }` in a `PortfolioView` — `portfolioView(db, portfolio)` skips the SQL entirely once it sees the kind isn't `"query"`.
+
+`cardItems(db, card)` runs a query card in SQL; `runCard(card, itemViews)` runs the same rules in memory (the demo and any client-side UI use that). `normalizeCard(formInput)` turns loose input into a valid spec: tags de-duplicated, every type checked collapses to `[]`, unknown sort keys fall back to `created_at`, max clamped, an unrecognized `kind` falls back to `"query"`, and `config` is accepted as an object or as JSON text (bad JSON becomes `{}`).
 
 ## Category and Slot
 
@@ -167,6 +181,55 @@ const snapshot = {
 
 ## Settings
 
-A key/value table: `{ key: "pastry_enabled", value: "1" }`. `getFlag(db, "pastry_enabled")` reads it as a boolean.
+A key/value table: `{ key: "pastry_enabled", value: "1" }`. `getFlag(db, "pastry_enabled")` reads it as a boolean; `getHomePortfolioId(db)`/`setHomePortfolioId(db, id | null)` read and write the `home_portfolio_id` key the same way. The JSON API's `Settings` shape bundles all of it:
+
+```js
+const settings = {
+  home_portfolio_id: 3,           // or null
+  pastry_enabled: false,
+  watched_directories: [{ id: 1, path: "/Users/me/notes/docs", recursive: true }],
+  project_parents: [{ id: 1, path: "/Users/me/proj", count: 12 }],
+};
+```
+
+## Task, Reminder, and Completion
+
+A task is a to-do with zero or more reminders. `recurrence: "daily"` repeats every day; `recurrence: "once"` fires at a specific date and time.
+
+```js
+const task = { id: 1, title: "Stretch", notes: "", recurrence: "daily", item_id: null, active: 1, created_at: "…" };
+const reminder = { id: 1, task_id: 1, at: "08:30" };                 // daily: "HH:MM" local
+// a "once" task's reminder instead reads "YYYY-MM-DDTHH:MM" local, e.g. "2026-09-22T08:30"
+const completion = { id: 1, task_id: 1, on: "2026-09-22", at: "2026-09-22 08:41:00" };  // one row per (task, day)
+```
+
+The JSON API and the React components use `TaskView`, which folds in the reminders and computed completion state:
+
+```js
+const view = {
+  id: 1, title: "Stretch", notes: "", recurrence: "daily", item_id: null, active: true, created_at: "…",
+  reminders: [{ id: 1, at: "08:30" }],
+  completed_today: true,     // daily: a completion for today; once: any completion at all
+  last_completed: "2026-09-22",   // or null
+  streak: 4,                 // daily only: consecutive days ending today or yesterday
+};
+```
+
+`dueReminders(db, { now?, minutes = 60 })` returns `{ task: TaskView, reminder, due_at }` for every reminder within `minutes` of `now` that isn't already completed — a daily reminder's `due_at` is today's date plus its `"HH:MM"`; a once reminder's `due_at` is its own datetime. `todayTasks(db, today?)` returns every daily task plus any once task with a reminder dated today.
+
+## Project view
+
+The JSON API's shape for a project (a `dir` item in the `project` category), combining the item with its runnable scripts and the ports currently listening under its path:
+
+```js
+const project = {
+  id: 12, title: "portfolio", path: "/Users/me/proj/portfolio", description: "~/proj/portfolio", tags: ["project"],
+  services: { runner: "bun", scripts: { dev: "bun run app.js" }, make_targets: ["build"] },
+  ports: [/* PortEntry, filtered to entries whose cwd is inside path */],
+  slots: [/* ResolvedSlot, from the project category */],
+};
+```
+
+`@portfolio/watch`'s `projectServices(path)` builds `services`: the runner comes from the lockfile (`bun.lock(b)` → `bun`, `pnpm-lock.yaml` → `pnpm`, `yarn.lock` → `yarn`, `package-lock.json` → `npm`, a bare `package.json` → `npm`, none of those → `null`), `scripts` is `package.json`'s `scripts` object, and `make_targets` is every `name:` line in a `Makefile` except `.PHONY` and anything starting with `.`. `serviceCommand(services, name, args)` turns one script or target into the exact shell line to run, e.g. `"bun run dev --port 3000"` or `"make build"`.
 
 Back to the [index](index.md).

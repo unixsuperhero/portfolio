@@ -13,9 +13,9 @@ const store = openStore(":memory:");             // tests
 
 | Function | Notes |
 |----------|-------|
-| `openDatabase(path?, { schema, create, readonly, migrate, log })` | applies the schema; rebuilds the `items` table for pre file/dir databases (backup at `<db>.before-kinds`) |
+| `openDatabase(path?, { schema, create, readonly, migrate, log })` | applies the schema; rebuilds the `items` table for pre file/dir databases (backup at `<db>.before-kinds`); adds `cards.kind`/`cards.config` to a pre-kind database via `migrateCardColumns` |
 | `defaultDatabasePath()` | `PORTFOLIO_DB`, else `<PORTFOLIO_HOME or ~/proj/portfolio>/portfolio.sqlite` |
-| `openStore(path?, options?)` | `{ db, items, tags, portfolios, categories, settings, watched, projects, close }` with every function pre-bound |
+| `openStore(path?, options?)` | `{ db, items, tags, portfolios, categories, settings, watched, projects, tasks, close }` with every function pre-bound |
 | `SCHEMA_PATH`, `readSchema()` | the packaged schema |
 
 ## Repos
@@ -36,15 +36,17 @@ const store = openStore(":memory:");             // tests
 
 `tags.ts`: `listTags` (with counts), `getTag`, `findTag`, `tagsFor`, `tagNamesFor`, `setTags`, `removeTags`, `removeTagById`, `pruneTags`, `renameTag`.
 
-`portfolios.ts`: `listPortfolios` (with card counts), `getPortfolio`, `findPortfolio`, `createPortfolio`, `updatePortfolio`, `deletePortfolio`, `portfolioCards`, `getCard`, `createCard`, `updateCard`, `deleteCard`, `moveCard`, `cardItems`, `portfolioView`. Name clashes and empty titles throw with the same messages the server returns as 422s.
+`portfolios.ts`: `listPortfolios` (with card counts), `getPortfolio`, `findPortfolio`, `createPortfolio`, `updatePortfolio`, `deletePortfolio`, `portfolioCards`, `getCard`, `createCard`, `updateCard`, `deleteCard`, `moveCard`, `cardItems`, `portfolioView`. Name clashes and empty titles throw with the same messages the server returns as 422s. `createCard`/`updateCard` persist `kind` and `config` (JSON); `portfolioView` only runs `cardItems` for `kind: "query"` cards — every other kind comes back with `items: []`, `total: 0` and no SQL.
 
 `categories.ts`: `listCategories` (with member counts), `getCategory`, `findCategory`, `createCategory`, `ensureCategory`, `updateCategory` (refuses a kind change while members exist), `deleteCategory`, `categoryMembers`, `memberSlots`, `setSlotOverride`.
 
-`settings.ts`: `getSetting`, `setSetting`, `listSettings`, `getFlag`, `setFlag`.
+`settings.ts`: `getSetting`, `setSetting`, `listSettings`, `getFlag`, `setFlag`, `getHomePortfolioId`, `setHomePortfolioId` (the `home_portfolio_id` setting; `null` clears it).
 
 `watched.ts`: `listWatchedDirectories`, `findWatchedDirectory`, `addWatchedDirectory`, `setWatchedRecursive`, `claimedItemIds`, `removeWatchedDirectory` (drops uncovered documents), `clearClaims`, `claimItem`, `hasClaim`.
 
 `projects.ts`: `listProjectParents` (with counts), `addProjectParent`, `removeProjectParent`.
+
+`tasks.ts`: `listTasks(db, { all? })` (active only unless `all`), `getTask`, `createTask(db, TaskInput)`, `updateTask(db, id, patch)` (title, notes, recurrence, item_id, active, reminders), `deleteTask`, `setReminders(db, taskId, ats)` (replaces a task's reminders; validates `"HH:MM"` for daily, `"YYYY-MM-DDTHH:MM"` for once), `completeTask`/`uncompleteTask(db, id, on = today)`, `listCompletions`, `taskView(db, task, today?)` → `TaskView` with `completed_today`, `last_completed`, and a daily `streak` (consecutive days ending today or yesterday), `listTaskViews`, `dueReminders(db, { now?, minutes = 60 })` (excludes anything already completed), `todayTasks(db, today?)` (daily tasks plus once tasks due today).
 
 ## Example
 
