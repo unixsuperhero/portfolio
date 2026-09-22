@@ -16,6 +16,8 @@ function toProjectView(ctx: Ctx, item: Item): ProjectView {
     path,
     description: item.description,
     tags: ctx.store.tags.tagNamesFor(item.id),
+    created_at: item.created_at,
+    updated_at: item.updated_at,
     services: projectServices(path),
     ports: snapshot.ports.filter(entry => entry.cwd === path || entry.cwd.startsWith(`${path}/`)),
     slots: ctx.store.categories.memberSlots(item, ctx.home),

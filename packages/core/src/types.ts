@@ -206,6 +206,8 @@ export interface ProjectView {
   path: string;
   description: string;
   tags: string[];
+  created_at: string;
+  updated_at: string;
   services: ProjectServices;
   ports: unknown[];
   slots: ResolvedSlot[];
