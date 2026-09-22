@@ -2,11 +2,12 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { TagList } from "@portfolio/ui";
 import type { ItemDetail } from "../types.ts";
-import { addItemTags, deleteItem, getItem, itemHtmlUrl, pathAction, removeItemTag, toggleItem } from "../api.ts";
+import { addItemTags, deleteItem, getItem, itemHtmlUrl, pathAction, removeItemTag, setSlotPath, toggleItem } from "../api.ts";
 import { copyText, openPath, reveal } from "../native.ts";
 import { openTerminal } from "../terminal/store.ts";
 import { ServicesCard } from "../cards/ServicesCard.tsx";
 import { PortsCard } from "../cards/PortsCard.tsx";
+import { PathField } from "../components/PathField.tsx";
 
 export default function Item() {
   const { id } = useParams();
@@ -14,6 +15,8 @@ export default function Item() {
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [html, setHtml] = useState<string | null>(null);
   const [newTag, setNewTag] = useState("");
+  const [editingSlot, setEditingSlot] = useState<string | null>(null);
+  const [slotOverride, setSlotOverride] = useState("");
 
   const load = () => { if (id) getItem(Number(id)).then(setItem).catch(() => setItem(null)); };
   useEffect(load, [id]);
@@ -31,6 +34,10 @@ export default function Item() {
   const toggle = (field: "pinned" | "starred") => toggleItem(item.id, field).then(load).catch(() => {});
   const remove = () => { if (confirm(`Delete "${item.title}"?`)) deleteItem(item.id).then(() => navigate("/library")).catch(() => {}); };
   const addTag = (event: React.FormEvent) => { event.preventDefault(); if (!newTag.trim()) return; addItemTags(item.id, [newTag.trim()]).then(() => { setNewTag(""); load(); }).catch(() => {}); };
+
+  const startSlotEdit = (slotName: string, current: string) => { setEditingSlot(slotName); setSlotOverride(current); };
+  const saveSlotOverride = (slotName: string) => setSlotPath(item.id, slotName, slotOverride.trim()).then(() => { setEditingSlot(null); load(); }).catch(() => {});
+  const clearSlotOverride = (slotName: string) => setSlotPath(item.id, slotName, "").then(() => { setEditingSlot(null); load(); }).catch(() => {});
 
   return (
     <div>
@@ -72,14 +79,32 @@ export default function Item() {
                 {item.slots.map(slot => (
                   <tr key={slot.name} data-path={slot.path} data-kind={slot.kind} data-item={item.id} data-slot={slot.name}>
                     <td>{slot.name}</td>
-                    <td><code>{slot.path}</code></td>
+                    <td>
+                      {editingSlot === slot.name ? (
+                        <PathField kind={slot.kind} value={slotOverride} onChange={setSlotOverride} />
+                      ) : (
+                        <code>{slot.path}</code>
+                      )}
+                      {slot.overridden ? <span style={{ marginLeft: "0.4rem", color: "var(--text3)", fontSize: "0.75rem" }}>(overridden)</span> : null}
+                    </td>
                     <td>{slot.exists ? "yes" : "no"}</td>
                     <td className="page-actions">
-                      <button type="button" className="secondary" onClick={() => void copyText(slot.path)}>Copy</button>
-                      <button type="button" className="secondary" onClick={() => void reveal(slot.path)}>Reveal</button>
-                      <button type="button" className="secondary" onClick={() => void openPath(slot.path)}>Open</button>
-                      {!slot.exists ? <button type="button" className="secondary" onClick={() => pathAction(item.id, "create", slot.name).then(load)}>Create</button> : null}
-                      {slot.kind === "dir" ? <button type="button" className="secondary" onClick={() => openTerminal({ cwd: slot.path, title: slot.name })}>Terminal</button> : null}
+                      {editingSlot === slot.name ? (
+                        <>
+                          <button type="button" className="secondary" onClick={() => saveSlotOverride(slot.name)}>Save</button>
+                          <button type="button" className="secondary" onClick={() => setEditingSlot(null)}>Cancel</button>
+                        </>
+                      ) : (
+                        <>
+                          <button type="button" className="secondary" onClick={() => void copyText(slot.path)}>Copy</button>
+                          <button type="button" className="secondary" onClick={() => void reveal(slot.path)}>Reveal</button>
+                          <button type="button" className="secondary" onClick={() => void openPath(slot.path)}>Open</button>
+                          {!slot.exists ? <button type="button" className="secondary" onClick={() => pathAction(item.id, "create", slot.name).then(load)}>Create</button> : null}
+                          {slot.kind === "dir" ? <button type="button" className="secondary" onClick={() => openTerminal({ cwd: slot.path, title: slot.name })}>Terminal</button> : null}
+                          <button type="button" className="secondary" onClick={() => startSlotEdit(slot.name, slot.overridden ? slot.path : "")}>Override…</button>
+                          {slot.overridden ? <button type="button" className="secondary" onClick={() => clearSlotOverride(slot.name)}>Clear override</button> : null}
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))}

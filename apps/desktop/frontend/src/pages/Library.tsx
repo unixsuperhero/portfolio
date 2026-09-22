@@ -2,13 +2,16 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { ItemList } from "@portfolio/ui";
 import type { ItemView } from "@portfolio/core";
-import { listItems, quickAdd, toggleItem } from "../api.ts";
+import { detect, listItems, quickAdd, toggleItem } from "../api.ts";
+import { PathField } from "../components/PathField.tsx";
+import type { Detection } from "../types.ts";
 
 export default function Library() {
   const [params, setParams] = useSearchParams();
   const [items, setItems] = useState<ItemView[]>([]);
   const [quick, setQuick] = useState("");
   const [detected, setDetected] = useState<{ id: number; href: string; type: string; title: string } | null>(null);
+  const [quickDetection, setQuickDetection] = useState<Detection | null>(null);
 
   const q = params.get("q") ?? "";
   const type = params.get("type") ?? "";
@@ -23,6 +26,17 @@ export default function Library() {
   };
 
   useEffect(load, [q, type, tag, pinned, starred]);
+
+  // Debounced live detection: once the quick-add text looks like a filesystem path, swap the
+  // plain input for a PathField so the user can browse/pick it instead of typing it out.
+  useEffect(() => {
+    if (!quick.trim()) { setQuickDetection(null); return; }
+    let live = true;
+    const id = setTimeout(() => {
+      detect(quick.trim()).then(result => { if (live) setQuickDetection(result); }).catch(() => { if (live) setQuickDetection(null); });
+    }, 300);
+    return () => { live = false; clearTimeout(id); };
+  }, [quick]);
 
   const setParam = (key: string, value: string) => {
     const next = new URLSearchParams(params);
@@ -42,7 +56,13 @@ export default function Library() {
     <div>
       <div className="page-header"><h1>Library</h1></div>
       <form className="field-row" onSubmit={submitQuick}>
-        <label style={{ flex: 1 }}>Quick add<input style={{ width: "100%" }} value={quick} onChange={event => setQuick(event.target.value)} placeholder="Paste a URL, path, or text…" /></label>
+        {quickDetection?.shape === "path" ? (
+          <div style={{ flex: 1 }}>
+            <PathField label="Quick add" kind={quickDetection.type === "dir" ? "dir" : "file"} value={quick} onChange={setQuick} />
+          </div>
+        ) : (
+          <label style={{ flex: 1 }}>Quick add<input style={{ width: "100%" }} value={quick} onChange={event => setQuick(event.target.value)} placeholder="Paste a URL, path, or text…" /></label>
+        )}
         <button className="primary" type="submit">Add</button>
       </form>
       {detected ? <p style={{ color: "var(--text2)" }}>Added as <strong>{detected.type}</strong>: {detected.title}</p> : null}

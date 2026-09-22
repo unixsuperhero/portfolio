@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import type { ProjectParentSummary, ProjectView } from "../types.ts";
 import { addProjectParent, listProjectParents, listProjects, removeProjectParent, scanProjects } from "../api.ts";
+import { PathField } from "../components/PathField.tsx";
 
 export default function Projects() {
   const [projects, setProjects] = useState<ProjectView[]>([]);
@@ -39,7 +40,7 @@ export default function Projects() {
 
       <h2>Project parents</h2>
       <form className="field-row" onSubmit={addParent}>
-        <label>Path<input value={newParent} onChange={event => setNewParent(event.target.value)} placeholder="~/proj" /></label>
+        <PathField label="Path" kind="dir" value={newParent} onChange={setNewParent} placeholder="~/proj" />
         <button className="secondary" type="submit">Add</button>
       </form>
       <table className="data-table">

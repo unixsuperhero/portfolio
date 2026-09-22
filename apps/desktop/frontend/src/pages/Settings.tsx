@@ -3,13 +3,14 @@ import type { PortfolioSummary, SettingsView as SettingsType } from "../types.ts
 import { addProjectParent, addWatchedDirectory, getSettings, listPortfolios, patchSettings, removeProjectParent, removeWatchedDirectory } from "../api.ts";
 import { getLinksOpenIn, setLinksOpenIn, type LinksOpenIn } from "../context-menu/ContextMenu.tsx";
 import { useSidecarStatus } from "../hooks/useSidecarStatus.ts";
-import { DirectoryPicker } from "../components/DirectoryPicker.tsx";
+import { PathField } from "../components/PathField.tsx";
 
 export default function Settings() {
   const [settings, setSettings] = useState<SettingsType | null>(null);
   const [portfolios, setPortfolios] = useState<PortfolioSummary[]>([]);
   const [linksOpenIn, setLinks] = useState<LinksOpenIn>(getLinksOpenIn());
-  const [picking, setPicking] = useState<"watch" | "parent" | null>(null);
+  const [newWatchDir, setNewWatchDir] = useState("");
+  const [newParentDir, setNewParentDir] = useState("");
   const [ignoredChecksText, setIgnoredChecksText] = useState("");
   const [pollMinutes, setPollMinutes] = useState("2");
   const [savingGithub, setSavingGithub] = useState(false);
@@ -28,6 +29,17 @@ export default function Settings() {
   const setHome = (value: string) => patchSettings({ home_portfolio_id: value ? Number(value) : null }).then(load).catch(() => {});
   const setPastry = (value: boolean) => patchSettings({ pastry_enabled: value }).then(load).catch(() => {});
   const changeLinks = (value: LinksOpenIn) => { setLinksOpenIn(value); setLinks(value); };
+
+  const addWatchDir = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!newWatchDir.trim()) return;
+    addWatchedDirectory(newWatchDir.trim()).then(() => { setNewWatchDir(""); load(); }).catch(() => {});
+  };
+  const addParentDir = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!newParentDir.trim()) return;
+    addProjectParent(newParentDir.trim()).then(() => { setNewParentDir(""); load(); }).catch(() => {});
+  };
 
   const saveGithub = (event: React.FormEvent) => {
     event.preventDefault();
@@ -69,7 +81,10 @@ export default function Settings() {
       </form>
 
       <h2 style={{ marginTop: "1.5rem" }}>Watched directories</h2>
-      <button type="button" className="secondary" onClick={() => setPicking("watch")}>Add directory</button>
+      <form className="field-row" onSubmit={addWatchDir}>
+        <PathField label="Path" kind="dir" value={newWatchDir} onChange={setNewWatchDir} placeholder="~/proj" />
+        <button className="secondary" type="submit">Add</button>
+      </form>
       <table className="data-table">
         <thead><tr><th>Path</th><th>Recursive</th><th></th></tr></thead>
         <tbody>
@@ -84,7 +99,10 @@ export default function Settings() {
       </table>
 
       <h2 style={{ marginTop: "1.5rem" }}>Project parents</h2>
-      <button type="button" className="secondary" onClick={() => setPicking("parent")}>Add parent</button>
+      <form className="field-row" onSubmit={addParentDir}>
+        <PathField label="Path" kind="dir" value={newParentDir} onChange={setNewParentDir} placeholder="~/proj" />
+        <button className="secondary" type="submit">Add</button>
+      </form>
       <table className="data-table">
         <thead><tr><th>Path</th><th>Projects</th><th></th></tr></thead>
         <tbody>
@@ -104,15 +122,6 @@ export default function Settings() {
         <span>{status === "ok" ? "Connected" : status === "down" ? "Offline" : "Checking…"}</span>
       </div>
 
-      {picking ? (
-        <DirectoryPicker
-          onClose={() => setPicking(null)}
-          onPick={path => {
-            const call = picking === "watch" ? addWatchedDirectory(path) : addProjectParent(path);
-            call.then(load).finally(() => setPicking(null));
-          }}
-        />
-      ) : null}
     </div>
   );
 }

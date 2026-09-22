@@ -186,3 +186,22 @@ table.data-table th { color: var(--text3); font-weight: 500; }
 /* Modal */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1500; }
 .modal-panel { background: var(--surface); border: 1px solid var(--border2); border-radius: var(--radius); padding: 1rem; max-width: 32rem; width: 90%; max-height: 80vh; overflow-y: auto; }
+
+/* PathField */
+.path-field { display: flex; gap: 0.4rem; align-items: center; }
+.path-field input { flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: 0.35rem 0.6rem; font-size: 0.88rem; font-family: var(--mono); }
+.path-field-label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.8rem; color: var(--text2); }
+
+/* BrowsePicker (fallback directory/file browser) */
+.browse-picker { max-width: 36rem; display: flex; flex-direction: column; }
+.browse-breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: 0.1rem; padding: 0.4rem 0.5rem; margin-bottom: 0.5rem; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); font-family: var(--mono); font-size: 0.82rem; }
+.browse-crumb { background: none; border: none; color: var(--text2); cursor: pointer; padding: 0.1rem 0.2rem; font-family: var(--mono); font-size: 0.82rem; }
+.browse-crumb:hover { color: var(--text); text-decoration: underline; }
+.browse-crumb-sep { color: var(--text3); }
+.browse-list { max-height: 18rem; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 0.6rem; }
+.browse-row { display: block; width: 100%; text-align: left; background: none; border: none; border-bottom: 1px solid var(--border); color: var(--text); padding: 0.4rem 0.6rem; cursor: pointer; font-size: 0.85rem; }
+.browse-row:last-child { border-bottom: none; }
+.browse-row:hover { background: var(--surface2); }
+.browse-row.selected { background: var(--surface2); color: var(--accent); }
+.browse-row.browse-parent { color: var(--text2); }
+.browse-footer { display: flex; justify-content: flex-end; gap: 0.5rem; }

@@ -38,7 +38,7 @@ export async function openInApp(url: string): Promise<void> {
 export async function openSystem(url: string): Promise<void> {
   if (inWails()) {
     const service = await nativeService();
-    const impl = (service as any)?.NativeService ?? (service as any)?.default;
+    const impl = (service as any)?.NativeService ?? (service as any)?.default ?? service;
     if (impl?.OpenUrl) {
       await impl.OpenUrl(url);
       return;
@@ -50,7 +50,7 @@ export async function openSystem(url: string): Promise<void> {
 export async function copyText(text: string): Promise<void> {
   if (inWails()) {
     const service = await nativeService();
-    const impl = (service as any)?.NativeService ?? (service as any)?.default;
+    const impl = (service as any)?.NativeService ?? (service as any)?.default ?? service;
     if (impl?.CopyText) {
       await impl.CopyText(text);
       return;
@@ -66,7 +66,7 @@ export async function copyText(text: string): Promise<void> {
 export async function reveal(path: string): Promise<void> {
   if (inWails()) {
     const service = await nativeService();
-    const impl = (service as any)?.NativeService ?? (service as any)?.default;
+    const impl = (service as any)?.NativeService ?? (service as any)?.default ?? service;
     if (impl?.Reveal) {
       await impl.Reveal(path);
       return;
@@ -78,7 +78,7 @@ export async function reveal(path: string): Promise<void> {
 export async function openPath(path: string): Promise<void> {
   if (inWails()) {
     const service = await nativeService();
-    const impl = (service as any)?.NativeService ?? (service as any)?.default;
+    const impl = (service as any)?.NativeService ?? (service as any)?.default ?? service;
     if (impl?.OpenPath) {
       await impl.OpenPath(path);
       return;
@@ -90,7 +90,7 @@ export async function openPath(path: string): Promise<void> {
 export async function openWith(path: string, app: string): Promise<void> {
   if (inWails()) {
     const service = await nativeService();
-    const impl = (service as any)?.NativeService ?? (service as any)?.default;
+    const impl = (service as any)?.NativeService ?? (service as any)?.default ?? service;
     if (impl?.OpenWith) {
       await impl.OpenWith(path, app);
       return;
@@ -102,7 +102,7 @@ export async function openWith(path: string, app: string): Promise<void> {
 export async function notify(title: string, body: string): Promise<void> {
   if (inWails()) {
     const service = await nativeService();
-    const impl = (service as any)?.NativeService ?? (service as any)?.default;
+    const impl = (service as any)?.NativeService ?? (service as any)?.default ?? service;
     if (impl?.Notify) {
       await impl.Notify(title, body);
       return;
@@ -126,4 +126,40 @@ export async function notify(title: string, body: string): Promise<void> {
     }
   }
   console.warn(`notify: ${title} — ${body}`);
+}
+
+/** $HOME, used as the default start directory for pickers. "" outside Wails. */
+export async function home(): Promise<string> {
+  if (inWails()) {
+    const service = await nativeService();
+    const impl = (service as any)?.NativeService ?? (service as any)?.default ?? service;
+    if (impl?.Home) {
+      return await impl.Home();
+    }
+  }
+  return "";
+}
+
+/** Native "choose a directory" dialog. Returns "" when cancelled or unavailable (not in Wails). */
+export async function pickDirectory(title: string, start?: string): Promise<string> {
+  if (inWails()) {
+    const service = await nativeService();
+    const impl = (service as any)?.NativeService ?? (service as any)?.default ?? service;
+    if (impl?.PickDirectory) {
+      return await impl.PickDirectory(title, start ?? "");
+    }
+  }
+  return "";
+}
+
+/** Native "choose a file" dialog. Returns "" when cancelled or unavailable (not in Wails). */
+export async function pickFile(title: string, start?: string): Promise<string> {
+  if (inWails()) {
+    const service = await nativeService();
+    const impl = (service as any)?.NativeService ?? (service as any)?.default ?? service;
+    if (impl?.PickFile) {
+      return await impl.PickFile(title, start ?? "");
+    }
+  }
+  return "";
 }
