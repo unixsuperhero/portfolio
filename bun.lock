@@ -61,6 +61,10 @@
       "dependencies": {
         "@portfolio/core": "workspace:*",
       },
+      "devDependencies": {
+        "@portfolio/api": "workspace:*",
+        "@portfolio/db": "workspace:*",
+      },
     },
     "packages/core": {
       "name": "@portfolio/core",
