@@ -1,0 +1,11 @@
+{
+  "name": "@portfolio/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Shared helpers for the pf-* command line tools: open the default store, label and pick items, print item tables.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "test": "bun test" },
+  "dependencies": { "@portfolio/core": "workspace:*", "@portfolio/db": "workspace:*", "@portfolio/cli-kit": "workspace:*", "@portfolio/client": "workspace:*" }
+}
