@@ -8,7 +8,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -32,10 +32,8 @@ export function Create(opts: $models.PtyOptions): $CancellablePromise<string> {
 /**
  * List returns info for every known session.
  */
-export function List(): $CancellablePromise<$models.PtyInfo[]> {
-    return $Call.ByID(1978130210).then(($result: any) => {
-        return $$createType1($result);
-    });
+export function List(): $CancellablePromise<$models.PtyInfo[] | null> {
+    return $Call.ByID(1978130210);
 }
 
 /**
@@ -51,7 +49,3 @@ export function Resize(id: string, cols: number, rows: number): $CancellableProm
 export function Write(id: string, data: string): $CancellablePromise<void> {
     return $Call.ByID(1502773937, id, data);
 }
-
-// Private type creation functions
-const $$createType0 = $models.PtyInfo.createFrom;
-const $$createType1 = $Create.Array($$createType0);

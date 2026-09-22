@@ -12,7 +12,7 @@ export {
     SidecarService
 };
 
-export {
+export type {
     BrowserWindow,
     PtyDataEvent,
     PtyExitEvent,
