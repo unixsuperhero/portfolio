@@ -2,7 +2,7 @@
 // Most are already defined in @portfolio/core (TaskView, TaskInput, DueReminder, ProjectView,
 // Settings, ResolvedSlot, Card/CardSpec with kind + config) and are re-exported here so callers
 // only need to import from "./types.ts".
-import type { Card, ItemType, ItemView, Portfolio, ProjectView, ResolvedSlot } from "@portfolio/core";
+import type { Card, ItemType, ItemView, Portfolio, ProjectView, ResolvedSlot, Settings } from "@portfolio/core";
 import type { PortEntry } from "@portfolio/ports";
 
 export type {
@@ -77,3 +77,69 @@ export interface Detection {
   exists?: boolean;
   content?: string;
 }
+
+// -- Pull requests (added 2026-09-22) ----------------------------------------
+
+export type PrCheckStatus = "success" | "failure" | "pending" | "skipped" | "cancelled" | "neutral";
+export type PrChecksSummary = "success" | "failure" | "pending" | "none";
+export type PrReviewDecision = "approved" | "changes_requested" | "review_required" | null;
+export type PrList = "mine" | "review_requested" | "watched";
+
+export interface PrCheck {
+  name: string;
+  status: PrCheckStatus;
+  url: string;
+  ignored: boolean;
+}
+
+export interface Pr {
+  id: number;
+  url: string;
+  owner: string;
+  repo: string;
+  number: number;
+  title: string;
+  author: string;
+  is_draft: boolean;
+  state: "open" | "closed" | "merged";
+  review_decision: PrReviewDecision;
+  updated_at: string;
+  comments: number;
+  checks: PrCheck[];
+  checks_summary: PrChecksSummary;
+  watched: boolean;
+  ignored_checks: string[];
+  lists: PrList[];
+  item_id: number | null;
+  fetched_at: string;
+}
+
+export interface PrEvent {
+  id: number;
+  pr_id: number;
+  kind: "state" | "comments" | "checks" | "review";
+  message: string;
+  at: string;
+  seen: boolean;
+}
+
+export interface PrStatus {
+  last_poll_at: string | null;
+  next_poll_at: string | null;
+  rate: { remaining: number; reset_at: string } | null;
+  polling: boolean;
+  error: string | null;
+  gh_ok: boolean;
+  login: string | null;
+}
+
+export interface PrsResponse {
+  mine: Pr[];
+  review_requested: Pr[];
+  watched: Pr[];
+  status: PrStatus;
+}
+
+/** Settings gains github_ignored_checks / github_poll_minutes; kept optional here since
+ * @portfolio/core's Settings type may not have caught up yet. */
+export type SettingsView = Settings & { github_ignored_checks?: string[]; github_poll_minutes?: number };

@@ -1,4 +1,5 @@
 import { PortfolioClient } from "@portfolio/client";
+import { isWails, ownOrigin } from "./lib/wails.ts";
 import type { CardSpec, ItemFilter, Slot, TaskInput } from "@portfolio/core";
 import type {
   CategorySummary,
@@ -10,11 +11,13 @@ import type {
   PortsSnapshot,
   ProjectParentSummary,
   ProjectView,
-  Settings,
   TaskView,
 } from "./types.ts";
 
-export const api = new PortfolioClient(import.meta.env.VITE_PORTFOLIO_API ?? "http://127.0.0.1:4388");
+// Inside the Wails webview the Go side proxies /health and /api/* to the sidecar on the
+// page's own origin (see apps/desktop/proxy.go); in a plain browser we talk to it directly.
+export const apiBase: string = import.meta.env.VITE_PORTFOLIO_API ?? (isWails() ? ownOrigin() : "http://127.0.0.1:4388");
+export const api = new PortfolioClient(apiBase);
 
 // Typed helpers for every contract route this app calls. Each one goes through
 // `api.request<T>()` directly instead of relying on @portfolio/client methods that may not
@@ -101,10 +104,10 @@ export const deleteCategory = (id: number) => api.request<{ ok: true }>(`/api/ca
 
 // -- Settings and directories ------------------------------------------------
 
-export const getSettings = () => api.request<Settings>("/api/settings");
+export const getSettings = () => api.request<import("./types.ts").SettingsView>("/api/settings");
 
-export const patchSettings = (patch: { home_portfolio_id?: number | null; pastry_enabled?: boolean }) =>
-  api.request<Settings>("/api/settings", { method: "PATCH", json: patch });
+export const patchSettings = (patch: { home_portfolio_id?: number | null; pastry_enabled?: boolean; github_ignored_checks?: string[]; github_poll_minutes?: number }) =>
+  api.request<import("./types.ts").SettingsView>("/api/settings", { method: "PATCH", json: patch });
 
 export const getHome = () => api.request<{ portfolio: PortfolioView | null }>("/api/home");
 
@@ -172,3 +175,21 @@ export const getDueReminders = (minutes = 60) =>
 export const getTodayReminders = () => api.request<{ tasks: TaskView[] }>("/api/reminders/today");
 
 export const health = () => api.request<{ ok: boolean; items: number }>("/health");
+
+// -- Pull requests --------------------------------------------------------
+
+export const getPrs = () => api.request<import("./types.ts").PrsResponse>("/api/prs");
+
+export const refreshPrs = () => api.request<import("./types.ts").PrsResponse>("/api/prs/refresh", { method: "POST" });
+
+export const watchPr = (url: string, watched: boolean) =>
+  api.request<import("./types.ts").Pr>("/api/prs/watch", { method: "POST", json: { url, watched } });
+
+export const patchPr = (id: number, patch: { ignored_checks: string[] }) =>
+  api.request<import("./types.ts").Pr>(`/api/prs/${id}`, { method: "PATCH", json: patch });
+
+export const getPrEvents = (since: number) =>
+  api.request<{ events: import("./types.ts").PrEvent[] }>("/api/prs/events", { query: { since } });
+
+export const markPrEventsSeen = (ids: number[]) =>
+  api.request<{ ok: true }>("/api/prs/events/seen", { method: "POST", json: { ids } });
