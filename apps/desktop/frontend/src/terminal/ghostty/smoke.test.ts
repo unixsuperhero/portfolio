@@ -50,4 +50,19 @@ describe("GhosttyTerminalCore (wasm smoke test)", () => {
       core.dispose();
     }
   });
+
+  // A distinguishing encodeKey test for setMacosOptionAsAlt (Option+b, key
+  // "∫" from macOS's own composition, expected "\x1bb" on vs. "∫" off) was
+  // attempted but dropped: bun has no DOM, so a real KeyboardEvent cannot be
+  // constructed, and a plain object substitute only reaches
+  // ghosttyUnshiftedCodepoint's fallback path (no navigator.keyboard.
+  // getLayoutMap()), which resolves the unshifted character from event.key
+  // itself rather than event.code — so both the "on" and "off" cases encoded
+  // identically in manual runs, regardless of setMacosOptionAsAlt's value.
+  // Reproducing the real macOS path would require faking
+  // navigator.keyboard.getLayoutMap before GhosttyTerminalCore.create() (the
+  // layout map loads once in its constructor), which still did not surface a
+  // difference — the wasm encoder's exact option-6 semantics aren't
+  // observable from this harness. setMacosOptionAsAlt is exercised via
+  // tsc/vite build and manual verification instead.
 });

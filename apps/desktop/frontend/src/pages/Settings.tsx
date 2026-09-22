@@ -4,11 +4,13 @@ import { addProjectParent, addWatchedDirectory, getSettings, listPortfolios, pat
 import { getLinksOpenIn, setLinksOpenIn, type LinksOpenIn } from "../context-menu/ContextMenu.tsx";
 import { useSidecarStatus } from "../hooks/useSidecarStatus.ts";
 import { PathField } from "../components/PathField.tsx";
+import { getTerminalOptionAsAlt, setTerminalOptionAsAlt, type TerminalOptionAsAlt } from "../terminal/GhosttyTerminal.tsx";
 
 export default function Settings() {
   const [settings, setSettings] = useState<SettingsType | null>(null);
   const [portfolios, setPortfolios] = useState<PortfolioSummary[]>([]);
   const [linksOpenIn, setLinks] = useState<LinksOpenIn>(getLinksOpenIn());
+  const [optionAsAlt, setOptionAsAltState] = useState<TerminalOptionAsAlt>(getTerminalOptionAsAlt());
   const [newWatchDir, setNewWatchDir] = useState("");
   const [newParentDir, setNewParentDir] = useState("");
   const [ignoredChecksText, setIgnoredChecksText] = useState("");
@@ -29,6 +31,7 @@ export default function Settings() {
   const setHome = (value: string) => patchSettings({ home_portfolio_id: value ? Number(value) : null }).then(load).catch(() => {});
   const setPastry = (value: boolean) => patchSettings({ pastry_enabled: value }).then(load).catch(() => {});
   const changeLinks = (value: LinksOpenIn) => { setLinksOpenIn(value); setLinks(value); };
+  const changeOptionAsAlt = (value: TerminalOptionAsAlt) => { setTerminalOptionAsAlt(value); setOptionAsAltState(value); };
 
   const addWatchDir = (event: React.FormEvent) => {
     event.preventDefault();
@@ -67,6 +70,17 @@ export default function Settings() {
         <label><input type="radio" name="links" checked={linksOpenIn === "in-app"} onChange={() => changeLinks("in-app")} /> Open in in-app browser</label>
         <label><input type="radio" name="links" checked={linksOpenIn === "system"} onChange={() => changeLinks("system")} /> Open in system browser</label>
       </div>
+
+      <h2 style={{ marginTop: "1.5rem" }}>Terminal</h2>
+      <label>Option key acts as Alt
+        <select value={optionAsAlt} onChange={event => changeOptionAsAlt(event.target.value as TerminalOptionAsAlt)}>
+          <option value="false">Off</option>
+          <option value="true">On</option>
+          <option value="left">Left only</option>
+          <option value="right">Right only</option>
+        </select>
+      </label>
+      <p style={{ color: "var(--text2)" }}>On lets Option+key send Alt sequences (Meta) to shells and editors instead of typing special characters.</p>
 
       <h2 style={{ marginTop: "1.5rem" }}>Pastry</h2>
       <label><input type="checkbox" checked={settings.pastry_enabled} onChange={event => setPastry(event.target.checked)} /> Enable pastry</label>

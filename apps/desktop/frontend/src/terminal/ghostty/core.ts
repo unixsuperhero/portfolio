@@ -214,6 +214,7 @@ export class GhosttyTerminalCore {
   private rows: GhosttyRow[] = [];
   private disposed = false;
   private keyboardLayoutMap: GhosttyKeyboardLayoutMap | undefined;
+  private macosOptionAsAlt: 0 | 1 | 2 | 3 = 0;
 
   private constructor(runtime: GhosttyRuntime) {
     this.runtime = runtime;
@@ -472,9 +473,22 @@ export class GhosttyTerminalCore {
     );
   }
 
+  /**
+   * Option id 6 (GHOSTTY_KEY_ENCODER_OPT_MACOS_OPTION_AS_ALT) as a C int enum:
+   * 0 false, 1 true, 2 left only, 3 right only. Applied on every encodeKey
+   * because ghostty_key_encoder_setopt_from_terminal resets it to false first.
+   */
+  setMacosOptionAsAlt(value: 0 | 1 | 2 | 3): void {
+    this.macosOptionAsAlt = value;
+  }
+
   encodeKey(event: KeyboardEvent, action: "press" | "release" = "press"): string {
     this.ensureActive();
     this.runtime.call("ghostty_key_encoder_setopt_from_terminal", this.keyEncoder, this.terminal);
+    if (this.macosOptionAsAlt !== 0) {
+      this.runtime.view(this.scratch, 4).setInt32(0, this.macosOptionAsAlt, true);
+      this.runtime.call("ghostty_key_encoder_setopt", this.keyEncoder, 6, this.scratch);
+    }
     this.runtime.call(
       "ghostty_key_event_set_action",
       this.keyEvent,

@@ -537,11 +537,27 @@ export interface GhosttySelectionPosition {
   readonly end: { readonly x: number; readonly y: number };
 }
 
+/** Maps to GHOSTTY_KEY_ENCODER_OPT_MACOS_OPTION_AS_ALT's C int enum: 0/1/2/3. */
+function macosOptionAsAltValue(setting: "false" | "true" | "left" | "right" | undefined): 0 | 1 | 2 | 3 {
+  switch (setting) {
+    case "true":
+      return 1;
+    case "left":
+      return 2;
+    case "right":
+      return 3;
+    default:
+      return 0;
+  }
+}
+
 export interface GhosttyTerminalSurfaceOptions {
   readonly theme: GhosttyTheme;
   readonly font?: GhosttyTerminalFont;
   /** Read after font and WASM loading. Hosts can supply a getter for the latest value. */
   readonly visible?: boolean;
+  /** macOS "Option key acts as Alt" setting; applied to the key encoder on every keypress. */
+  readonly macosOptionAsAlt?: "false" | "true" | "left" | "right";
   readonly onData: (data: string) => void;
   readonly onResize: (cols: number, rows: number) => void;
   readonly onSelectionChange: () => void;
@@ -728,6 +744,7 @@ export class GhosttyTerminalSurface {
       options.theme,
       options.onData,
     );
+    core.setMacosOptionAsAlt(macosOptionAsAltValue(options.macosOptionAsAlt));
     const surface = new GhosttyTerminalSurface(
       mount,
       canvas,
@@ -789,6 +806,11 @@ export class GhosttyTerminalSurface {
     this.core.setTheme(theme);
     this.forceFullRender = true;
     this.requestRender();
+  }
+
+  setMacosOptionAsAlt(value: "false" | "true" | "left" | "right"): void {
+    if (this.disposed) return;
+    this.core.setMacosOptionAsAlt(macosOptionAsAltValue(value));
   }
 
   async setFont(font: GhosttyTerminalFont): Promise<void> {

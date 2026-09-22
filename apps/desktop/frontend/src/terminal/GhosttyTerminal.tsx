@@ -7,8 +7,31 @@ import { useEffect, useRef } from "react";
 import { GhosttyTerminalSurface } from "./ghostty/surface";
 import { readGhosttyFontFamily, readGhosttyTheme } from "./theme";
 import { createPtySession, type PtySession } from "./pty";
+import { isMacPlatform } from "./shims/platform";
 import { setTabExited, setTabPtyId, useTerminalStore, type TerminalTab } from "./store";
 import "./terminal.css";
+
+export type TerminalOptionAsAlt = "false" | "true" | "left" | "right";
+
+const TERMINAL_OPTION_AS_ALT_KEY = "terminal_option_as_alt";
+/** Dispatched on window whenever a terminal setting in localStorage changes, so
+ * mounted surfaces can apply it live without a full remount. */
+export const TERMINAL_SETTINGS_EVENT = "portfolio:terminal-settings";
+
+function isTerminalOptionAsAlt(value: string | null): value is TerminalOptionAsAlt {
+  return value === "false" || value === "true" || value === "left" || value === "right";
+}
+
+export function getTerminalOptionAsAlt(): TerminalOptionAsAlt {
+  const stored = localStorage.getItem(TERMINAL_OPTION_AS_ALT_KEY);
+  if (isTerminalOptionAsAlt(stored)) return stored;
+  return isMacPlatform(navigator.platform) ? "true" : "false";
+}
+
+export function setTerminalOptionAsAlt(value: TerminalOptionAsAlt): void {
+  localStorage.setItem(TERMINAL_OPTION_AS_ALT_KEY, value);
+  window.dispatchEvent(new CustomEvent(TERMINAL_SETTINGS_EVENT));
+}
 
 export function GhosttyTerminal({ tab }: { tab: TerminalTab }) {
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -47,6 +70,7 @@ export function GhosttyTerminal({ tab }: { tab: TerminalTab }) {
       theme: readGhosttyTheme(),
       font: { family: readGhosttyFontFamily() },
       visible: isActive,
+      macosOptionAsAlt: getTerminalOptionAsAlt(),
       onData: data => session?.write(data),
       onResize: (cols, rows) => {
         if (!sessionCreated) void ensureSession(cols, rows);
@@ -81,6 +105,14 @@ export function GhosttyTerminal({ tab }: { tab: TerminalTab }) {
   useEffect(() => {
     surfaceRef.current?.setVisible(isActive);
   }, [isActive]);
+
+  useEffect(() => {
+    const onSettingsChange = () => {
+      surfaceRef.current?.setMacosOptionAsAlt(getTerminalOptionAsAlt());
+    };
+    window.addEventListener(TERMINAL_SETTINGS_EVENT, onSettingsChange);
+    return () => window.removeEventListener(TERMINAL_SETTINGS_EVENT, onSettingsChange);
+  }, []);
 
   return <div ref={mountRef} className="ghostty-mount" />;
 }
