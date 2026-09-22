@@ -1,0 +1,62 @@
+{
+  "mine": {
+    "nodes": [
+      {
+        "url": "https://github.com/acme/app/pull/12",
+        "number": 12,
+        "title": "Add widgets",
+        "isDraft": false,
+        "state": "OPEN",
+        "merged": false,
+        "reviewDecision": "REVIEW_REQUIRED",
+        "updatedAt": "2026-09-22T14:00:00Z",
+        "author": { "login": "jearsh" },
+        "repository": { "owner": { "login": "acme" }, "name": "app" },
+        "comments": { "totalCount": 2 },
+        "reviews": { "totalCount": 1 },
+        "commits": {
+          "nodes": [
+            {
+              "commit": {
+                "statusCheckRollup": {
+                  "contexts": {
+                    "nodes": [
+                      { "__typename": "CheckRun", "name": "ci/test", "conclusion": "FAILURE", "status": "COMPLETED", "detailsUrl": "https://ci/1" },
+                      { "__typename": "CheckRun", "name": "ci/lint", "conclusion": "SUCCESS", "status": "COMPLETED", "detailsUrl": "https://ci/2" },
+                      { "__typename": "CheckRun", "name": "codecov/patch", "conclusion": null, "status": "IN_PROGRESS", "detailsUrl": "https://ci/3" },
+                      { "__typename": "StatusContext", "context": "vercel/deploy", "state": "SUCCESS", "targetUrl": "https://vercel/1" }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "review_requested": {
+    "nodes": [
+      {
+        "url": "https://github.com/acme/app/pull/20",
+        "number": 20,
+        "title": "Fix parser",
+        "isDraft": false,
+        "state": "OPEN",
+        "merged": false,
+        "reviewDecision": null,
+        "updatedAt": "2026-09-22T13:00:00Z",
+        "author": { "login": "somebody" },
+        "repository": { "owner": { "login": "acme" }, "name": "app" },
+        "comments": { "totalCount": 0 },
+        "reviews": { "totalCount": 0 },
+        "commits": {
+          "nodes": [
+            { "commit": { "statusCheckRollup": { "contexts": { "nodes": [] } } } }
+          ]
+        }
+      }
+    ]
+  },
+  "rateLimit": { "remaining": 4999, "resetAt": "2026-09-22T15:00:00Z" }
+}

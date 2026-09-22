@@ -1,0 +1,34 @@
+{
+  "pr0": {
+    "pullRequest": {
+      "url": "https://github.com/acme/app/pull/40",
+      "number": 40,
+      "title": "Refactor storage",
+      "isDraft": false,
+      "state": "MERGED",
+      "merged": true,
+      "reviewDecision": "APPROVED",
+      "updatedAt": "2026-09-22T12:00:00Z",
+      "author": { "login": "jearsh" },
+      "repository": { "owner": { "login": "acme" }, "name": "app" },
+      "comments": { "totalCount": 5 },
+      "reviews": { "totalCount": 2 },
+      "commits": {
+        "nodes": [
+          {
+            "commit": {
+              "statusCheckRollup": {
+                "contexts": {
+                  "nodes": [
+                    { "__typename": "CheckRun", "name": "ci/test", "conclusion": "SUCCESS", "status": "COMPLETED", "detailsUrl": "https://ci/40" }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "rateLimit": { "remaining": 4998, "resetAt": "2026-09-22T15:00:00Z" }
+}

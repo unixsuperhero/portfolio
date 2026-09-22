@@ -211,4 +211,67 @@ export interface Settings {
   pastry_enabled: boolean;
   watched_directories: { id: number; path: string; recursive: boolean }[];
   project_parents: { id: number; path: string; count: number }[];
+  github_ignored_checks: string[];
+  github_poll_minutes: number;
+}
+
+export type PrState = "open" | "closed" | "merged";
+export type ReviewDecision = "approved" | "changes_requested" | "review_required";
+export type CheckStatus = "success" | "failure" | "pending" | "skipped" | "cancelled" | "neutral";
+export type ChecksSummary = "success" | "failure" | "pending" | "none";
+export type PrEventKind = "state" | "comments" | "checks" | "review";
+export type PrList = "mine" | "review_requested" | "watched";
+
+export interface PrCheck {
+  name: string;
+  status: CheckStatus;
+  url: string;
+  ignored: boolean;
+}
+
+/** One row in github_prs, as the JSON API and clients see it. */
+export interface Pr {
+  id: number;
+  url: string;
+  owner: string;
+  repo: string;
+  number: number;
+  title: string;
+  author: string;
+  is_draft: boolean;
+  state: PrState;
+  review_decision: ReviewDecision | null;
+  updated_at: string;
+  /** Issue comments + review comments + reviews. */
+  comments: number;
+  checks: PrCheck[];
+  /** Over non-ignored checks only. */
+  checks_summary: ChecksSummary;
+  watched: boolean;
+  /** Per-PR ignored check name patterns; settings.github_ignored_checks is global. */
+  ignored_checks: string[];
+  /** Which search lists this PR currently appears in ([] for watched-only). */
+  lists: string[];
+  /** The library `pr` item, created when watched. */
+  item_id: number | null;
+  fetched_at: string;
+}
+
+export interface PrEvent {
+  id: number;
+  pr_id: number;
+  kind: PrEventKind;
+  message: string;
+  at: string;
+  seen: boolean;
+}
+
+export interface PrStatus {
+  last_poll_at: string | null;
+  next_poll_at: string | null;
+  rate: { remaining: number; reset_at: string } | null;
+  polling: boolean;
+  error: string | null;
+  gh_ok: boolean;
+  login: string | null;
 }
