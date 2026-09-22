@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -61,14 +62,22 @@ func (s *SidecarService) ServiceStartup(ctx context.Context, options application
 		s.mu.Lock()
 		s.adopted = true
 		s.mu.Unlock()
+		go s.watch(ctx)
 		return nil
 	}
+	if err := s.spawn(); err != nil {
+		return err
+	}
+	go s.watch(ctx)
+	return nil
+}
 
+// spawn starts `bun run packages/api/src/server.ts` in REPO and waits for
+// /health. It replaces any previous child.
+func (s *SidecarService) spawn() error {
 	repo, err := findRepo()
 	if err != nil {
-		s.mu.Lock()
-		s.lastErr = err.Error()
-		s.mu.Unlock()
+		s.setError(err.Error())
 		return fmt.Errorf("sidecar: %w", err)
 	}
 
@@ -98,9 +107,12 @@ func (s *SidecarService) ServiceStartup(ctx context.Context, options application
 		logFile.Close()
 		return fmt.Errorf("sidecar: starting bun: %w", err)
 	}
+	go func() { _ = cmd.Wait(); logFile.Close() }()
 
 	s.mu.Lock()
 	s.cmd = cmd
+	s.adopted = false
+	s.lastErr = ""
 	s.mu.Unlock()
 
 	deadline := time.Now().Add(10 * time.Second)
@@ -111,10 +123,63 @@ func (s *SidecarService) ServiceStartup(ctx context.Context, options application
 		time.Sleep(200 * time.Millisecond)
 	}
 
-	s.mu.Lock()
-	s.lastErr = "sidecar did not become healthy within 10s"
-	s.mu.Unlock()
+	s.setError("sidecar did not become healthy within 10s")
 	return fmt.Errorf("sidecar: did not become healthy within 10s (see %s)", filepath.Join(logDir, "desktop-api.log"))
+}
+
+// watch re-spawns the API when it stops answering /health three checks in a
+// row, whether it was adopted (and killed by whoever owned it) or our own
+// child that crashed. It never touches the page: the frontend only sees the
+// status dot change.
+func (s *SidecarService) watch(ctx context.Context) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	misses := 0
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		if healthy(2 * time.Second) {
+			misses = 0
+			continue
+		}
+		misses++
+		if misses < 3 {
+			continue
+		}
+		misses = 0
+		log.Printf("sidecar: api unhealthy for 30s, respawning")
+		s.stopChild()
+		if err := s.spawn(); err != nil {
+			log.Printf("sidecar: respawn failed: %v", err)
+		}
+	}
+}
+
+func (s *SidecarService) setError(message string) {
+	s.mu.Lock()
+	s.lastErr = message
+	s.mu.Unlock()
+}
+
+// stopChild kills our own child process group, if any. Adopted servers are left alone.
+func (s *SidecarService) stopChild() {
+	s.mu.Lock()
+	cmd := s.cmd
+	adopted := s.adopted
+	s.cmd = nil
+	s.mu.Unlock()
+	if adopted || cmd == nil || cmd.Process == nil || cmd.ProcessState != nil {
+		return
+	}
+	pid := cmd.Process.Pid
+	_ = syscall.Kill(-pid, syscall.SIGTERM)
+	time.Sleep(500 * time.Millisecond)
+	if cmd.ProcessState == nil {
+		_ = syscall.Kill(-pid, syscall.SIGKILL)
+	}
 }
 
 // ServiceShutdown terminates the spawned sidecar process, if any.
@@ -130,18 +195,15 @@ func (s *SidecarService) ServiceShutdown() error {
 
 	pid := cmd.Process.Pid
 	_ = syscall.Kill(-pid, syscall.SIGTERM)
-
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
-
-	select {
-	case <-done:
-		return nil
-	case <-time.After(2 * time.Second):
-		_ = syscall.Kill(-pid, syscall.SIGKILL)
-		<-done
-		return nil
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if cmd.ProcessState != nil {
+			return nil
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
+	_ = syscall.Kill(-pid, syscall.SIGKILL)
+	return nil
 }
 
 func healthy(timeout time.Duration) bool {
