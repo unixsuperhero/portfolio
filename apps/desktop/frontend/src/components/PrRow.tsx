@@ -1,0 +1,66 @@
+import { useState } from "react";
+import { Link } from "react-router";
+import type { Pr, PrReviewDecision } from "../types.ts";
+import { patchPr, watchPr } from "../api.ts";
+import { PrChecks } from "./PrChecks.tsx";
+
+function reviewLabel(decision: PrReviewDecision): string {
+  if (decision === "approved") return "Approved";
+  if (decision === "changes_requested") return "Changes requested";
+  if (decision === "review_required") return "Review required";
+  return "";
+}
+
+/** One PR: state badge, owner/repo#n link, title, review decision, checks pill, comment count,
+ * Watch/Unwatch toggle, and an inline "Ignore checks…" editor (PATCH /api/prs/:id). */
+export function PrRow({ pr, onChanged }: { pr: Pr; onChanged: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [ignoredText, setIgnoredText] = useState(pr.ignored_checks.join("\n"));
+  const [saving, setSaving] = useState(false);
+  const [watching, setWatching] = useState(false);
+
+  const toggleWatch = () => {
+    setWatching(true);
+    watchPr(pr.url, !pr.watched).then(onChanged).catch(() => {}).finally(() => setWatching(false));
+  };
+
+  const saveIgnored = (event: React.FormEvent) => {
+    event.preventDefault();
+    const ignored_checks = ignoredText.split("\n").map(line => line.trim()).filter(Boolean);
+    setSaving(true);
+    patchPr(pr.id, { ignored_checks })
+      .then(() => { setEditing(false); onChanged(); })
+      .catch(() => {})
+      .finally(() => setSaving(false));
+  };
+
+  return (
+    <div className="pr-row">
+      <div className="pr-row-main">
+        <span className={`kind pr-state-${pr.state}`}>{pr.is_draft ? "DRAFT" : pr.state.toUpperCase()}</span>
+        <a className="pr-repo" href={pr.url} data-url={pr.url}>{pr.owner}/{pr.repo}#{pr.number}</a>
+        <span className="pr-title" title={pr.title}>{pr.title}</span>
+        {pr.review_decision ? <span className={`pr-review pr-review-${pr.review_decision}`}>{reviewLabel(pr.review_decision)}</span> : null}
+        <PrChecks pr={pr} />
+        <span className="pr-comments" title="Comments">💬 {pr.comments}</span>
+        <button type="button" className="secondary" onClick={toggleWatch} disabled={watching}>{pr.watched ? "Unwatch" : "Watch"}</button>
+        <button type="button" className="secondary" onClick={() => setEditing(value => !value)}>Ignore checks…</button>
+      </div>
+      {editing ? (
+        <form className="pr-ignore-form" onSubmit={saveIgnored}>
+          <textarea
+            value={ignoredText}
+            onChange={event => setIgnoredText(event.target.value)}
+            rows={3}
+            placeholder="one glob per line, e.g. codecov/*"
+          />
+          <div className="page-actions">
+            <button type="submit" className="primary" disabled={saving}>Save</button>
+            <button type="button" className="secondary" onClick={() => setEditing(false)}>Cancel</button>
+          </div>
+          <p className="pr-ignore-hint">Global patterns live in <Link to="/settings">Settings</Link>.</p>
+        </form>
+      ) : null}
+    </div>
+  );
+}
