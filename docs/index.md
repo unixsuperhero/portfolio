@@ -16,6 +16,7 @@ There are three levels, and every level is complete on its own:
 - [Data model](data-model.md) — every record shape as JavaScript data, with examples
 - [Architecture](architecture.md) — how the packages depend on each other, and how `app.js` maps onto them
 - [Suggestions](suggestions.md) — reusable tools worth extracting next, and a better way to build the next version
+- [Desktop app](desktop.md) — the Wails app: sidecar, proxy, terminal, browser windows, and how to drive it from a script
 - [Testing](testing.md) — running tests, the typecheck, and the smoke script
 
 ## Packages
