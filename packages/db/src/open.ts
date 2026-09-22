@@ -49,6 +49,13 @@ export function migrateCardColumns(db: Database): void {
   if (!columns.includes("config")) db.exec("ALTER TABLE cards ADD COLUMN config TEXT NOT NULL DEFAULT '{}'");
 }
 
+/** Adds the days column to an older reminders table. A table that does not exist yet is left for `schema` to create with it already. */
+export function migrateReminderColumns(db: Database): void {
+  const columns = db.query<{ name: string }, []>("PRAGMA table_info(reminders)").all().map(column => column.name);
+  if (!columns.length) return;
+  if (!columns.includes("days")) db.exec("ALTER TABLE reminders ADD COLUMN days TEXT NOT NULL DEFAULT '[]'");
+}
+
 /** Opens (and creates) a Portfolio database and applies the schema. ":memory:" works for tests. */
 export function openDatabase(path: string = defaultDatabasePath(), options: OpenOptions = {}): Database {
   const db = options.readonly ? new Database(path, { readonly: true }) : new Database(path, { create: options.create ?? true, readwrite: true });
@@ -56,6 +63,7 @@ export function openDatabase(path: string = defaultDatabasePath(), options: Open
   const schema = options.schema ?? readSchema();
   if (options.migrate ?? true) migrateItemKinds(db, path, schema, options.log);
   migrateCardColumns(db);
+  migrateReminderColumns(db);
   db.exec(schema);
   return db;
 }

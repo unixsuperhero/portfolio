@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { Completion, DueReminder, Recurrence, Task, TaskInput, TaskView } from "@portfolio/core";
+import type { Completion, DueReminder, Recurrence, ReminderInput, Task, TaskInput, TaskView } from "@portfolio/core";
 
 const pad = (n: number): string => String(n).padStart(2, "0");
 const isoDate = (date: Date): string => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
@@ -33,16 +33,34 @@ function validateRecurrence(recurrence: string): Recurrence {
   return recurrence;
 }
 
-/** Replaces a task's reminders. Format depends on the task's recurrence: "HH:MM" for daily, "YYYY-MM-DDTHH:MM" for once. */
-export function setReminders(db: Database, taskId: number, ats: string[]): void {
+/** Validates weekdays: integers 0 (Sunday) through 6 (Saturday), de-duplicated and sorted. */
+function validateDays(days: number[]): number[] {
+  const unique = new Set<number>();
+  for (const day of days) {
+    if (!Number.isInteger(day) || day < 0 || day > 6) throw new Error(`reminder day "${day}" must be an integer 0-6`);
+    unique.add(day);
+  }
+  return [...unique].sort((a, b) => a - b);
+}
+
+function normalizeReminder(recurrence: Recurrence, input: ReminderInput): { at: string; days: number[] } {
+  if (typeof input === "string") return { at: input, days: [] };
+  if (recurrence === "once" && input.days !== undefined) throw new Error("once tasks cannot have reminder days");
+  return { at: input.at, days: input.days ? validateDays(input.days) : [] };
+}
+
+/** Replaces a task's reminders. Format depends on the task's recurrence: "HH:MM" for daily, "YYYY-MM-DDTHH:MM" for once.
+ * Daily reminders may include weekdays ([] or omitted = every day); once reminders may not. */
+export function setReminders(db: Database, taskId: number, reminders: ReminderInput[]): void {
   const task = getTask(db, taskId);
   if (!task) throw new Error("task not found");
   const pattern = REMINDER_PATTERNS[task.recurrence];
-  for (const at of ats) if (!pattern.test(at)) throw new Error(`reminder "${at}" must match ${task.recurrence === "daily" ? "HH:MM" : "YYYY-MM-DDTHH:MM"}`);
+  const normalized = reminders.map(reminder => normalizeReminder(task.recurrence, reminder));
+  for (const { at } of normalized) if (!pattern.test(at)) throw new Error(`reminder "${at}" must match ${task.recurrence === "daily" ? "HH:MM" : "YYYY-MM-DDTHH:MM"}`);
   db.transaction(() => {
     db.query("DELETE FROM reminders WHERE task_id = ?").run(taskId);
-    const insert = db.query("INSERT INTO reminders(task_id, at) VALUES (?, ?)");
-    for (const at of ats) insert.run(taskId, at);
+    const insert = db.query("INSERT INTO reminders(task_id, at, days) VALUES (?, ?, ?)");
+    for (const { at, days } of normalized) insert.run(taskId, at, JSON.stringify(days));
   })();
 }
 
@@ -91,7 +109,8 @@ export function uncompleteTask(db: Database, id: number, on: string = isoDate(ne
 
 /** A task row plus its reminders and computed completion state, as of `today` (default: today). */
 export function taskView(db: Database, task: Task, today: string = isoDate(new Date())): TaskView {
-  const reminders = db.query<{ id: number; at: string }, [number]>("SELECT id, at FROM reminders WHERE task_id = ? ORDER BY at").all(task.id);
+  const reminders = db.query<{ id: number; at: string; days: string }, [number]>("SELECT id, at, days FROM reminders WHERE task_id = ? ORDER BY at").all(task.id)
+    .map(reminder => ({ id: reminder.id, at: reminder.at, days: JSON.parse(reminder.days) as number[] }));
   const completions = listCompletions(db, task.id);
   const completedDates = new Set(completions.map(completion => completion.on));
   const completed_today = task.recurrence === "daily" ? completedDates.has(today) : completions.length > 0;
@@ -119,6 +138,7 @@ export function dueReminders(db: Database, options: { now?: Date; minutes?: numb
     const view = taskView(db, task, today);
     if (view.completed_today) continue;
     for (const reminder of view.reminders) {
+      if (task.recurrence === "daily" && reminder.days.length > 0 && !reminder.days.includes(now.getDay())) continue;
       const due_at = task.recurrence === "daily" ? `${today}T${reminder.at}` : reminder.at;
       const at = new Date(due_at);
       if (Number.isNaN(at.getTime())) continue;
@@ -128,7 +148,11 @@ export function dueReminders(db: Database, options: { now?: Date; minutes?: numb
   return due;
 }
 
-/** Daily tasks plus once tasks with a reminder dated today, each with its completed flag. */
+/** Daily tasks (unless every reminder's weekdays exclude today) plus once tasks with a reminder dated today, each with its completed flag. */
 export function todayTasks(db: Database, today: string = isoDate(new Date())): TaskView[] {
-  return listTaskViews(db, { all: false }).filter(view => view.recurrence === "daily" || view.reminders.some(reminder => reminder.at.startsWith(today)));
+  const weekday = new Date(`${today}T00:00:00`).getDay();
+  return listTaskViews(db, { all: false }).filter(view => {
+    if (view.recurrence === "once") return view.reminders.some(reminder => reminder.at.startsWith(today));
+    return view.reminders.length === 0 || view.reminders.some(reminder => reminder.days.length === 0 || reminder.days.includes(weekday));
+  });
 }

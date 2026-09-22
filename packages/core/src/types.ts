@@ -150,6 +150,8 @@ export interface Reminder {
   task_id: number;
   /** Daily: "HH:MM" local. Once: "YYYY-MM-DDTHH:MM" local. */
   at: string;
+  /** JSON array of weekdays (0 = Sunday … 6 = Saturday); "[]" fires every day. Daily reminders only. */
+  days: string;
 }
 
 export interface Completion {
@@ -159,12 +161,15 @@ export interface Completion {
   at: string;
 }
 
+/** A reminder's weekdays; 0 = Sunday … 6 = Saturday. Omitted or [] fires every day. Once-tasks cannot set days. */
+export type ReminderInput = string | { at: string; days?: number[] };
+
 export interface TaskInput {
   title: string;
   notes?: string;
   recurrence: Recurrence;
   item_id?: number | null;
-  reminders?: string[];
+  reminders?: ReminderInput[];
 }
 
 /** The shape the JSON API and the React components use: booleans, computed streak and completion. */
@@ -176,7 +181,7 @@ export interface TaskView {
   item_id: number | null;
   active: boolean;
   created_at: string;
-  reminders: { id: number; at: string }[];
+  reminders: { id: number; at: string; days: number[] }[];
   completed_today: boolean;
   last_completed: string | null;
   /** Daily only: consecutive days ending today or yesterday. */
@@ -185,7 +190,7 @@ export interface TaskView {
 
 export interface DueReminder {
   task: TaskView;
-  reminder: { id: number; at: string };
+  reminder: { id: number; at: string; days: number[] };
   due_at: string;
 }
 

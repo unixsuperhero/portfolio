@@ -1,6 +1,9 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
-import { addProjectParent, addWatchedDirectory, cardItems, categoryMembers, claimItem, completeTask, countByType, createCard, createCategory, createPortfolio, createTask, deleteCard, deleteItems, deletePortfolio, deleteTask, dueReminders, ensureCategory, getCard, getHomePortfolioId, getItem, getTask, listItems, listProjectParents, listTags, listTaskViews, listTasks, memberSlots, migrateCardColumns, moveCard, openDatabase, openStore, portfolioCards, portfolioView, readSchema, removeTags, removeWatchedDirectory, setHomePortfolioId, setPathAndCategory, setReminders, setSlotOverride, setTags, taskView, todayTasks, toggleItemField, uncompleteTask, updateCard, updateCategory, updateItem, updateTask, upsertItem, viewItem } from "../src/index.ts";
+import { unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { addProjectParent, addWatchedDirectory, cardItems, categoryMembers, claimItem, completeTask, countByType, createCard, createCategory, createPortfolio, createTask, deleteCard, deleteItems, deletePortfolio, deleteTask, dueReminders, ensureCategory, getCard, getHomePortfolioId, getItem, getTask, listItems, listProjectParents, listTags, listTaskViews, listTasks, memberSlots, migrateCardColumns, migrateReminderColumns, moveCard, openDatabase, openStore, portfolioCards, portfolioView, readSchema, removeTags, removeWatchedDirectory, setHomePortfolioId, setPathAndCategory, setReminders, setSlotOverride, setTags, taskView, todayTasks, toggleItemField, uncompleteTask, updateCard, updateCategory, updateItem, updateTask, upsertItem, viewItem } from "../src/index.ts";
 
 const fresh = () => openDatabase(":memory:");
 
@@ -199,5 +202,73 @@ describe("tasks", () => {
     const today = todayTasks(db, "2026-09-22");
     expect(today.map(t => t.id).sort()).toEqual([daily, once].sort());
     expect(todayTasks(db, "2026-01-01").map(t => t.id)).toEqual([daily]);
+  });
+
+  test("reminder weekdays: validation", () => {
+    const db = fresh();
+    const id = createTask(db, { title: "Stretch", recurrence: "daily" });
+    expect(() => setReminders(db, id, [{ at: "08:30", days: [1, 8] }])).toThrow(/0-6/);
+    expect(() => setReminders(db, id, [{ at: "08:30", days: [1.5] }])).toThrow(/0-6/);
+    setReminders(db, id, [{ at: "08:30", days: [5, 1, 1, 3] }]);
+    expect(taskView(db, getTask(db, id)!).reminders).toEqual([{ id: expect.any(Number), at: "08:30", days: [1, 3, 5] }]);
+
+    const once = createTask(db, { title: "Ship it", recurrence: "once" });
+    expect(() => setReminders(db, once, [{ at: "2026-09-22T08:30", days: [1] }])).toThrow(/once tasks/);
+    expect(() => setReminders(db, once, [{ at: "2026-09-22T08:30", days: [] }])).toThrow(/once tasks/);
+    setReminders(db, once, ["2026-09-22T08:30"]);
+    expect(taskView(db, getTask(db, once)!).reminders).toEqual([{ id: expect.any(Number), at: "2026-09-22T08:30", days: [] }]);
+  });
+
+  test("reminder weekdays: dueReminders and todayTasks skip non-matching days", () => {
+    const db = fresh();
+    // 2026-09-21 is a Monday (weekday 1); Wednesday is 2026-09-23 (weekday 3).
+    const monday = createTask(db, { title: "Standup", recurrence: "daily", reminders: [{ at: "08:30", days: [1] }] });
+    const wednesday = createTask(db, { title: "Review", recurrence: "daily", reminders: [{ at: "08:30", days: [3] }] });
+    const everyDay = createTask(db, { title: "Stretch", recurrence: "daily", reminders: ["08:30"] });
+
+    const mondayNow = new Date("2026-09-21T08:35:00");
+    expect(dueReminders(db, { now: mondayNow, minutes: 60 }).map(d => d.task.id).sort()).toEqual([monday, everyDay].sort());
+    expect(todayTasks(db, "2026-09-21").map(t => t.id).sort()).toEqual([monday, everyDay].sort());
+
+    const wednesdayNow = new Date("2026-09-23T08:35:00");
+    expect(dueReminders(db, { now: wednesdayNow, minutes: 60 }).map(d => d.task.id).sort()).toEqual([wednesday, everyDay].sort());
+    expect(todayTasks(db, "2026-09-23").map(t => t.id).sort()).toEqual([wednesday, everyDay].sort());
+  });
+
+  test("migrateReminderColumns adds days to a pre-existing reminders table", () => {
+    const raw = new Database(":memory:");
+    raw.exec(`
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '',
+        recurrence TEXT NOT NULL CHECK (recurrence IN ('daily','once')), item_id INTEGER,
+        active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+      CREATE TABLE reminders (id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, at TEXT NOT NULL);
+      INSERT INTO tasks(title, recurrence) VALUES ('Stretch', 'daily');
+      INSERT INTO reminders(task_id, at) VALUES (1, '08:30');
+    `);
+    expect(raw.query("PRAGMA table_info(reminders)").all().map((c: any) => c.name)).not.toContain("days");
+    migrateReminderColumns(raw);
+    const columns = raw.query("PRAGMA table_info(reminders)").all().map((c: any) => c.name);
+    expect(columns).toContain("days");
+    expect(raw.query("SELECT days FROM reminders WHERE id = 1").get()).toEqual({ days: "[]" });
+    raw.close();
+  });
+
+  test("opening a database created from the old reminders schema migrates it in place", () => {
+    const path = join(tmpdir(), `portfolio-reminder-migration-${Date.now()}.sqlite`);
+    const raw = new Database(path, { create: true, readwrite: true });
+    raw.exec(`
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '',
+        recurrence TEXT NOT NULL CHECK (recurrence IN ('daily','once')), item_id INTEGER,
+        active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+      CREATE TABLE reminders (id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, at TEXT NOT NULL);
+      INSERT INTO tasks(title, recurrence) VALUES ('Stretch', 'daily');
+      INSERT INTO reminders(task_id, at) VALUES (1, '08:30');
+    `);
+    raw.close();
+    const db = openDatabase(path);
+    expect(db.query("PRAGMA table_info(reminders)").all().map((c: any) => c.name)).toContain("days");
+    expect(taskView(db, getTask(db, 1)!).reminders).toEqual([{ id: 1, at: "08:30", days: [] }]);
+    db.close();
+    unlinkSync(path);
   });
 });

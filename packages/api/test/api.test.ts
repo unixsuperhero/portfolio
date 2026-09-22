@@ -309,6 +309,22 @@ describe("tasks and reminders", () => {
     expect(res.status).toBe(404);
   });
 
+  test("create with weekday reminders and read them back; PATCH replaces reminders", async () => {
+    const { api } = makeApi();
+    let res = await send(api, "POST", "/api/tasks", { title: "Standup", recurrence: "daily", reminders: [{ at: "08:30", days: [1, 3, 5] }] });
+    expect(res.status).toBe(201);
+    const { id } = await res.json();
+
+    res = await get(api, `/api/tasks/${id}`);
+    const detail = await res.json();
+    expect(detail.reminders).toEqual([{ id: expect.any(Number), at: "08:30", days: [1, 3, 5] }]);
+
+    res = await send(api, "PATCH", `/api/tasks/${id}`, { reminders: [{ at: "09:00", days: [] }] });
+    expect(await res.json()).toEqual({ ok: true });
+    res = await get(api, `/api/tasks/${id}`);
+    expect((await res.json()).reminders).toEqual([{ id: expect.any(Number), at: "09:00", days: [] }]);
+  });
+
   test("errors: missing title, bad recurrence, due reminders and today", async () => {
     const { api } = makeApi();
     let res = await send(api, "POST", "/api/tasks", { title: "", recurrence: "daily" });
