@@ -10,7 +10,7 @@ export default defineConfig({
     port: Number(process.env.WAILS_VITE_PORT) || 9245,
     strictPort: true,
   },
-  plugins: [react(), wails("./bindings")],
+  plugins: [react(), wails("./bindings"), keepDist()],
 });
 
 // vite empties dist on every build; Go embeds all:frontend/dist and needs at least one
