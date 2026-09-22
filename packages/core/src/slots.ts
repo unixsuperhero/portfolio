@@ -1,8 +1,13 @@
-import { isAbsolute, resolve } from "node:path";
-import { existsSync } from "node:fs";
+import { isAbsolute, resolve } from "./posix.ts";
 import { isPathType } from "./constants.ts";
 import { expandPath } from "./paths.ts";
 import type { ResolvedSlot, Slot } from "./types.ts";
+
+/** existsSync without a top-level node:fs import, so the module bundles for the browser (where it answers false). */
+const nodeExists = (path: string): boolean => {
+  if (!(globalThis as { process?: { versions?: unknown } }).process?.versions) return false;
+  return (require("node:fs") as typeof import("node:fs")).existsSync(path);
+};
 
 /** One slot per line: `name | file or dir | path`. Throws with the offending line. */
 export function parseSlots(value: string): Slot[] {
@@ -33,7 +38,7 @@ export interface ResolveSlotsOptions {
  */
 export function resolveSlots(slots: Slot[], options: ResolveSlotsOptions = {}): (ResolvedSlot | (Omit<ResolvedSlot, "path"> & { path: null }))[] {
   const overrides = options.overrides ?? {};
-  const exists = options.exists ?? existsSync;
+  const exists = options.exists ?? nodeExists;
   return slots.map(slot => {
     const override = overrides[slot.name];
     const expanded = expandPath(override || slot.path, options.home);

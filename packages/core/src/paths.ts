@@ -1,7 +1,7 @@
-import { dirname, extname, isAbsolute, resolve, sep } from "node:path";
+import { dirname, extname, isAbsolute, resolve } from "./posix.ts";
 import { DOCUMENT_EXTENSIONS, MARKDOWN_EXTENSIONS } from "./constants.ts";
 
-const homeDir = (home?: string) => home ?? process.env.HOME ?? "";
+const homeDir = (home?: string) => home ?? (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.HOME ?? "";
 
 /** "~" and "~/x" become absolute; anything else is returned as given. */
 export function expandPath(value: string, home?: string): string {
@@ -14,7 +14,7 @@ export function expandPath(value: string, home?: string): string {
 /** /Users/me/x -> ~/x when the path is under home. */
 export function abbreviatePath(path: string, home?: string): string {
   const h = homeDir(home);
-  return h && path.startsWith(h + sep) ? `~${path.slice(h.length)}` : path;
+  return h && path.startsWith(h + "/") ? `~${path.slice(h.length)}` : path;
 }
 
 /** A file or dir item path: absolute or ~/, resolved, never stat-ed. Throws on relative input. */

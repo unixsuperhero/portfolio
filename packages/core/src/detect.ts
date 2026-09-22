@@ -1,12 +1,13 @@
-import { basename, extname } from "node:path";
-import { stat } from "node:fs/promises";
+import { basename, extname } from "./posix.ts";
 import type { Detection } from "./types.ts";
 import { isDocumentPath, normalizeItemPath } from "./paths.ts";
 import { textTitle } from "./text.ts";
 
 export type PathProbe = (path: string) => Promise<"dir" | "file" | null>;
 
+// node:fs is imported lazily so the module also bundles for the browser, where the probe is never called.
 export const fsProbe: PathProbe = async path => {
+  const { stat } = await import("node:fs/promises");
   const info = await stat(path).catch(() => null);
   return info ? (info.isDirectory() ? "dir" : "file") : null;
 };

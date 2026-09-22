@@ -1,4 +1,4 @@
-import { basename, extname } from "node:path";
+import { basename, extname } from "./posix.ts";
 
 const HTML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 
