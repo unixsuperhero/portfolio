@@ -1,0 +1,64 @@
+/* Rail sections, rail items, portfolio cards, and the card form. Class names match the Portfolio server so styles are shared. */
+.rail-section { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.rail-section > header { display: flex; align-items: center; justify-content: space-between; padding: .75rem .85rem; border-bottom: 1px solid var(--border); }
+.rail-section h2 { margin: 0; font-size: .85rem; letter-spacing: -.01em; }
+.rail-section > header span { color: var(--text3); font-family: var(--mono); font-size: .66rem; }
+.rail-heading-actions { display: flex; align-items: center; gap: .45rem; }
+.rail-add { display: grid; width: 1.45rem; height: 1.45rem; place-items: center; border: 1px solid var(--border2); border-radius: 6px; background: var(--surface2); color: var(--accent2); font-size: 1.1rem; line-height: 1; cursor: pointer; }
+.rail-add:hover { background: var(--accent); color: #08111f; }
+.rail-items { max-height: calc(100vh - 10rem); overflow-y: auto; scrollbar-color: var(--border2) transparent; scrollbar-width: thin; }
+.rail-item { padding: .72rem .85rem; border-bottom: 1px solid var(--border); }
+.rail-item:last-child { border-bottom: 0; }
+.rail-item.is-pinned, .rail-item.is-starred { background: rgba(125, 177, 255, .07); }
+.rail-item > a { display: block; color: inherit; font-size: .82rem; font-weight: 650; line-height: 1.3; text-decoration: none; overflow-wrap: anywhere; }
+.rail-item > a:hover { color: var(--accent2); }
+.rail-item p { display: -webkit-box; overflow: hidden; margin: .25rem 0; color: var(--text3); font-size: .72rem; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.rail-item > div { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin-top: .4rem; color: var(--text3); font-family: var(--mono); font-size: .58rem; }
+.rail-item > div span { color: var(--accent2); }
+.rail-empty { padding: 1rem; color: var(--text3); font-size: .75rem; }
+.kind { display: inline-flex; min-width: 2.8rem; justify-content: center; border: 1px solid var(--border2); border-radius: 5px; color: var(--text3); font-family: var(--mono); font-size: .55rem; letter-spacing: .08em; padding: .18rem .32rem; }
+.tag-list { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .55rem; }
+.tag { border: 0; border-radius: 999px; background: var(--surface2); color: var(--accent2); font: inherit; font-size: .68rem; padding: .2rem .5rem; text-decoration: none; }
+button.tag { cursor: pointer; }
+.portfolio-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; align-items: start; margin-top: 1.25rem; }
+.portfolio-card .rail-items { max-height: 22rem; }
+.card-query { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; padding: .5rem .85rem; border-bottom: 1px solid var(--border); color: var(--text3); font-family: var(--mono); font-size: .62rem; }
+.card-sort { margin-left: auto; }
+.portfolio-card .rail-item > div .kind { min-width: 0; color: var(--text3); font-size: .5rem; }
+.card-edit > summary, .portfolio-manage > summary { padding: .55rem .85rem; color: var(--text3); font-size: .72rem; cursor: pointer; }
+.card-edit > summary:hover, .portfolio-manage > summary:hover { color: var(--accent2); }
+.portfolio-card .rail-items + .card-edit { border-top: 1px solid var(--border); }
+.card-form { display: grid; gap: .7rem; padding: .25rem .85rem .85rem; }
+.card-form label { display: grid; gap: .3rem; color: var(--text2); font-size: .78rem; font-weight: 600; }
+.card-form input, .card-form select { width: 100%; box-sizing: border-box; border: 1px solid var(--border2); border-radius: 8px; background: #0d1527; color: var(--text); font: inherit; padding: .55rem .7rem; }
+:root[data-theme="light"] .card-form input, :root[data-theme="light"] .card-form select { background: var(--surface); }
+.card-types { display: flex; flex-wrap: wrap; gap: .8rem; }
+.card-types > span { width: 100%; color: var(--text2); font-size: .78rem; font-weight: 600; }
+.card-form .card-types label { display: flex; align-items: center; gap: .35rem; font-weight: 400; }
+.card-types input { width: auto; accent-color: var(--accent); }
+.card-form-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem; }
+.card-form .primary { justify-self: start; border: 0; border-radius: 8px; background: var(--accent); color: #08111f; padding: .6rem 1rem; font: inherit; font-weight: 700; cursor: pointer; }
+.card-actions { display: flex; justify-content: space-between; gap: .6rem; padding: 0 .85rem .85rem; }
+.card-actions > div { display: flex; gap: .35rem; }
+.card-actions button { border: 1px solid var(--border2); border-radius: 8px; background: var(--surface2); color: var(--text); padding: .5rem .75rem; font: inherit; font-size: .78rem; font-weight: 700; cursor: pointer; }
+.card-actions button:hover { border-color: var(--accent); color: var(--accent2); }
+.card-actions button.danger { color: var(--danger); }
+.empty { display: grid; gap: .25rem; place-items: center; padding: 3rem 1rem; color: var(--text3); text-align: center; }
+.empty strong { color: var(--text2); }
+.items { border-top: 1px solid var(--border); }
+.item { display: grid; grid-template-columns: 7.5rem 1fr auto; gap: 1.25rem; padding: 1.15rem .55rem; border-bottom: 1px solid var(--border); transition: background .16s ease; }
+.item:hover { background: var(--surface); }
+.item.is-pinned { background: linear-gradient(90deg, rgba(125, 177, 255, .1), transparent 38%); }
+.item-date { padding-top: .25rem; color: var(--text3); font-family: var(--mono); font-size: .7rem; font-variant-numeric: tabular-nums; }
+.item-main { min-width: 0; }
+.item-line { display: flex; align-items: center; gap: .7rem; }
+.item-line > a { color: inherit; font-size: 1.03rem; font-weight: 650; text-decoration: none; overflow-wrap: anywhere; }
+.item-line > a:hover { color: var(--accent2); }
+.item-main p { margin: .25rem 0; color: var(--text2); font-size: .88rem; }
+.item-actions { display: flex; gap: .15rem; }
+.icon-button { display: grid; height: 2rem; min-width: 2rem; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--text3); font: inherit; font-size: .65rem; padding: 0 .45rem; cursor: pointer; }
+.icon-button:hover { background: var(--surface2); color: var(--text); }
+.icon-button.active { color: var(--accent); }
+.icon-button.active.star { color: var(--gold); }
+@media (max-width: 1100px) { .portfolio-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .portfolio-grid, .card-form-row { grid-template-columns: minmax(0, 1fr); } .item { grid-template-columns: 1fr auto; gap: .6rem; } .item-date { grid-column: 1 / -1; } }
