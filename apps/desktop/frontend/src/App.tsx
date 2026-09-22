@@ -6,6 +6,8 @@ import { ContextMenuProvider } from "./context-menu/ContextMenu.tsx";
 import { ToastStack } from "./components/ToastStack.tsx";
 import { useSidecarStatus } from "./hooks/useSidecarStatus.ts";
 import { useReminderPolling } from "./hooks/useReminderPolling.ts";
+import { usePrEvents } from "./hooks/usePrEvents.ts";
+import { openInApp } from "./native.ts";
 
 import Home from "./pages/Home.tsx";
 import Portfolios from "./pages/Portfolios.tsx";
@@ -18,6 +20,7 @@ import Projects from "./pages/Projects.tsx";
 import Project from "./pages/Project.tsx";
 import Ports from "./pages/Ports.tsx";
 import Reminders from "./pages/Reminders.tsx";
+import PullRequests from "./pages/PullRequests.tsx";
 import Settings from "./pages/Settings.tsx";
 
 const NAV_ITEMS = [
@@ -28,8 +31,31 @@ const NAV_ITEMS = [
   { to: "/projects", label: "Projects" },
   { to: "/ports", label: "Ports" },
   { to: "/reminders", label: "Reminders" },
+  { to: "/prs", label: "PRs" },
   { to: "/settings", label: "Settings" },
 ];
+
+/** Renders GET /api/prs/events toasts (from usePrEvents) in their own stack, separate from the
+ * reminder toasts, with an "Open" action that opens the PR in the in-app browser. */
+function PrToastStack() {
+  const { toasts, dismiss } = usePrEvents();
+  if (!toasts.length) return null;
+  return (
+    <div className="toast-stack pr-toast-stack">
+      {toasts.map(toast => (
+        <div className="toast-card" key={toast.id}>
+          <strong>{toast.message}</strong>
+          <div className="page-actions">
+            {toast.url ? (
+              <button type="button" className="primary" onClick={() => { void openInApp(toast.url!); dismiss(toast.id); }}>Open</button>
+            ) : null}
+            <button type="button" className="secondary" onClick={() => dismiss(toast.id)}>Dismiss</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function useTheme() {
   const [theme, setTheme] = useState<"dark" | "light">(() => (localStorage.getItem("theme") === "light" ? "light" : "dark"));
@@ -132,6 +158,7 @@ function Layout() {
       </div>
       <ContextMenuProvider />
       <ToastStack toasts={toasts} onDismiss={dismiss} onComplete={complete} />
+      <PrToastStack />
     </div>
   );
 }
@@ -151,6 +178,7 @@ const router = createHashRouter([
       { path: "/projects/:id", element: <Project /> },
       { path: "/ports", element: <Ports /> },
       { path: "/reminders", element: <Reminders /> },
+      { path: "/prs", element: <PullRequests /> },
       { path: "/settings", element: <Settings /> },
       { path: "*", element: <Link to="/">Back home</Link> },
     ],
