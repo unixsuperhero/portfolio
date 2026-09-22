@@ -35,7 +35,8 @@ export class PortfolioClient {
 
   constructor(base: string = defaultServer(), options: ClientOptions = {}) {
     this.base = base.replace(/\/$/, "");
-    this.fetcher = options.fetch ?? fetch;
+    // Wrapped, not stored: browsers throw "Illegal invocation" when fetch is called as a method.
+    this.fetcher = options.fetch ?? ((input, init) => fetch(input, init));
     this.headers = options.headers ?? {};
   }
 
