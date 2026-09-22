@@ -10,13 +10,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@portfolio/client": "workspace:*",
+    "@portfolio/core": "workspace:*",
+    "@portfolio/ports": "workspace:*",
+    "@portfolio/ui": "workspace:*",
     "@wailsio/runtime": "latest",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router": "^7.0.0"
   },
   "devDependencies": {
-    "@types/react": "^18.2.43",
-    "@types/react-dom": "^18.2.17",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.0.0",
     "typescript": "^5.2.2",
     "vite": "^8.0.5"
