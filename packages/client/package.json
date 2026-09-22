@@ -7,5 +7,6 @@
   "types": "src/index.ts",
   "exports": { ".": "./src/index.ts" },
   "scripts": { "test": "bun test" },
-  "dependencies": { "@portfolio/core": "workspace:*" }
+  "dependencies": { "@portfolio/core": "workspace:*" },
+  "devDependencies": { "@portfolio/api": "workspace:*", "@portfolio/db": "workspace:*" }
 }

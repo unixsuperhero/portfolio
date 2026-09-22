@@ -3,13 +3,16 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openStore } from "@portfolio/db";
+import type { PortsSnapshot } from "@portfolio/ports";
 import { createApi } from "../src/index.ts";
 
 const fakeRender = async (markdown: string, options: { title: string }) => `<h1>${options.title}</h1>${markdown.length}`;
 
+const fakeSnapshot: PortsSnapshot = { scanned_at: "t", herdr_available: false, warnings: [], ports: [] };
+
 function makeApi(options: { home?: string } = {}) {
   const store = openStore(":memory:");
-  const api = createApi(store, { render: fakeRender, home: options.home ?? "/home/test" });
+  const api = createApi(store, { render: fakeRender, home: options.home ?? "/home/test", scanPorts: () => fakeSnapshot });
   return { store, api };
 }
 

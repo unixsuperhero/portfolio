@@ -1,6 +1,6 @@
 import type { Store } from "@portfolio/db";
 import type { PortsSnapshot } from "@portfolio/ports";
-import { scanPorts } from "@portfolio/ports";
+import { scanPorts as scanPortsDefault } from "@portfolio/ports";
 import type { RenderOptions } from "@portfolio/render";
 import type { DirectoryWatcher } from "@portfolio/watch";
 
@@ -13,6 +13,8 @@ export interface ApiOptions {
   log?: (message: string) => void;
   /** When set, watched-directory routes reload it so file watching picks up the change immediately. */
   watcher?: DirectoryWatcher;
+  /** Overrides the ports scanner, mainly for tests. Defaults to @portfolio/ports' scanPorts(). */
+  scanPorts?: () => PortsSnapshot;
 }
 
 export interface Ctx {
@@ -22,6 +24,7 @@ export interface Ctx {
   log: (message: string) => void;
   ports: { snapshot: PortsSnapshot | null; at: number; ttlMs: number };
   watcher?: DirectoryWatcher;
+  scanPorts: () => PortsSnapshot;
 }
 
 export function createContext(store: Store, options: ApiOptions = {}): Ctx {
@@ -32,6 +35,7 @@ export function createContext(store: Store, options: ApiOptions = {}): Ctx {
     log: options.log ?? (() => {}),
     ports: { snapshot: null, at: 0, ttlMs: options.portsTtlMs ?? 10_000 },
     watcher: options.watcher,
+    scanPorts: options.scanPorts ?? scanPortsDefault,
   };
 }
 
@@ -44,7 +48,7 @@ async function defaultRender(markdown: string, options: RenderOptions): Promise<
 export function getPortsSnapshot(ctx: Ctx): PortsSnapshot {
   const now = Date.now();
   if (!ctx.ports.snapshot || now - ctx.ports.at > ctx.ports.ttlMs) {
-    ctx.ports.snapshot = scanPorts();
+    ctx.ports.snapshot = ctx.scanPorts();
     ctx.ports.at = now;
   }
   return ctx.ports.snapshot;

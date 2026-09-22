@@ -19,6 +19,9 @@ export async function killPortRoute(ctx: Ctx, request: Request): Promise<Respons
   const body = await readJson(request);
   const pid = Number(body.pid);
   const signal = body.signal === "KILL" ? "KILL" : "TERM";
+  // Only scan when the pid could plausibly be a listener; scanning is comparatively expensive.
+  if (!Number.isInteger(pid) || pid <= 1) return error(422, "invalid pid");
+  if (pid === process.pid) return error(403, "refusing to kill this process");
   const result = killListener(pid, { signal, snapshot: getPortsSnapshot(ctx) });
   if (!result.ok) return error(result.status, result.message);
   return json({ ok: true, pid: result.pid, signal: result.signal });
