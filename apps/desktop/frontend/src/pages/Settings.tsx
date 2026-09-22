@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { PortfolioSummary, Settings as SettingsType } from "../types.ts";
+import type { PortfolioSummary, SettingsView as SettingsType } from "../types.ts";
 import { addProjectParent, addWatchedDirectory, getSettings, listPortfolios, patchSettings, removeProjectParent, removeWatchedDirectory } from "../api.ts";
 import { getLinksOpenIn, setLinksOpenIn, type LinksOpenIn } from "../context-menu/ContextMenu.tsx";
 import { useSidecarStatus } from "../hooks/useSidecarStatus.ts";
@@ -10,9 +10,16 @@ export default function Settings() {
   const [portfolios, setPortfolios] = useState<PortfolioSummary[]>([]);
   const [linksOpenIn, setLinks] = useState<LinksOpenIn>(getLinksOpenIn());
   const [picking, setPicking] = useState<"watch" | "parent" | null>(null);
+  const [ignoredChecksText, setIgnoredChecksText] = useState("");
+  const [pollMinutes, setPollMinutes] = useState("2");
+  const [savingGithub, setSavingGithub] = useState(false);
   const status = useSidecarStatus();
 
-  const load = () => getSettings().then(setSettings).catch(() => {});
+  const load = () => getSettings().then(loaded => {
+    setSettings(loaded);
+    setIgnoredChecksText((loaded.github_ignored_checks ?? []).join("\n"));
+    setPollMinutes(String(loaded.github_poll_minutes ?? 2));
+  }).catch(() => {});
   useEffect(() => { load(); }, []);
   useEffect(() => { listPortfolios().then(({ portfolios }) => setPortfolios(portfolios)).catch(() => {}); }, []);
 
@@ -21,6 +28,17 @@ export default function Settings() {
   const setHome = (value: string) => patchSettings({ home_portfolio_id: value ? Number(value) : null }).then(load).catch(() => {});
   const setPastry = (value: boolean) => patchSettings({ pastry_enabled: value }).then(load).catch(() => {});
   const changeLinks = (value: LinksOpenIn) => { setLinksOpenIn(value); setLinks(value); };
+
+  const saveGithub = (event: React.FormEvent) => {
+    event.preventDefault();
+    const github_ignored_checks = ignoredChecksText.split("\n").map(line => line.trim()).filter(Boolean);
+    const minutes = Number(pollMinutes);
+    setSavingGithub(true);
+    patchSettings({ github_ignored_checks, github_poll_minutes: Number.isFinite(minutes) && minutes > 0 ? minutes : 2 })
+      .then(load)
+      .catch(() => {})
+      .finally(() => setSavingGithub(false));
+  };
 
   return (
     <div>
@@ -40,6 +58,15 @@ export default function Settings() {
 
       <h2 style={{ marginTop: "1.5rem" }}>Pastry</h2>
       <label><input type="checkbox" checked={settings.pastry_enabled} onChange={event => setPastry(event.target.checked)} /> Enable pastry</label>
+
+      <h2 style={{ marginTop: "1.5rem" }}>GitHub</h2>
+      <form className="simple-form" onSubmit={saveGithub}>
+        <label>Ignored checks (one glob per line, e.g. codecov/*)
+          <textarea value={ignoredChecksText} onChange={event => setIgnoredChecksText(event.target.value)} rows={4} />
+        </label>
+        <label>Poll every (minutes)<input type="number" min={1} value={pollMinutes} onChange={event => setPollMinutes(event.target.value)} /></label>
+        <button className="primary" type="submit" disabled={savingGithub}>Save GitHub settings</button>
+      </form>
 
       <h2 style={{ marginTop: "1.5rem" }}>Watched directories</h2>
       <button type="button" className="secondary" onClick={() => setPicking("watch")}>Add directory</button>
