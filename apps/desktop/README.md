@@ -1,59 +1,64 @@
-# Welcome to Your New Wails3 Project!
+# Portfolio Desktop
 
-Congratulations on generating your Wails3 application! This README will guide you through the next steps to get your project up and running.
+Wails v3 desktop shell for Portfolio: library/dashboard UI, an in-app browser, and a
+terminal, backed by the `@portfolio/api` sidecar. See [CONTRACT.md](CONTRACT.md) for the
+full cross-part contract this app implements.
 
-## Getting Started
+## Running
 
-1. Navigate to your project directory in the terminal.
+From `apps/desktop`:
 
-2. To run your application in development mode, use the following command:
+```sh
+wails3 dev                # dev mode: vite on :9245, hot reload for Go + frontend
+wails3 task build          # production build (runs `bun install` + `bun run build`
+                            # in frontend/, then builds the Go binary)
+```
 
-   ```
-   wails3 dev
-   ```
+`wails3 dev` and the built app both start the `@portfolio/api` sidecar automatically
+(see "Sidecar behaviour" below). If port 4388 is already answering `/health` (e.g. you
+started `bun run packages/api/src/server.ts` yourself), the app adopts it instead of
+spawning a second copy.
 
-   This will start your application and enable hot-reloading for both frontend and backend changes.
+## Services and events
 
-3. To build your application for production, use:
+Four Go services are registered in `main.go` and bound to the frontend at
+`frontend/bindings/portfolio-desktop/`:
 
-   ```
-   wails3 build
-   ```
+- **SidecarService** (`sidecarservice.ts`) — `Status()` reports `{ Url, Running, Pid,
+  Error }` for the `@portfolio/api` process.
+- **PtyService** (`ptyservice.ts`) — `Create`, `Write`, `Resize`, `Close`, `List` for
+  pty-backed shell sessions used by the in-app terminal dock.
+- **BrowserService** (`browserservice.ts`) — `Open`, `List`, `Close` for the in-app
+  browser windows opened from the context menu.
+- **NativeService** (`nativeservice.ts`) — `Reveal`, `OpenPath`, `OpenWith`, `OpenUrl`,
+  `CopyText`, `Notify`, `Home` for native macOS integrations.
 
-   This will create a production-ready executable in the `build` directory.
+Two typed custom events are emitted and available from `frontend/bindings/.../models.ts`:
 
-## Exploring Wails3 Features
+- `pty:data` — `{ Id, Data }`, `Data` is base64 of the raw bytes read from a pty session
+  (binary safe; chunked at 32KB reads).
+- `pty:exit` — `{ Id, Code }`, emitted once a session's shell process exits.
 
-Now that you have your project set up, it's time to explore the features that Wails3 offers:
+## Sidecar behaviour
 
-1. **Check out the examples**: The best way to learn is by example. Visit the `examples` directory in the `v3/examples` directory to see various sample applications.
+On startup, `SidecarService`:
 
-2. **Run an example**: To run any of the examples, navigate to the example's directory and use:
+1. Checks `GET http://127.0.0.1:4388/health` (500ms timeout). If it answers, the sidecar
+   is adopted and nothing is spawned.
+2. Otherwise locates the monorepo root (`PORTFOLIO_HOME` env var if set, else walks up
+   from the executable's directory and the current working directory looking for a
+   `package.json` with `"name": "portfolio"`).
+3. Spawns `bun run packages/api/src/server.ts` with `cwd` set to the repo root and
+   `PORTFOLIO_API_PORT=4388`, appending stdout/stderr to `REPO/logs/desktop-api.log`.
+   `bun` is resolved from `PATH`, falling back to `/opt/homebrew/bin/bun`.
+4. Polls `/health` for up to 10s before giving up.
 
-   ```
-   go run .
-   ```
+On shutdown, a spawned sidecar (not an adopted one) receives `SIGTERM`, then `SIGKILL`
+after 2s if it hasn't exited.
 
-   Note: Some examples may be under development during the alpha phase.
+## Notes / gaps
 
-3. **Explore the documentation**: Visit the [Wails3 documentation](https://v3.wails.io/) for in-depth guides and API references.
-
-4. **Join the community**: Have questions or want to share your progress? Join the [Wails Discord](https://discord.gg/JDdSxwjhGf) or visit the [Wails discussions on GitHub](https://github.com/wailsapp/wails/discussions).
-
-## Project Structure
-
-Take a moment to familiarize yourself with your project structure:
-
-- `frontend/`: Contains your frontend code (HTML, CSS, JavaScript/TypeScript)
-- `main.go`: The entry point of your Go backend
-- `app.go`: Define your application structure and methods here
-- `wails.json`: Configuration file for your Wails project
-
-## Next Steps
-
-1. Modify the frontend in the `frontend/` directory to create your desired UI.
-2. Add backend functionality in `main.go`.
-3. Use `wails3 dev` to see your changes in real-time.
-4. When ready, build your application with `wails3 build`.
-
-Happy coding with Wails3! If you encounter any issues or have questions, don't hesitate to consult the documentation or reach out to the Wails community.
+- `frontend/dist/index.html` is a gitignored placeholder so `go build` (which embeds
+  `frontend/dist` via `//go:embed`) works before the frontend has been built at least
+  once; run `wails3 task build` or `bun run build` in `frontend/` to produce the real
+  assets.
