@@ -2,7 +2,7 @@
   "name": "portfolio",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*"],
+  "workspaces": ["packages/*", "apps/desktop/frontend"],
   "scripts": {
     "start": "bun run app.js",
     "import": "bun run import.js",
