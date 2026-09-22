@@ -1,0 +1,122 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "portfolio",
+      "devDependencies": {
+        "@types/bun": "^1.2.0",
+        "typescript": "^5.6.0",
+      },
+    },
+    "packages/cli": {
+      "name": "@portfolio/cli",
+      "version": "0.1.0",
+      "dependencies": {
+        "@portfolio/cli-kit": "workspace:*",
+        "@portfolio/client": "workspace:*",
+        "@portfolio/core": "workspace:*",
+        "@portfolio/db": "workspace:*",
+      },
+    },
+    "packages/cli-kit": {
+      "name": "@portfolio/cli-kit",
+      "version": "0.1.0",
+    },
+    "packages/client": {
+      "name": "@portfolio/client",
+      "version": "0.1.0",
+      "dependencies": {
+        "@portfolio/core": "workspace:*",
+      },
+    },
+    "packages/core": {
+      "name": "@portfolio/core",
+      "version": "0.1.0",
+    },
+    "packages/db": {
+      "name": "@portfolio/db",
+      "version": "0.1.0",
+      "dependencies": {
+        "@portfolio/core": "workspace:*",
+      },
+    },
+    "packages/ports": {
+      "name": "@portfolio/ports",
+      "version": "0.1.0",
+    },
+    "packages/render": {
+      "name": "@portfolio/render",
+      "version": "0.1.0",
+      "dependencies": {
+        "@portfolio/core": "workspace:*",
+      },
+    },
+    "packages/ui": {
+      "name": "@portfolio/ui",
+      "version": "0.1.0",
+      "dependencies": {
+        "@portfolio/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+      },
+      "peerDependencies": {
+        "react": ">=18",
+        "react-dom": ">=18",
+      },
+    },
+    "packages/watch": {
+      "name": "@portfolio/watch",
+      "version": "0.1.0",
+      "dependencies": {
+        "@portfolio/core": "workspace:*",
+        "@portfolio/db": "workspace:*",
+      },
+    },
+  },
+  "packages": {
+    "@portfolio/cli": ["@portfolio/cli@workspace:packages/cli"],
+
+    "@portfolio/cli-kit": ["@portfolio/cli-kit@workspace:packages/cli-kit"],
+
+    "@portfolio/client": ["@portfolio/client@workspace:packages/client"],
+
+    "@portfolio/core": ["@portfolio/core@workspace:packages/core"],
+
+    "@portfolio/db": ["@portfolio/db@workspace:packages/db"],
+
+    "@portfolio/ports": ["@portfolio/ports@workspace:packages/ports"],
+
+    "@portfolio/render": ["@portfolio/render@workspace:packages/render"],
+
+    "@portfolio/ui": ["@portfolio/ui@workspace:packages/ui"],
+
+    "@portfolio/watch": ["@portfolio/watch@workspace:packages/watch"],
+
+    "@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+
+    "@types/node": ["@types/node@26.6.2", "", { "dependencies": { "undici-types": "~8.9.0" } }, "sha512-X1P21scMv4zGKLYqjdGjaKa7COa0RKVYYZZN/NfvLQ1JegxFhdhpZG/Lyn8AXx6CDUavKAd11v6BvfpkDByK8g=="],
+
+    "@types/react": ["@types/react@19.3.0", "", { "dependencies": { "csstype": "^3.2.2" } }, "sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg=="],
+
+    "@types/react-dom": ["@types/react-dom@19.3.0", "", { "peerDependencies": { "@types/react": "^19.3.0" } }, "sha512-ZI7bU42mZXXKHn/qNLEw2IrbiINU7X5+vfgdixBHkCNpYWXjKgfQ/P+uyGb5CjOLB9UcnTeg3rylQtV2hym44Q=="],
+
+    "bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "csstype": ["csstype@3.2.3", "", {}, "sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ=="],
+
+    "react": ["react@19.3.0", "", {}, "sha512-E8LUcbtBWt20bbl2YoHfx4ZDBdxVTfOKtCZn9cDSJ4l6/nuoApcpIBcj47t2wZoVX8g2ZHuMHbiShgCR1T5Sog=="],
+
+    "react-dom": ["react-dom@19.3.0", "", { "dependencies": { "scheduler": "^0.28.0" }, "peerDependencies": { "react": "^19.3.0" } }, "sha512-JDk8dgif51OjFoDE70+OT9ICyYr+69HlmihNwp1+Nsfbna3t5sIiCa9ZJktDmQ4/1b/rn26hIAR2uYXDMr5r0Q=="],
+
+    "scheduler": ["scheduler@0.28.0", "", {}, "sha512-juorfCmIkIw8tT+p5BXSm6PJjQF/ycEYmKyzURCIt/RaZIhL+PulbQ9Yu2z1HdOJDdqDTlxA1+xKBmHXJsczAw=="],
+
+    "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "undici-types": ["undici-types@8.9.0", "", {}, "sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg=="],
+  }
+}
