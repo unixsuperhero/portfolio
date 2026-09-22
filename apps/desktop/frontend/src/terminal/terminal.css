@@ -2,6 +2,13 @@
    Tailwind classes it uses in t3code. Uses this app's CSS tokens
    (--bg, --surface, --border, --text, --mono) from @portfolio/ui/tokens.css. */
 
+.ghostty-mount {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+}
+
 .ghostty-canvas {
   display: block;
   width: 100%;
@@ -46,4 +53,107 @@
 .ghostty-scrollbar:hover .ghostty-scrollbar-thumb,
 .ghostty-scrollbar:focus-visible .ghostty-scrollbar-thumb {
   background: var(--text3);
+}
+
+.terminal-dock {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--mono);
+  min-height: 0;
+}
+
+.terminal-dock-handle {
+  height: 6px;
+  cursor: row-resize;
+  flex: none;
+  touch-action: none;
+}
+
+.terminal-dock-handle:hover {
+  background: var(--border2);
+}
+
+.terminal-dock-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+  overflow-x: auto;
+}
+
+.terminal-dock-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0.15rem 0.25rem 0.15rem 0.6rem;
+  background: transparent;
+}
+
+.terminal-dock-tab-active {
+  background: var(--surface2);
+  border-color: var(--border);
+}
+
+.terminal-dock-tab-label {
+  background: none;
+  border: none;
+  color: var(--text2);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.terminal-dock-tab-active .terminal-dock-tab-label {
+  color: var(--text);
+}
+
+.terminal-dock-tab-close {
+  background: none;
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 0.25rem;
+}
+
+.terminal-dock-tab-close:hover {
+  color: var(--danger);
+}
+
+.terminal-dock-new-tab,
+.terminal-dock-toggle {
+  background: none;
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  font-family: var(--mono);
+  padding: 0.15rem 0.5rem;
+}
+
+.terminal-dock-new-tab:hover,
+.terminal-dock-toggle:hover {
+  color: var(--text);
+}
+
+.terminal-dock-toggle {
+  margin-left: auto;
+}
+
+.terminal-dock-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.terminal-dock-pane {
+  position: absolute;
+  inset: 0;
 }
