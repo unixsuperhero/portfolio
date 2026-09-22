@@ -78,6 +78,9 @@ GET    /api/settings                            → Settings
 PATCH  /api/settings       { home_portfolio_id?: number|null, pastry_enabled?: boolean } → Settings
 GET    /api/home                                → { portfolio: PortfolioView | null }
 GET    /api/directories?path&files              → { path, parent, directories: [{name,path}], files?: [{name,path}] }
+POST   /api/watched-directories { path: string, recursive?: boolean } → { id }
+DELETE /api/watched-directories/:id             → { ok: true }
+POST   /api/watched-directories/sync            → { ok: true }
 
 GET    /api/ports                               → PortsSnapshot with each entry + { project: { id, title, path } | null }
 POST   /api/ports/kill     { pid, signal? }     → { ok, pid, signal }

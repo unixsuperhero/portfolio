@@ -1,0 +1,39 @@
+import { openStore } from "@portfolio/db";
+import { renderMarkdown } from "@portfolio/render";
+import { DirectoryWatcher } from "@portfolio/watch";
+import { createApi } from "./index.ts";
+
+const CORS_HEADERS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS", "Access-Control-Allow-Headers": "content-type" };
+
+function withCors(response: Response): Response {
+  const headers = new Headers(response.headers);
+  for (const [key, value] of Object.entries(CORS_HEADERS)) headers.set(key, value);
+  return new Response(response.body, { status: response.status, headers });
+}
+
+const port = Number(process.env.PORTFOLIO_API_PORT ?? 4388);
+const store = openStore();
+const watcher = new DirectoryWatcher(store.db, (markdown, options) => renderMarkdown(markdown, options));
+await watcher.reload();
+
+const api = createApi(store, {
+  render: async (markdown, options) => renderMarkdown(markdown, options),
+  log: message => console.log(message),
+  watcher,
+});
+
+const server = Bun.serve({
+  port,
+  async fetch(request) {
+    const start = Date.now();
+    if (request.method === "OPTIONS") return withCors(new Response(null, { status: 204 }));
+    const response = await api(request);
+    console.log(`${request.method} ${new URL(request.url).pathname} ${response.status} ${Date.now() - start}ms`);
+    return withCors(response);
+  },
+});
+
+console.log(`@portfolio/api listening on http://${server.hostname}:${server.port}`);
+
+process.on("SIGTERM", () => { watcher.close(); store.close(); process.exit(0); });
+process.on("SIGINT", () => { watcher.close(); store.close(); process.exit(0); });

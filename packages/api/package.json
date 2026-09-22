@@ -1,0 +1,17 @@
+{
+  "name": "@portfolio/api",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "The desktop app's JSON HTTP API: every route in apps/desktop/CONTRACT.md over @portfolio/db, @portfolio/watch, @portfolio/ports, and @portfolio/render.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "test": "bun test" },
+  "dependencies": {
+    "@portfolio/core": "workspace:*",
+    "@portfolio/db": "workspace:*",
+    "@portfolio/render": "workspace:*",
+    "@portfolio/watch": "workspace:*",
+    "@portfolio/ports": "workspace:*"
+  }
+}
