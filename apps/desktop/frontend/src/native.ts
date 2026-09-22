@@ -3,7 +3,7 @@
 // (e.g. `bun run dev` in a normal browser), so the app is usable before the Go part lands and
 // while developing in a browser tab.
 
-const inWails = (): boolean => typeof window !== "undefined" && ("_wails" in window || "wails" in window);
+import { isWails as inWails } from "./lib/wails.ts";
 
 async function nativeService() {
   try {

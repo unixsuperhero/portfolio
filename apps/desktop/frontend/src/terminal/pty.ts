@@ -3,7 +3,7 @@
 // input-echoing transport when not running under Wails (e.g. `bun run dev` in a
 // plain browser), the same pattern src/native.ts uses for its own bindings.
 
-const inWails = (): boolean => typeof window !== "undefined" && ("_wails" in window || "wails" in window);
+import { isWails as inWails } from "../lib/wails.ts";
 
 async function ptyService() {
   try {

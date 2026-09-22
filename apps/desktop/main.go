@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"log"
+	"os"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -36,7 +37,8 @@ func main() {
 			application.NewService(&NativeService{}),
 		},
 		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(assets),
+			Handler:    application.AssetFileServerFS(assets),
+			Middleware: apiProxy(sidecarURL),
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
@@ -54,6 +56,9 @@ func main() {
 		},
 		BackgroundColour: application.NewRGB(6, 7, 15),
 		URL:              "/",
+		DevToolsEnabled:  true,
+		// PORTFOLIO_INSPECT=1 opens the WebKit inspector with the window, for debugging the page.
+		OpenInspectorOnStartup: os.Getenv("PORTFOLIO_INSPECT") == "1",
 	})
 
 	// Run the application. This blocks until the application has been exited.
