@@ -36,6 +36,7 @@
       "dependencies": {
         "@portfolio/core": "workspace:*",
         "@portfolio/db": "workspace:*",
+        "@portfolio/github": "workspace:*",
         "@portfolio/ports": "workspace:*",
         "@portfolio/render": "workspace:*",
         "@portfolio/watch": "workspace:*",
@@ -75,6 +76,14 @@
       "version": "0.1.0",
       "dependencies": {
         "@portfolio/core": "workspace:*",
+      },
+    },
+    "packages/github": {
+      "name": "@portfolio/github",
+      "version": "0.1.0",
+      "dependencies": {
+        "@portfolio/core": "workspace:*",
+        "@portfolio/db": "workspace:*",
       },
     },
     "packages/ports": {
@@ -130,6 +139,8 @@
     "@portfolio/db": ["@portfolio/db@workspace:packages/db"],
 
     "@portfolio/desktop-frontend": ["@portfolio/desktop-frontend@workspace:apps/desktop/frontend"],
+
+    "@portfolio/github": ["@portfolio/github@workspace:packages/github"],
 
     "@portfolio/ports": ["@portfolio/ports@workspace:packages/ports"],
 
