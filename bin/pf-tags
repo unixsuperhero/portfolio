@@ -1,0 +1,47 @@
+#!/usr/bin/env bun
+// pf-tags — tags and what carries them.
+import { cli, flag, json, numberArg, table, CliError } from "@portfolio/cli-kit";
+import { LIST_OPTS, openDefaultStore, printItems } from "@portfolio/cli";
+
+cli("pf-tags", c => {
+  c.cmd(["ls", "list"], { desc: "every tag with its item count", opts: { json: flag("j", "print JSON") } }, ({ opts, out }) => {
+    const store = openDefaultStore({ readonly: true });
+    const tags = store.tags.listTags();
+    out(opts.json ? json(tags) : table(tags.map(tag => ({ id: tag.id, name: tag.name, count: tag.count }))));
+  });
+
+  c.cmd(["items", "show"], { desc: "items carrying a tag", args: ["TAG"], opts: LIST_OPTS }, ({ args, opts, out }) => {
+    const store = openDefaultStore({ readonly: true });
+    if (!args[0]) throw new CliError("tag name required");
+    printItems(store, store.items.listItems({ tagName: args[0], type: (opts.type ?? "") as "" }), opts, out);
+  });
+
+  c.cmd("rename", { desc: "rename a tag everywhere", args: ["OLD", "NEW"] }, ({ args, out }) => {
+    const store = openDefaultStore();
+    const tag = store.tags.findTag(args[0] ?? "");
+    if (!tag || !args[1]) throw new CliError("usage: pf-tags rename OLD NEW");
+    store.tags.renameTag(tag.id, args[1]);
+    out(`${tag.name} → ${args[1]}`);
+  });
+
+  c.cmd(["rm", "remove"], { desc: "remove a tag from every item", args: ["TAG"] }, ({ args, out }) => {
+    const store = openDefaultStore();
+    const tag = store.tags.findTag(args[0] ?? "");
+    if (!tag) throw new CliError(`no tag named ${args[0]}`);
+    store.db.query("DELETE FROM tags WHERE id = ?").run(tag.id);
+    out(`removed tag ${tag.name}`);
+  });
+
+  c.cmd("prune", { desc: "delete tags that no item carries" }, ({ out }) => {
+    const store = openDefaultStore();
+    out(`pruned ${store.tags.pruneTags()} tags`);
+  });
+
+  c.cmd("add", { desc: "tag several items at once", args: ["TAG", "ID..."] }, ({ args, out }) => {
+    const store = openDefaultStore();
+    const [tag, ...ids] = args;
+    if (!tag || !ids.length) throw new CliError("usage: pf-tags add TAG ID...");
+    ids.forEach(id => store.tags.setTags(numberArg(id), [tag]));
+    out(`tagged ${ids.length} items with ${tag}`);
+  });
+}, { desc: "tags in the Portfolio database" }).run();

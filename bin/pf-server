@@ -1,0 +1,43 @@
+#!/usr/bin/env bun
+// pf-server — the running Portfolio service: launchd control, health, and a few API calls over HTTP.
+import { join } from "node:path";
+import { existsSync } from "node:fs";
+import { cli, flag, json, openDefault, table, CliError } from "@portfolio/cli-kit";
+import { client, projectRoot } from "@portfolio/cli";
+import { defaultServer } from "@portfolio/client";
+
+const LABEL = `com.${process.env.USER ?? "user"}.portfolio`;
+const DOMAIN = `gui/${process.getuid?.() ?? 501}`;
+const TARGET = `${DOMAIN}/${LABEL}`;
+const PLIST = join(process.env.HOME ?? "", "Library", "LaunchAgents", `${LABEL}.plist`);
+const launchctl = (...args: string[]) => Bun.spawnSync({ cmd: ["launchctl", ...args], stdio: ["ignore", "inherit", "inherit"] }).exitCode ?? 1;
+const loaded = () => (Bun.spawnSync({ cmd: ["launchctl", "print", TARGET], stdout: "ignore", stderr: "ignore" }).exitCode ?? 1) === 0;
+const requirePlist = () => { if (!existsSync(PLIST)) throw new CliError(`LaunchAgent not installed (${PLIST}); run pf-server setup`); };
+
+cli("pf-server", c => {
+  c.cmd("url", { desc: "print the server URL in use" }, ({ out }) => { out(process.env.PORTFOLIO_SERVER ?? defaultServer()); });
+  c.cmd("health", { desc: "GET /health" }, async ({ out }) => { out(json(await client().health())); });
+  c.cmd("open", { desc: "open the library in the browser", args: ["PATH"] }, ({ args }) => openDefault(`${process.env.PORTFOLIO_SERVER ?? defaultServer()}${args[0] ?? ""}`));
+  c.cmd("setup", { desc: "run bin/install (LaunchAgent, ~/bin copies of h-docs and mdoc)" }, () => {
+    const installer = join(projectRoot(), "bin", "install");
+    if (!existsSync(installer)) throw new CliError(`installer not found: ${installer}`);
+    return Bun.spawnSync({ cmd: [installer], stdio: ["inherit", "inherit", "inherit"] }).exitCode ?? 1;
+  });
+  c.cmd("start", { desc: "start the LaunchAgent" }, ({ out }) => { requirePlist(); const code = loaded() ? launchctl("kickstart", TARGET) : launchctl("bootstrap", DOMAIN, PLIST); if (!code) out("started"); return code; });
+  c.cmd("stop", { desc: "stop the LaunchAgent" }, ({ out }) => { if (!loaded()) return out("not loaded"), 0; return launchctl("bootout", TARGET); });
+  c.cmd("restart", { desc: "restart the LaunchAgent" }, ({ out }) => { requirePlist(); const code = loaded() ? launchctl("kickstart", "-k", TARGET) : launchctl("bootstrap", DOMAIN, PLIST); if (!code) out("restarted"); return code; });
+  c.cmd("status", { desc: "launchctl print for the service" }, () => { if (!loaded()) throw new CliError("not loaded; run pf-server start"); return launchctl("print", TARGET); });
+  c.cmd("logs", { desc: "tail the service logs", opts: { follow: flag("f", "keep following") } }, ({ opts }) => {
+    const logs = ["stdout.log", "stderr.log"].map(name => join(projectRoot(), "logs", name)).filter(existsSync);
+    if (!logs.length) throw new CliError("no logs yet");
+    return Bun.spawnSync({ cmd: ["tail", ...(opts.follow ? ["-f"] : ["-n", "40"]), ...logs], stdio: ["inherit", "inherit", "inherit"] }).exitCode ?? 1;
+  });
+  c.cmd("dev", { desc: "run app.js in the foreground on PORT (default 4388) against the default database", args: ["PORT"] }, ({ args }) => {
+    return Bun.spawnSync({ cmd: [process.execPath, "run", join(projectRoot(), "app.js")], env: { ...process.env, PORT: args[0] ?? "4388" }, stdio: ["inherit", "inherit", "inherit"] }).exitCode ?? 1;
+  });
+  c.cmd("api", { desc: "GET an API path and print the JSON", args: ["PATH"] }, async ({ args, out }) => { out(json(await client().request(args[0] ?? "/health"))); });
+  c.cmd("items", { desc: "list items over HTTP (the same query params as /api/items)", args: ["QUERY..."], opts: { limit: { kind: "option", short: "l", desc: "limit", type: "number" }, json: flag("j", "JSON") } }, async ({ args, opts, out }) => {
+    const items = await client().items({ q: args.join(" "), limit: opts.limit ?? undefined });
+    out(opts.json ? json(items) : table(items.map(item => ({ id: item.id, type: item.type, title: item.title, tags: item.tags.join(",") }))));
+  });
+}, { desc: "the Portfolio service" }).run();

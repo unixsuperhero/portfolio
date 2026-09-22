@@ -1,0 +1,10 @@
+#!/usr/bin/env ruby
+# h-pf — hiiro entry point for the Portfolio toolbox. Everything is forwarded to bin/pf:
+#   h-pf items ls yt   ==  pf items ls yt
+require 'hiiro'
+
+PF = File.join(__dir__, 'pf')
+
+Hiiro.run(*ARGV, external_commands: false) do
+  add_default { |*args| exec(PF, *args.map(&:to_s)) }
+end

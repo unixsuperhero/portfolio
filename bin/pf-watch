@@ -1,0 +1,67 @@
+#!/usr/bin/env bun
+// pf-watch — watched directories: pull .md/.markdown/.html files into the library and keep them in sync.
+import { resolve } from "node:path";
+import { stat } from "node:fs/promises";
+import { cli, flag, json, numberArg, table, CliError } from "@portfolio/cli-kit";
+import { openDefaultStore } from "@portfolio/cli";
+import { abbreviatePath, expandPath } from "@portfolio/core";
+import { renderMarkdown } from "@portfolio/render";
+import { DirectoryWatcher, reconcile, scanDirectory } from "@portfolio/watch";
+
+const render: Parameters<typeof reconcile>[1] = (markdown, options) => renderMarkdown(markdown, options);
+const absoluteDir = async (value: string | undefined) => {
+  if (!value) throw new CliError("directory required");
+  const path = resolve(expandPath(value));
+  if (!(await stat(path).catch(() => null))?.isDirectory()) throw new CliError(`${path} is not a directory`);
+  return path;
+};
+
+cli("pf-watch", c => {
+  c.cmd(["ls", "list"], { desc: "watched directories and how many documents each claims", opts: { json: flag("j", "print JSON") } }, ({ opts, out }) => {
+    const store = openDefaultStore({ readonly: true });
+    const rows = store.watched.listWatchedDirectories().map(dir => ({ id: dir.id, path: abbreviatePath(dir.path), recursive: dir.recursive ? "yes" : "no", documents: store.watched.claimedItemIds(dir.id).length }));
+    out(opts.json ? json(rows) : table(rows));
+  });
+
+  c.cmd("add", { desc: "watch a directory and sync it now", args: ["DIR"], opts: { recursive: flag("r", "include subdirectories") } }, async ({ args, opts, out }) => {
+    const store = openDefaultStore();
+    const id = store.watched.addWatchedDirectory(await absoluteDir(args[0]), opts.recursive);
+    const result = await reconcile(store.db, render);
+    out(`watching #${id}: ${result.states.get(id)?.count ?? 0} documents${result.states.get(id)?.error ? ` (error: ${result.states.get(id)!.error})` : ""}`);
+  });
+
+  c.cmd("set", { desc: "turn subdirectories on or off for a watch, then sync", args: ["ID", "recursive|flat"] }, async ({ args, out }) => {
+    const store = openDefaultStore();
+    const recursive = args[1] === "recursive";
+    if (!recursive && args[1] !== "flat") throw new CliError("second argument must be recursive or flat");
+    if (!store.watched.setWatchedRecursive(numberArg(args[0]), recursive)) throw new CliError("no such watch");
+    const result = await reconcile(store.db, render);
+    out(`synced; removed ${result.removed} uncovered documents`);
+  });
+
+  c.cmd(["rm", "remove"], { desc: "stop watching; documents no other watch covers are removed (files stay on disk)", args: ["ID"] }, ({ args, out }) => {
+    const store = openDefaultStore();
+    out(`removed ${store.watched.removeWatchedDirectory(numberArg(args[0]))} documents`);
+  });
+
+  c.cmd("sync", { desc: "scan every watched directory once" }, async ({ out }) => {
+    const store = openDefaultStore();
+    const result = await reconcile(store.db, render);
+    for (const [id, state] of result.states) out(`#${id}: ${state.error ? `error ${state.error}` : `${state.count} documents`}`);
+    out(`removed ${result.removed}`);
+  });
+
+  c.cmd("scan", { desc: "list the documents a directory would import, without touching the database", args: ["DIR"], opts: { recursive: flag("r", "include subdirectories"), json: flag("j", "print JSON") } }, async ({ args, opts, out }) => {
+    const documents = await scanDirectory(await absoluteDir(args[0]), opts.recursive);
+    const rows = [...documents.values()].map(doc => ({ title: doc.title, kind: doc.html ? "html" : "md", path: abbreviatePath(doc.sourcePath) }));
+    out(opts.json ? json(rows) : table(rows));
+  });
+
+  c.cmd("run", { desc: "stay running and re-sync on file changes (what the server does in-process)" }, async ({ out }) => {
+    const store = openDefaultStore();
+    const watcher = new DirectoryWatcher(store.db, render, { onError: error => out(`error: ${(error as Error).message}`) });
+    await watcher.reload();
+    out(`watching ${watcher.states.size} directories; ctrl-c to stop`);
+    await new Promise(() => {});
+  });
+}, { desc: "watched directories" }).run();

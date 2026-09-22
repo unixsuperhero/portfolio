@@ -1,0 +1,48 @@
+#!/usr/bin/env bun
+// pf-projects — parent directories to scan for projects; each found project becomes a dir item in the project category.
+import { resolve } from "node:path";
+import { cli, flag, json, numberArg, table, CliError } from "@portfolio/cli-kit";
+import { LIST_OPTS, openDefaultStore, printItems } from "@portfolio/cli";
+import { abbreviatePath, expandPath } from "@portfolio/core";
+import { discoverProjects, scanProjects, PROJECT_SCAN_DEPTH } from "@portfolio/watch";
+
+cli("pf-projects", c => {
+  c.cmd(["ls", "list"], { desc: "project items (dir items in the project category)", args: ["QUERY..."], opts: LIST_OPTS }, ({ args, opts, out }) => {
+    const store = openDefaultStore({ readonly: true });
+    const category = store.categories.findCategory("project");
+    if (!category) return out("no project category yet; add a parent with pf-projects parents add"), 1;
+    const q = args.join(" ").toLowerCase();
+    printItems(store, store.categories.categoryMembers(category.id).filter(item => !q || item.title.toLowerCase().includes(q) || (item.path ?? "").toLowerCase().includes(q)), opts, out);
+  });
+
+  c.cmd("scan", { desc: "scan every parent and add new projects (never removes)" }, async ({ out }) => {
+    const store = openDefaultStore();
+    const added = await scanProjects(store.db);
+    out(`added ${added.length} projects`);
+    added.forEach(path => out(`  ${abbreviatePath(path)}`));
+  });
+
+  c.cmd("discover", { desc: "show what a scan of DIR would find, without touching the database", args: ["DIR"], opts: { depth: { kind: "option", short: "d", desc: `levels to walk (default ${PROJECT_SCAN_DEPTH})`, type: "number" }, json: flag("j", "print JSON") } }, async ({ args, opts, out }) => {
+    if (!args[0]) throw new CliError("directory required");
+    const found = await discoverProjects(resolve(expandPath(args[0])), opts.depth ?? PROJECT_SCAN_DEPTH);
+    out(opts.json ? json(found) : found.map(abbreviatePath).join("\n"));
+  });
+
+  c.child("parents", "parent directories that get scanned", p => {
+    p.cmd(["ls", "list"], { desc: "parents with project counts", opts: { json: flag("j", "print JSON") } }, ({ opts, out }) => {
+      const store = openDefaultStore({ readonly: true });
+      const rows = store.projects.listProjectParents();
+      out(opts.json ? json(rows) : table(rows.map(row => ({ id: row.id, path: abbreviatePath(row.path), projects: row.count }))));
+    });
+    p.cmd("add", { desc: "add a parent and scan it", args: ["DIR"] }, async ({ args, out }) => {
+      if (!args[0]) throw new CliError("directory required");
+      const store = openDefaultStore();
+      store.projects.addProjectParent(resolve(expandPath(args[0])));
+      out(`added ${(await scanProjects(store.db)).length} projects`);
+    });
+    p.cmd(["rm", "remove"], { desc: "stop scanning a parent; its projects stay", args: ["ID"] }, ({ args, out }) => {
+      const store = openDefaultStore();
+      out(store.projects.removeProjectParent(numberArg(args[0])) ? "removed" : "no such parent");
+    });
+  });
+}, { desc: "project discovery" }).run();

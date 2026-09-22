@@ -1,0 +1,83 @@
+#!/usr/bin/env bun
+// pf-categories — a category names a kind of item and the slots (files/dirs) every member has.
+import { cli, flag, json, numberArg, option, table, CliError } from "@portfolio/cli-kit";
+import { LIST_OPTS, openDefaultStore, printItems } from "@portfolio/cli";
+import { abbreviatePath, formatSlots, parseSlots, isItemType } from "@portfolio/core";
+import type { Store } from "@portfolio/db";
+
+const categoryOf = (store: Store, word: string | undefined) => {
+  const found = word && /^\d+$/.test(word) ? store.categories.getCategory(Number(word)) : word ? store.categories.findCategory(word) : null;
+  if (!found) throw new CliError(`no category ${word ?? "(missing)"}; run pf-categories ls`);
+  return found;
+};
+const SLOT_OPTS = { slots: option("s", "slots, one per line: name | file or dir | path"), kind: option("k", "kind of item (dir, file, document, note, link, pr)") };
+
+cli("pf-categories", c => {
+  c.cmd(["ls", "list"], { desc: "categories with member counts and slots", opts: { json: flag("j", "print JSON") } }, ({ opts, out }) => {
+    const store = openDefaultStore({ readonly: true });
+    const rows = store.categories.listCategories();
+    out(opts.json ? json(rows) : table(rows.map(cat => ({ id: cat.id, name: cat.name, kind: cat.kind, members: cat.member_count, slots: formatSlots(cat.slots).replace(/\n/g, "; ") }))));
+  });
+
+  c.cmd(["items", "members"], { desc: "items in a category", args: ["CATEGORY"], opts: LIST_OPTS }, ({ args, opts, out }) => {
+    const store = openDefaultStore({ readonly: true });
+    printItems(store, store.categories.categoryMembers(categoryOf(store, args[0]).id), opts, out);
+  });
+
+  c.cmd("slots", { desc: "resolved slots of one member: path, exists, overridden", args: ["ITEM_ID"], opts: { json: flag("j", "print JSON") } }, ({ args, opts, out }) => {
+    const store = openDefaultStore({ readonly: true });
+    const item = store.items.getItem(numberArg(args[0], "item id"));
+    if (!item) throw new CliError("no such item");
+    const slots = store.categories.memberSlots(item);
+    out(opts.json ? json(slots) : table(slots.map(slot => ({ name: slot.name, kind: slot.kind, path: slot.path ? abbreviatePath(slot.path) : "(needs a member path)", exists: slot.exists ? "yes" : "no", overridden: slot.overridden ? "yes" : "" }))));
+  });
+
+  c.cmd(["add", "new"], { desc: "create a category", args: ["NAME"], opts: SLOT_OPTS }, ({ args, opts, out }) => {
+    const store = openDefaultStore();
+    const kind = opts.kind ?? "dir";
+    if (!isItemType(kind)) throw new CliError("invalid kind");
+    out(`created category #${store.categories.createCategory({ name: args[0] ?? "", kind, slots: parseSlots(opts.slots ?? "") })}`);
+  });
+
+  c.cmd(["edit", "set"], { desc: "rename a category, change its kind (only while empty), or replace its slots", args: ["CATEGORY", "NEW_NAME"], opts: SLOT_OPTS }, ({ args, opts, out }) => {
+    const store = openDefaultStore();
+    const category = categoryOf(store, args[0]);
+    if (opts.kind && !isItemType(opts.kind)) throw new CliError("invalid kind");
+    store.categories.updateCategory(category.id, { name: args[1], kind: (opts.kind as typeof category.kind) ?? undefined, slots: opts.slots === null ? undefined : parseSlots(opts.slots) });
+    out(`updated ${category.name}`);
+  });
+
+  c.cmd("assign", { desc: "put an item in a category (its type must match the category kind)", args: ["ITEM_ID", "CATEGORY"] }, ({ args, out }) => {
+    const store = openDefaultStore();
+    const item = store.items.getItem(numberArg(args[0], "item id"));
+    if (!item) throw new CliError("no such item");
+    const category = categoryOf(store, args[1]);
+    if (category.kind !== item.type) throw new CliError(`category ${category.name} holds ${category.kind} items, this is a ${item.type}`);
+    store.items.setPathAndCategory(item.id, item.path, category.id);
+    out(`#${item.id} → ${category.name}`);
+  });
+
+  c.cmd("unassign", { desc: "take an item out of its category", args: ["ITEM_ID"] }, ({ args, out }) => {
+    const store = openDefaultStore();
+    const item = store.items.getItem(numberArg(args[0], "item id"));
+    if (!item) throw new CliError("no such item");
+    store.items.setPathAndCategory(item.id, item.path, null);
+    out(`#${item.id} has no category`);
+  });
+
+  c.cmd("override", { desc: "give one member a different path for a slot; empty PATH clears it", args: ["ITEM_ID", "SLOT", "PATH"] }, ({ args, out }) => {
+    const store = openDefaultStore();
+    const item = store.items.getItem(numberArg(args[0], "item id"));
+    if (!item) throw new CliError("no such item");
+    if (!args[1]) throw new CliError("slot name required");
+    store.categories.setSlotOverride(item, args[1], args[2] ?? "");
+    out(json(store.categories.memberSlots(store.items.getItem(item.id)!)));
+  });
+
+  c.cmd(["rm", "remove", "delete"], { desc: "delete a category; members are kept without one", args: ["CATEGORY"] }, ({ args, out }) => {
+    const store = openDefaultStore();
+    const category = categoryOf(store, args[0]);
+    store.categories.deleteCategory(category.id);
+    out(`deleted ${category.name}`);
+  });
+}, { desc: "categories and slots" }).run();

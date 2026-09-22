@@ -1,0 +1,42 @@
+#!/usr/bin/env bun
+// pf-ports — TCP listeners with their process, cwd, Herdr pane, and AI session; kill one safely.
+import { cli, flag, json, numberArg, option, openDefault, table, CliError } from "@portfolio/cli-kit";
+import { findByPort, findPortEntry, killListener, portRows, portSiteUrl, portsScanBin, scanPorts } from "@portfolio/ports";
+import { projectRoot } from "@portfolio/cli";
+
+const snapshot = () => scanPorts(portsScanBin(projectRoot()));
+
+cli("pf-ports", c => {
+  c.cmd(["ls", "list"], { desc: "every TCP listener", opts: { json: flag("j", "print the scanner JSON"), port: option("p", "only this port", { type: "number" }) } }, ({ opts, out }) => {
+    const snap = snapshot();
+    if (opts.json) return out(json(snap));
+    if (snap.error) out(`scan error: ${snap.error}`);
+    const rows = portRows(opts.port ? { ...snap, ports: findByPort(snap, opts.port) } : snap);
+    out(table(rows));
+    if (!snap.herdr_available) out("(Herdr unavailable: pane and session columns come from heuristics)");
+  });
+
+  c.cmd("tree", { desc: "ancestors and children of the process listening on PORT", args: ["PORT"] }, ({ args, out }) => {
+    const snap = snapshot();
+    const entry = findByPort(snap, numberArg(args[0], "port"))[0];
+    if (!entry) throw new CliError(`nothing listens on ${args[0]}`);
+    out(`${portSiteUrl(entry)}  ${entry.command} #${entry.pid}  ${entry.cwd}`);
+    out(json({ herdr: entry.herdr ?? null, ai: entry.ai ?? null, tree: entry.tree ?? [], children: entry.children ?? [] }));
+  });
+
+  c.cmd("open", { desc: "open http://localhost:PORT", args: ["PORT"] }, ({ args }) => {
+    const port = numberArg(args[0], "port");
+    return openDefault(portSiteUrl({ host: "localhost", port }));
+  });
+
+  c.cmd("kill", { desc: "SIGTERM (or --kill for SIGKILL) the listener on PORT or with --pid", args: ["PORT"], opts: { pid: option(undefined, "kill by pid instead", { type: "number" }), kill: flag("9", "send SIGKILL") } }, ({ args, opts, out }) => {
+    const snap = snapshot();
+    const pid = opts.pid ?? findByPort(snap, numberArg(args[0], "port"))[0]?.pid;
+    if (!pid) throw new CliError("no such listener");
+    const result = killListener(pid, { signal: opts.kill ? "KILL" : "TERM", snapshot: snap });
+    out(`${result.message}${result.ok ? ` (${result.signal} → ${pid})` : ""}`);
+    return result.ok;
+  });
+
+  c.cmd("which", { desc: "print the scanner script in use" }, ({ out }) => { out(portsScanBin(projectRoot())); });
+}, { desc: "local TCP listeners" }).run();

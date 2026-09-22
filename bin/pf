@@ -1,0 +1,12 @@
+#!/usr/bin/env bun
+// pf — the Portfolio toolbox. Every pf-* executable in this directory is a subcommand:
+//   pf items ls yt        →  pf-items ls yt
+//   pf it ls              →  prefix matching, like hiiro
+import { cli } from "@portfolio/cli-kit";
+import { databasePath, projectRoot } from "@portfolio/cli";
+
+cli("pf", c => {
+  c.cmd("root", { desc: "print the project root" }, ({ out }) => { out(projectRoot()); });
+  c.cmd("db-path", { desc: "print the database path" }, ({ out }) => { out(databasePath()); });
+  c.cmd("tools", { desc: "list the pf-* tools" }, ({ out, cli }) => { for (const name of cli.commandNames()) out(`pf ${name}`); });
+}, { desc: "Portfolio command line tools" }).run();

@@ -1,0 +1,16 @@
+#!/usr/bin/env bun
+// pf-detect — say what a pasted thing is: url → link/pr, path → dir/document/file, text → note.
+import { cli, flag, json, readStdin } from "@portfolio/cli-kit";
+import { detect } from "@portfolio/core";
+
+cli("pf-detect", c => {
+  c.default({ desc: "detect the type of the argument text, or stdin when empty", args: ["TEXT..."], opts: { json: flag("j", "print JSON (default when not a TTY)"), type: flag("t", "print only the type") } }, async ({ args, opts, out }) => {
+    const raw = args.length ? args.join(" ") : await readStdin();
+    const detected = await detect(raw);
+    if (opts.type) return out(detected.type);
+    if (opts.json || !process.stdout.isTTY) return out(json(detected));
+    out(`${detected.type.toUpperCase()}  ${detected.title}`);
+    if (detected.url) out(`url:    ${detected.url}`);
+    if (detected.path) out(`path:   ${detected.path}${detected.exists ? "" : "  (does not exist yet)"}`);
+  });
+}, { desc: "type detection for the quick-add box", externalBins: false }).run();

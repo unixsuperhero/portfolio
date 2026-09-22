@@ -1,0 +1,34 @@
+#!/usr/bin/env bun
+// pf-render — Markdown → HTML with the Portfolio document template, no database involved.
+//   pf-render README.md > out.html
+//   pf-render README.md -o out.html --open
+//   echo '# hi' | pf-render - --fragment
+import { basename, extname, resolve } from "node:path";
+import { cli, flag, option, openDefault, readStdin, CliError } from "@portfolio/cli-kit";
+import { documentTitle } from "@portfolio/core";
+import { DEFAULT_TEMPLATE, pandocAvailable, pandocBin, renderFragment, renderMarkdown } from "@portfolio/render";
+
+cli("pf-render", c => {
+  c.default({ desc: "render a Markdown file (or stdin with -) to HTML", args: ["FILE"], opts: {
+    title: option("t", "document title (default: first heading or file name)"),
+    out: option("o", "write to this file instead of stdout"),
+    toc: flag(undefined, "table of contents (default)", { default: true }),
+    fragment: flag("f", "HTML fragment only, no template"),
+    template: option(undefined, "pandoc template path"),
+    open: flag(undefined, "open the written file"),
+  } }, async ({ args, opts, out }) => {
+    if (!pandocAvailable()) throw new CliError(`pandoc not found (looked for ${pandocBin()}); brew install pandoc`);
+    const source = args[0];
+    if (!source) throw new CliError("file required, or - for stdin");
+    const markdown = source === "-" ? await readStdin() : await Bun.file(source).text();
+    const path = source === "-" ? "stdin.md" : resolve(source);
+    const title = opts.title ?? documentTitle(markdown, path);
+    const html = opts.fragment ? renderFragment(markdown) : renderMarkdown(markdown, { title, toc: opts.toc, template: opts.template ?? undefined });
+    if (!opts.out) return out(html);
+    await Bun.write(opts.out, html);
+    out(`wrote ${opts.out}`);
+    if (opts.open) openDefault(opts.out);
+  });
+  c.cmd("template", { desc: "print the path of the default document template" }, ({ out }) => { out(DEFAULT_TEMPLATE); });
+  c.cmd("check", { desc: "report the pandoc binary in use" }, ({ out }) => { out(`${pandocBin()}  ${pandocAvailable() ? "ok" : "MISSING"}`); return pandocAvailable(); });
+}, { desc: "Markdown to HTML with the document template", externalBins: false }).run();

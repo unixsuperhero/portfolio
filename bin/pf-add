@@ -1,0 +1,60 @@
+#!/usr/bin/env bun
+// pf-add — the quick-add box from the command line, writing straight to the database.
+//   pf-add https://github.com/x/y/pull/12 -g review
+//   pf-add ~/proj/thing                    → dir item
+//   pf-add ~/notes/plan.md                 → imported document (like mdoc)
+//   echo '# Note' | pf-add - -g ideas       → note
+import { basename } from "node:path";
+import { cli, flag, json, option, readStdin, CliError } from "@portfolio/cli-kit";
+import { openDefaultStore, itemUrl } from "@portfolio/cli";
+import { detect, documentTitle, isHtmlPath, isItemType, parseTags } from "@portfolio/core";
+import { renderMarkdown } from "@portfolio/render";
+import { openDefault } from "@portfolio/cli-kit";
+
+cli("pf-add", c => {
+  c.default({ desc: "add whatever the text is; - reads stdin", args: ["TEXT..."], opts: {
+    type: option("t", "override the detected type"),
+    tags: option("g", "comma-separated tags"),
+    title: option(undefined, "override the title"),
+    category: option("c", "category name for file/dir items"),
+    open: flag("o", "open the new item afterwards"),
+    json: flag("j", "print the created item as JSON"),
+  } }, async ({ args, opts, out }) => {
+    const raw = args.length === 1 && args[0] === "-" || !args.length ? await readStdin() : args.join(" ");
+    if (!raw.trim()) throw new CliError("nothing to add");
+    const store = openDefaultStore();
+    const detected = await detect(raw);
+    const type = opts.type ?? detected.type;
+    if (!isItemType(type)) throw new CliError(`invalid type ${type}`);
+    const title = opts.title ?? detected.title;
+    const base = { title, description: "", content: "", rendered_html: "", url: null as string | null, source_path: null as string | null, toc: 1 as const };
+    let id: number;
+    if (type === "link" || type === "pr") {
+      if (detected.shape !== "url") throw new CliError(`a ${type} needs a URL`);
+      id = store.items.upsertItem({ ...base, type, url: detected.url });
+    } else if (type === "file" || type === "dir") {
+      if (detected.shape !== "path") throw new CliError(`a ${type} needs an absolute path`);
+      if (store.items.findItemByPath(detected.path!)) throw new CliError("another item already tracks that path");
+      const category = opts.category ? store.categories.findCategory(opts.category) : null;
+      if (opts.category && !category) throw new CliError(`no category named ${opts.category}`);
+      if (category && category.kind !== type) throw new CliError(`category ${category.name} holds ${category.kind} items`);
+      id = store.items.upsertItem({ ...base, type });
+      store.items.setPathAndCategory(id, detected.path!, category?.id ?? null);
+    } else if (type === "document" && detected.shape === "path") {
+      if (!detected.exists) throw new CliError("that file does not exist yet");
+      const content = await Bun.file(detected.path!).text();
+      const html = isHtmlPath(detected.path!);
+      const docTitle = opts.title ?? documentTitle(content, detected.path!);
+      id = store.items.upsertItem({ ...base, type: "document", title: docTitle, content: html ? "" : content, rendered_html: html ? content : "", source_path: detected.path });
+      if (!html) store.items.setRenderedHtml(id, renderMarkdown(content, { title: docTitle, sourcePath: detected.path, resolveId: path => store.items.findItemBySource(path)?.id }));
+      if (html && !store.items.findItemByPath(detected.path!)) { const fileId = store.items.upsertItem({ type: "file", title: basename(detected.path!) }); store.items.setPathAndCategory(fileId, detected.path!, null); }
+    } else {
+      if (detected.shape !== "text") throw new CliError(`a ${type} needs some text`);
+      id = store.items.upsertItem({ ...base, type, content: detected.content, rendered_html: renderMarkdown(detected.content!, { title }) });
+    }
+    store.tags.setTags(id, parseTags(opts.tags));
+    const item = store.items.getItem(id)!;
+    out(opts.json ? json(store.items.viewItem(item)) : `added ${item.title} [${item.type} #${item.id}]  ${itemUrl(item)}`);
+    if (opts.open) openDefault(itemUrl(item));
+  });
+}, { desc: "quick add: paste a URL, a path, or text", externalBins: false }).run();

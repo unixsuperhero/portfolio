@@ -1,0 +1,113 @@
+#!/usr/bin/env bun
+// pf-items — list, search, inspect, flag, tag, open, and remove items straight from the database.
+import { cli, flag, json, numberArg, openDefault, editFiles, copyToClipboard, confirm, table } from "@portfolio/cli-kit";
+import { LIST_OPTS, findItems, itemUrl, label, openDefaultStore, pickItem, printItems } from "@portfolio/cli";
+import { abbreviatePath, parseTags } from "@portfolio/core";
+import { unlink } from "node:fs/promises";
+
+cli("pf-items", c => {
+  c.cmd(["ls", "list", "search"], { desc: "list items; words search title and description", args: ["QUERY..."], opts: LIST_OPTS }, ({ args, opts, out }) => {
+    const store = openDefaultStore({ readonly: true });
+    printItems(store, findItems(store, args, opts), opts, out);
+  });
+
+  c.cmd("recent", { desc: "the newest N items (default 10)", args: ["N"], opts: LIST_OPTS }, ({ args, opts, out }) => {
+    const store = openDefaultStore({ readonly: true });
+    const n = args[0] && /^\d+$/.test(args[0]) ? Number(args.shift()) : 10;
+    printItems(store, findItems(store, args, { ...opts, limit: n }), opts, out);
+  });
+
+  c.cmd("count", { desc: "item counts by type" }, ({ out }) => {
+    const store = openDefaultStore({ readonly: true });
+    const counts = store.items.countByType();
+    out(table([...Object.entries(counts).map(([type, count]) => ({ type, count })), { type: "total", count: store.items.countItems() }]));
+  });
+
+  c.cmd(["show", "get"], { desc: "one item as JSON, with tags and resolved slots", args: ["ID|QUERY..."], opts: LIST_OPTS }, ({ args, opts, out }) => {
+    const store = openDefaultStore({ readonly: true });
+    const item = pickItem(store, args, opts);
+    if (!item) return false;
+    out(json({ ...store.items.viewItem(item), content: item.content, slots: store.categories.memberSlots(item), category_id: item.category_id }));
+  });
+
+  c.cmd("cat", { desc: "print an item's Markdown (or tracked source)", args: ["ID|QUERY..."], opts: LIST_OPTS }, ({ args, opts, out }) => {
+    const store = openDefaultStore({ readonly: true });
+    const item = pickItem(store, args, opts);
+    if (!item) return false;
+    out(item.content || (item.source_path ?? item.url ?? item.path ?? ""));
+  });
+
+  c.cmd("open", { desc: "open the item in the browser (links and PRs go to their URL)", args: ["ID|QUERY..."], opts: { ...LIST_OPTS, all: flag("a", "open every match") } }, ({ args, opts }) => {
+    const store = openDefaultStore({ readonly: true });
+    const items = opts.all ? findItems(store, args, opts) : [pickItem(store, args, opts)].filter(Boolean);
+    for (const item of items) openDefault(itemUrl(item!));
+  });
+
+  c.cmd(["vim", "edit"], { desc: "edit the tracked source files of matching items", args: ["QUERY..."], opts: LIST_OPTS }, ({ args, opts, out }) => {
+    const store = openDefaultStore({ readonly: true });
+    const paths = findItems(store, args, opts).map(item => item.source_path ?? item.path).filter((path): path is string => Boolean(path));
+    if (!paths.length) return out("No matching local sources."), false;
+    return editFiles(paths);
+  });
+
+  c.cmd("path", { desc: "print the path of file/dir items and tracked sources", args: ["QUERY..."], opts: { ...LIST_OPTS, copy: flag(undefined, "copy the first path to the clipboard") } }, ({ args, opts, out }) => {
+    const store = openDefaultStore({ readonly: true });
+    const paths = findItems(store, args, opts).map(item => item.path ?? item.source_path).filter((path): path is string => Boolean(path));
+    paths.forEach(path => out(opts.full ? path : abbreviatePath(path)));
+    if (opts.copy && paths[0]) copyToClipboard(paths[0]);
+  });
+
+  for (const [name, field, value, desc] of [["pin", "pinned", true, "pin"], ["unpin", "pinned", false, "unpin"], ["star", "starred", true, "star"], ["unstar", "starred", false, "unstar"]] as const) {
+    c.cmd(name, { desc: `${desc} items by id`, args: ["ID..."] }, ({ args, out }) => {
+      const store = openDefaultStore();
+      const ids = args.map(id => numberArg(id));
+      store.items.setItemFlag(ids, field, value);
+      out(`${desc}: ${ids.join(", ")}`);
+    });
+  }
+
+  c.cmd("toggle", { desc: "toggle pinned or starred on one item", args: ["ID", "pinned|starred"] }, ({ args, out }) => {
+    const store = openDefaultStore();
+    const field = args[1] === "starred" ? "starred" : args[1] === "pinned" ? "pinned" : null;
+    if (!field) return out("field must be pinned or starred"), false;
+    return store.items.toggleItemField(numberArg(args[0]), field) ? 0 : (out("no such item"), 1);
+  });
+
+  c.cmd("tag", { desc: "add comma-separated tags to an item", args: ["ID", "TAGS"] }, ({ args, out }) => {
+    const store = openDefaultStore();
+    const id = numberArg(args[0]);
+    store.tags.setTags(id, parseTags(args.slice(1).join(",")));
+    out(`#${id}: ${store.tags.tagNamesFor(id).join(", ")}`);
+  });
+
+  c.cmd("untag", { desc: "remove comma-separated tags from an item", args: ["ID", "TAGS"] }, ({ args, out }) => {
+    const store = openDefaultStore();
+    const id = numberArg(args[0]);
+    store.tags.removeTags(id, parseTags(args.slice(1).join(",")));
+    out(`#${id}: ${store.tags.tagNamesFor(id).join(", ") || "(no tags)"}`);
+  });
+
+  c.cmd("set", { desc: "set title, description, url, or type on an item", args: ["ID", "FIELD", "VALUE..."] }, ({ args, out }) => {
+    const store = openDefaultStore();
+    const [id, field, ...rest] = args;
+    const allowed = ["title", "description", "url", "type", "content"] as const;
+    if (!allowed.includes(field as typeof allowed[number])) return out(`field must be one of ${allowed.join(", ")}`), false;
+    if (!store.items.updateItem(numberArg(id), { [field]: rest.join(" ") })) return out("no such item"), false;
+    out(`#${id} ${field} updated`);
+  });
+
+  c.cmd(["rm", "remove", "delete"], { desc: "remove items from the database (never deletes source files unless --files)", args: ["ID|QUERY..."], opts: { ...LIST_OPTS, files: flag(undefined, "also delete the tracked source file"), yes: flag("y", "do not ask") } }, async ({ args, opts, out }) => {
+    const store = openDefaultStore();
+    const item = pickItem(store, args, opts);
+    if (!item) return false;
+    if (!confirm(`Remove ${label(item)}${opts.files && item.source_path ? ` and delete ${item.source_path}` : ""}?`, opts.yes || undefined)) return out("cancelled"), 1;
+    if (opts.files && item.source_path) await unlink(item.source_path).catch(error => { if (error.code !== "ENOENT") throw error; });
+    store.items.deleteItems([item.id]);
+    out(`removed ${label(item)}`);
+  });
+
+  c.cmd("export", { desc: "dump matching items as JSON lines, one item per line, with content", args: ["QUERY..."], opts: LIST_OPTS }, ({ args, opts, out }) => {
+    const store = openDefaultStore({ readonly: true });
+    for (const item of findItems(store, args, opts)) out(JSON.stringify({ ...store.items.viewItem(item), content: item.content, category_id: item.category_id }));
+  });
+}, { desc: "items in the Portfolio database" }).run();
