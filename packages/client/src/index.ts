@@ -1,6 +1,6 @@
 import type {
   Card, CardResult, Category, Completion, Detection, DueReminder, Item, ItemFilter, ItemType, ItemView,
-  Portfolio, ProjectView, Recurrence, ResolvedSlot, Settings, Slot, TaskInput, TaskView, WatchedDirectory,
+  Portfolio, Pr, PrEvent, PrStatus, ProjectView, Recurrence, ResolvedSlot, Settings, Slot, TaskInput, TaskView, WatchedDirectory,
 } from "@portfolio/core";
 
 export class PortfolioApiError extends Error {
@@ -133,7 +133,7 @@ export class PortfolioClient {
   deleteCategory(id: number) { return this.request<{ ok: true }>(`/api/categories/${id}`, { method: "DELETE" }); }
 
   settings() { return this.request<Settings>("/api/settings"); }
-  updateSettings(patch: { home_portfolio_id?: number | null; pastry_enabled?: boolean }) { return this.request<Settings>("/api/settings", { method: "PATCH", json: patch }); }
+  updateSettings(patch: { home_portfolio_id?: number | null; pastry_enabled?: boolean; github_ignored_checks?: string[]; github_poll_minutes?: number }) { return this.request<Settings>("/api/settings", { method: "PATCH", json: patch }); }
   home() { return this.request<{ portfolio: PortfolioView | null }>("/api/home"); }
   directories(path: string, files = false) { return this.request<{ path: string; parent: string | null; directories: { name: string; path: string }[]; files?: { name: string; path: string }[] }>("/api/directories", { query: { path, files } }); }
 
@@ -160,6 +160,13 @@ export class PortfolioClient {
   uncompleteTask(id: number, on?: string) { return this.request<TaskView>(`/api/tasks/${id}/uncomplete`, { method: "POST", json: { on } }); }
   dueReminders(minutes = 60) { return this.request<{ due: DueReminder[] }>("/api/reminders/due", { query: { minutes } }); }
   todayTasks() { return this.request<{ tasks: TaskView[] }>("/api/reminders/today"); }
+
+  prs() { return this.request<{ mine: Pr[]; review_requested: Pr[]; watched: Pr[]; status: PrStatus }>("/api/prs"); }
+  refreshPrs() { return this.request<{ mine: Pr[]; review_requested: Pr[]; watched: Pr[]; status: PrStatus }>("/api/prs/refresh", { method: "POST" }); }
+  watchPr(url: string, watched: boolean) { return this.request<Pr>("/api/prs/watch", { method: "POST", json: { url, watched } }); }
+  setPrIgnoredChecks(id: number, checks: string[]) { return this.request<Pr>(`/api/prs/${id}`, { method: "PATCH", json: { ignored_checks: checks } }); }
+  prEvents(since = 0) { return this.request<{ events: PrEvent[] }>("/api/prs/events", { query: { since } }); }
+  markPrEventsSeen(ids: number[]) { return this.request<{ ok: true }>("/api/prs/events/seen", { method: "POST", json: { ids } }); }
 
   /** Imports a batch of Markdown/HTML files as tracked documents, the way mdoc does. Old server only: @portfolio/api has no /api/documents route. */
   createDocuments(documents: { sourcePath: string; content: string }[], options: { roots: string[]; title?: string; description?: string; toc?: boolean }) {

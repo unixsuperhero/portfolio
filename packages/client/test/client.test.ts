@@ -1,23 +1,30 @@
 import { describe, expect, test } from "bun:test";
 import { openStore } from "@portfolio/db";
 import { createApi } from "@portfolio/api";
+import type { ApiOptions } from "@portfolio/api";
 import { PortfolioApiError, PortfolioClient } from "../src/index.ts";
 
 const calls: { url: string; init: RequestInit }[] = [];
 
 /** Routes fetch calls straight into a real createApi handler, so the client is tested end to end. */
 function fakeClient(): PortfolioClient {
+  return fakeClientWithStore().client;
+}
+
+function fakeClientWithStore(options: { withPoller?: boolean } = {}): { client: PortfolioClient; store: ReturnType<typeof openStore> } {
   const store = openStore(":memory:");
+  const idleStatus = { last_poll_at: null, next_poll_at: null, rate: null, polling: false, error: null, gh_ok: false, login: null };
   const api = createApi(store, {
     render: async (markdown, options) => `<h1>${options.title}</h1>${markdown.length}`,
     scanPorts: () => ({ scanned_at: "t", herdr_available: false, warnings: [], ports: [] }),
+    prPoller: options.withPoller ? ({ status: () => idleStatus } as unknown as ApiOptions["prPoller"]) : undefined,
   });
   const fetcher = (async (url: string | URL | Request, init?: RequestInit) => {
     calls.push({ url: String(url), init: init ?? {} });
     const request = new Request(String(url), init);
     return api(request);
   }) as unknown as typeof fetch;
-  return new PortfolioClient("http://x", { fetch: fetcher });
+  return { client: new PortfolioClient("http://x", { fetch: fetcher }), store };
 }
 
 test("builds urls, sends json bodies, surfaces errors", async () => {
@@ -94,5 +101,33 @@ describe("end to end against createApi", () => {
     expect((await client.tasks(true)).tasks).toHaveLength(1);
     expect((await client.todayTasks()).tasks).toHaveLength(1);
     expect(await client.deleteTask(taskId)).toEqual({ ok: true });
+  });
+
+  test("prs, pr events, github settings", async () => {
+    const { client, store } = fakeClientWithStore({ withPoller: true });
+    expect(await client.prs()).toMatchObject({ mine: [], review_requested: [], watched: [], status: { polling: false, gh_ok: false } });
+
+    const id = store.github.upsertPr({
+      url: "https://github.com/acme/app/pull/12", owner: "acme", repo: "app", number: 12, title: "Add widgets",
+      author: "jearsh", is_draft: false, state: "open", review_decision: null, updated_at: "t", comments: 0,
+      checks: [{ name: "codecov/patch", status: "pending", url: "", ignored: false }], checks_summary: "pending",
+      watched: false, ignored_checks: [], lists: ["mine"], item_id: null, fetched_at: "t",
+    });
+    expect((await client.prs()).mine).toHaveLength(1);
+
+    const patched = await client.setPrIgnoredChecks(id, ["codecov/*"]);
+    expect(patched.ignored_checks).toEqual(["codecov/*"]);
+    expect(patched.checks[0].ignored).toBe(true);
+
+    store.github.insertEvents([{ pr_id: id, kind: "checks", message: "acme/app#12 checks none", at: "t2" }]);
+    const { events } = await client.prEvents();
+    expect(events).toHaveLength(1);
+    expect(await client.markPrEventsSeen([events[0].id])).toEqual({ ok: true });
+    expect((await client.prEvents()).events).toHaveLength(0);
+
+    const settings = await client.updateSettings({ github_ignored_checks: ["ci/*"], github_poll_minutes: 5 });
+    expect(settings).toMatchObject({ github_ignored_checks: ["ci/*"], github_poll_minutes: 5 });
+
+    await expect(client.watchPr("https://github.com/acme/app", true)).rejects.toBeInstanceOf(PortfolioApiError);
   });
 });
