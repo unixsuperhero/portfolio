@@ -67,6 +67,11 @@ type ptySession struct {
 type PtyService struct {
 	mu       sync.Mutex
 	sessions map[string]*ptySession
+
+	// emit sends a named event with its payload. It defaults to the running
+	// Wails app's event bus, but can be overridden (e.g. in tests) to
+	// observe emitted events without a live application.
+	emit func(name string, data any)
 }
 
 func (p *PtyService) ServiceName() string { return "PtyService" }
@@ -74,6 +79,13 @@ func (p *PtyService) ServiceName() string { return "PtyService" }
 func (p *PtyService) init() {
 	if p.sessions == nil {
 		p.sessions = make(map[string]*ptySession)
+	}
+	if p.emit == nil {
+		p.emit = func(name string, data any) {
+			if app := application.Get(); app != nil {
+				app.Event.Emit(name, data)
+			}
+		}
 	}
 }
 
@@ -141,15 +153,12 @@ func (p *PtyService) Create(opts PtyOptions) (string, error) {
 }
 
 func (p *PtyService) readLoop(sess *ptySession) {
-	app := application.Get()
 	buf := make([]byte, ptyReadChunk)
 	for {
 		n, err := sess.file.Read(buf)
 		if n > 0 {
 			data := base64.StdEncoding.EncodeToString(buf[:n])
-			if app != nil {
-				app.Event.Emit("pty:data", PtyDataEvent{Id: sess.id, Data: data})
-			}
+			p.emit("pty:data", PtyDataEvent{Id: sess.id, Data: data})
 		}
 		if err != nil {
 			return
@@ -173,9 +182,7 @@ func (p *PtyService) waitLoop(sess *ptySession) {
 		}
 	}
 
-	if app := application.Get(); app != nil {
-		app.Event.Emit("pty:exit", PtyExitEvent{Id: sess.id, Code: code})
-	}
+	p.emit("pty:exit", PtyExitEvent{Id: sess.id, Code: code})
 }
 
 // Write sends raw text typed by the user to the session's pty.
