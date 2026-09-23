@@ -14,7 +14,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "ui:demo": "bun run --cwd packages/ui demo",
     "app:make": "cd apps/desktop && wails3 package",
-    "app:run": "open apps/desktop/bin/desktop.app"
+    "app:run": "open apps/desktop/bin/desktop.app",
+    "w": "cd apps/desktop && wails3 "
   },
   "devDependencies": {
     "@types/bun": "^1.2.0",
