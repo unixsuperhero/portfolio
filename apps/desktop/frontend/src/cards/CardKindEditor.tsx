@@ -15,11 +15,17 @@ export function CardKindEditor({ card, onSubmit, onMove, onDelete }: { card: Por
   const [kind, setKind] = useState<CardKind>(card.kind);
   const [configText, setConfigText] = useState(JSON.stringify(card.config ?? {}, null, 2));
   const [prList, setPrList] = useState<PrList>((card.config?.list as PrList) ?? "mine");
+  const [noteText, setNoteText] = useState(typeof card.config.text === "string" ? card.config.text : "");
   const [error, setError] = useState<string | null>(null);
   const isPrs = (kind as CardKind | "prs") === "prs";
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
+    if (kind === "note" || kind === "tasks") {
+      setError(null);
+      onSubmit({ title, kind, config: kind === "note" ? { ...card.config, text: noteText } : {} });
+      return;
+    }
     if (isPrs) {
       setError(null);
       onSubmit({ title, kind, config: { list: prList } });
@@ -35,7 +41,14 @@ export function CardKindEditor({ card, onSubmit, onMove, onDelete }: { card: Por
   };
 
   return (
-    <details className="card-edit">
+    <details className="card-edit" onToggle={event => {
+      if (!event.currentTarget.open) return;
+      setTitle(card.title);
+      setKind(card.kind);
+      setConfigText(JSON.stringify(card.config ?? {}, null, 2));
+      setNoteText(typeof card.config.text === "string" ? card.config.text : "");
+      setError(null);
+    }}>
       <summary>Edit card</summary>
       <form className="card-form" onSubmit={submit}>
         <label>Title<input value={title} onChange={event => setTitle(event.target.value)} required /></label>
@@ -52,6 +65,10 @@ export function CardKindEditor({ card, onSubmit, onMove, onDelete }: { card: Por
               <option value="watched">Watched</option>
             </select>
           </label>
+        ) : kind === "note" ? (
+          <label>Markdown<textarea value={noteText} onChange={event => setNoteText(event.target.value)} rows={8} /></label>
+        ) : kind === "tasks" ? (
+          <p>Active tasks and subtasks, with completion checkboxes.</p>
         ) : (
           <label>Config (JSON)<textarea value={configText} onChange={event => setConfigText(event.target.value)} rows={4} /></label>
         )}

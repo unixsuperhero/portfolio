@@ -32,7 +32,7 @@ Options:
 
 ```text
   -g, --tags <val>   comma-separated tags; an item matches with any one
-  -t, --types <val>  comma-separated types to narrow to (document,note,link,pr,file,dir)
+  -t, --types <val>  comma-separated types to narrow to (document,note,link,pr,file,dir,task)
   -s, --sort <val>   created_at | updated_at | title | type
   -d, --dir <val>    asc | desc
   -m, --max <val>    max items, 1-1000
@@ -51,7 +51,7 @@ Options:
 
 ```text
   -g, --tags <val>   comma-separated tags; an item matches with any one
-  -t, --types <val>  comma-separated types to narrow to (document,note,link,pr,file,dir)
+  -t, --types <val>  comma-separated types to narrow to (document,note,link,pr,file,dir,task)
   -s, --sort <val>   created_at | updated_at | title | type
   -d, --dir <val>    asc | desc
   -m, --max <val>    max items, 1-1000
@@ -93,7 +93,7 @@ Options:
 
 ```text
   -g, --tags <val>   comma-separated tags; an item matches with any one
-  -t, --types <val>  comma-separated types to narrow to (document,note,link,pr,file,dir)
+  -t, --types <val>  comma-separated types to narrow to (document,note,link,pr,file,dir,task)
   -s, --sort <val>   created_at | updated_at | title | type
   -d, --dir <val>    asc | desc
   -m, --max <val>    max items, 1-1000

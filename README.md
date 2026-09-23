@@ -302,6 +302,14 @@ Add a **project parent directory** on the settings page. A scan runs at startup,
 
 The walk stops at a repository, so nested repositories inside one are not added. Hidden directories and `node_modules` are skipped. A scan never removes a project; delete the item to drop one. The `project` category starts with one slot, `tasks | file | TASKS.md`, and you can edit it like any other category.
 
+## Manage tasks and subtasks
+
+Open **Tasks** in the desktop sidebar or visit `http://127.0.0.1:4387/tasks` in the browser app. Enter a title to create a task. Use **Add subtask** to create a child, or change **Parent task** when editing to move it.
+
+Tasks also appear in the Library, where you can search, tag, pin, and star them. Select `task` in Quick add's type selector to save text as a task.
+
+Each task completes independently. Deleting a parent keeps its children as top-level tasks. Tasks need no reminder; use **Reminders** in the desktop app to configure recurring tasks and reminder times.
+
 ## Upgrading an older database
 
-The first start after this version rebuilds the `items` table to accept the `file` and `dir` types. It writes a copy of the database to `portfolio.sqlite.before-kinds` first and keeps every id, tag, and search index entry. Delete the copy once you are happy with the upgrade.
+The first start after this version rebuilds an older `items` table to accept tasks, files, and directories. It saves a backup at `portfolio.sqlite.before-tasks` and preserves existing item IDs, tags, and search entries. Existing reminder tasks gain Library items without changing their task IDs or completion history. The migration also adds `tasks.parent_id` for subtasks. Keep the backup until you have checked the upgrade.

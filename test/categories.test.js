@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -25,6 +25,8 @@ beforeAll(async () => {
   await Promise.all([mkdir(join(fixture, "templates"), { recursive: true }), mkdir(join(fixture, "public"), { recursive: true }), mkdir(join(directory, "bin"))]);
   await Promise.all([
     copyFile(join(root, "app.js"), join(fixture, "app.js")),
+    symlink(join(root, "packages"), join(fixture, "packages"), "dir"),
+    copyFile(join(root, "tsconfig.json"), join(fixture, "tsconfig.json")),
     copyFile(join(root, "schema.sql"), join(fixture, "schema.sql")),
     copyFile(join(root, "templates", "document.html"), join(fixture, "templates", "document.html")),
     copyFile(join(root, "public", "app.css"), join(fixture, "public", "app.css")),
@@ -61,7 +63,9 @@ afterAll(async () => {
 });
 
 test("an older database is rebuilt in place and keeps its rows, tags, and search", async () => {
-  expect(existsSync(`${dbPath}.before-kinds`)).toBe(true);
+  const backup = new Database(`${dbPath}.before-tasks`, { readonly: true });
+  expect(backup.query("SELECT title FROM items WHERE id = 7").get()).toEqual({ title: "Old doc" });
+  backup.close();
   expect(await item(7)).toMatchObject({ id: 7, type: "document", title: "Old doc", tags: ["legacy"], path: null, slots: [] });
   expect((await (await fetch(`${serverUrl}/api/items?q=old&contents`)).json()).items.map(entry => entry.id)).toEqual([7]);
 });

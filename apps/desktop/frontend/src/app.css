@@ -68,6 +68,20 @@ a { color: var(--accent); }
 .page-header h1 { margin: 0; font-size: 1.4rem; }
 .page-actions { display: flex; gap: 0.5rem; }
 
+.task-tree { list-style: none; margin: 0; padding: 0; }
+.task-tree .task-tree { margin-left: 1rem; padding-left: 0.75rem; border-left: 1px solid var(--border); }
+.task-row { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 0.75rem; padding: 0.85rem 0; border-bottom: 1px solid var(--border); }
+.task-row > input { margin-top: 0.3rem; }
+.task-copy { flex: 1; min-width: 8rem; overflow-wrap: anywhere; }
+.task-copy p { margin: 0.35rem 0; white-space: pre-wrap; color: var(--text2); }
+.task-copy small { display: block; color: var(--text2); }
+.task-completed { text-decoration: line-through; }
+.task-row .page-actions { flex-wrap: wrap; }
+.simple-form.task-form { align-items: stretch; }
+.task-form label { width: 100%; }
+.task-form input, .task-form textarea, .task-form select { width: 100%; }
+.task-form h2 { margin: 0.5rem 0; }
+
 button.primary, .btn-primary {
   background: var(--accent); color: var(--bg); border: none; border-radius: var(--radius);
   padding: 0.4rem 0.9rem; cursor: pointer; font-weight: 600;
@@ -105,12 +119,32 @@ table.data-table th { color: var(--text3); font-weight: 500; }
 .clock-date { color: var(--text2); font-size: 0.85rem; }
 
 /* Note card markdown */
-.note-render { font-size: 0.9rem; line-height: 1.5; }
-.note-render :is(h1, h2, h3) { margin: 0.6rem 0 0.3rem; }
-.note-render pre { background: var(--bg); padding: 0.5rem; border-radius: var(--radius); overflow-x: auto; }
+.note-render { font-size: 0.9rem; line-height: 1.6; overflow-wrap: anywhere; }
+.note-render > :first-child { margin-top: 0; }
+.note-render > :last-child { margin-bottom: 0.75rem; }
+.note-render :is(h1, h2, h3, h4, h5, h6) { margin: 1rem 0 0.4rem; line-height: 1.25; }
+.note-render h1 { font-size: 1.5rem; }
+.note-render h2 { font-size: 1.25rem; }
+.note-render h3 { font-size: 1.1rem; }
+.note-render p { margin: 0.6rem 0; }
+.note-render pre { background: var(--bg); padding: 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); overflow-x: auto; }
 .note-render code { font-family: var(--mono); font-size: 0.85em; }
-.note-render ul { padding-left: 1.2rem; }
-.note-edit textarea { width: 100%; min-height: 8rem; font-family: var(--mono); }
+.note-render :not(pre) > code { background: var(--surface2); border-radius: 3px; padding: 0.1em 0.3em; }
+.note-render :is(ul, ol) { padding-left: 1.5rem; margin: 0.6rem 0; }
+.note-render li > :is(ul, ol) { margin: 0.2rem 0; }
+.note-render blockquote { margin: 0.75rem 0; padding-left: 0.85rem; border-left: 1px solid var(--border2); color: var(--text2); }
+.note-render table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+.note-render :is(th, td) { border: 1px solid var(--border); padding: 0.4rem 0.6rem; }
+.note-render img { max-width: 100%; height: auto; }
+.note-render hr { border: 0; border-top: 1px solid var(--border); margin: 1rem 0; }
+.note-render .task-list-item { list-style: none; }
+.note-render input[type="checkbox"] { margin-right: 0.4rem; accent-color: var(--accent); }
+.note-edit label { display: grid; gap: 0.4rem; font-size: 0.85rem; }
+.note-edit textarea { width: 100%; min-height: 12rem; resize: vertical; font-family: var(--mono); background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.75rem; }
+.tasks-card-list { list-style: none; padding: 0; margin: 0; }
+.tasks-card-list .tasks-card-list { padding-left: 1rem; margin-left: 0.4rem; border-left: 1px solid var(--border); }
+.tasks-card-list a { overflow-wrap: anywhere; min-width: 0; }
+.tasks-card-list input { flex-shrink: 0; accent-color: var(--accent); }
 
 /* Reminders / services / ports cards */
 .reminder-row, .service-row, .port-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0; font-size: 0.88rem; }

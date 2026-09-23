@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS categories (
 -- the file and dir types, so keep it a single CREATE TABLE statement.
 CREATE TABLE IF NOT EXISTS items (
   id INTEGER PRIMARY KEY,
-  type TEXT NOT NULL CHECK (type IN ('document', 'note', 'link', 'pr', 'file', 'dir')),
+  type TEXT NOT NULL CHECK (type IN ('document', 'note', 'link', 'pr', 'file', 'dir', 'task')),
+  task_id INTEGER UNIQUE REFERENCES tasks(id) ON DELETE CASCADE CHECK ((type = 'task') = (task_id IS NOT NULL)),
   title TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   content TEXT NOT NULL DEFAULT '',
@@ -127,7 +128,38 @@ CREATE INDEX IF NOT EXISTS taggings_item ON taggings(item_id);
 
 CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY, title TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '',
   recurrence TEXT NOT NULL CHECK (recurrence IN ('daily','once')), item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
-  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  parent_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL CHECK (parent_id != id));
+CREATE INDEX IF NOT EXISTS tasks_parent ON tasks(parent_id);
+
+CREATE TRIGGER IF NOT EXISTS tasks_parent_update BEFORE UPDATE OF parent_id ON tasks
+WHEN new.parent_id IS NOT NULL BEGIN
+  SELECT RAISE(ABORT, 'a task cannot be its own ancestor') WHERE new.id IN (
+    WITH RECURSIVE ancestors(id, parent_id) AS (
+      SELECT id, parent_id FROM tasks WHERE id = new.parent_id
+      UNION
+      SELECT tasks.id, tasks.parent_id FROM tasks JOIN ancestors ON tasks.id = ancestors.parent_id
+    ) SELECT id FROM ancestors
+  );
+END;
+
+CREATE TRIGGER IF NOT EXISTS tasks_item_insert AFTER INSERT ON tasks BEGIN
+  INSERT INTO items(type, task_id, title, content, created_at)
+    VALUES ('task', new.id, new.title, new.notes, new.created_at);
+END;
+CREATE TRIGGER IF NOT EXISTS tasks_item_update AFTER UPDATE OF title, notes ON tasks BEGIN
+  UPDATE items SET title = new.title, content = new.notes, updated_at = CURRENT_TIMESTAMP
+    WHERE task_id = new.id AND (title != new.title OR content != new.notes);
+END;
+CREATE TRIGGER IF NOT EXISTS items_task_update AFTER UPDATE OF title, content ON items
+WHEN new.task_id IS NOT NULL BEGIN
+  UPDATE tasks SET title = new.title, notes = new.content
+    WHERE id = new.task_id AND (title != new.title OR notes != new.content);
+END;
+CREATE TRIGGER IF NOT EXISTS items_task_delete AFTER DELETE ON items
+WHEN old.task_id IS NOT NULL BEGIN
+  DELETE FROM tasks WHERE id = old.task_id;
+END;
 CREATE TABLE IF NOT EXISTS reminders (id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, at TEXT NOT NULL,
   days TEXT NOT NULL DEFAULT '[]');
 CREATE TABLE IF NOT EXISTS completions (id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,

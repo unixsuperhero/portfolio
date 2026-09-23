@@ -12,7 +12,7 @@ export function QueryCard({ card, footer }: { card: PortfolioCardResult; footer?
           <h2>{card.title}</h2>
           <div className="rail-heading-actions"><span>{card.total}</span></div>
         </header>
-        <TilesCard items={card.items} />
+        <div className="card-body"><TilesCard items={card.items} /></div>
         {footer}
       </section>
     );

@@ -13,7 +13,7 @@ const store = openStore(":memory:");             // tests
 
 | Function | Notes |
 |----------|-------|
-| `openDatabase(path?, { schema, create, readonly, migrate, log })` | applies the schema; rebuilds the `items` table for pre file/dir databases (backup at `<db>.before-kinds`); adds `cards.kind`/`cards.config` to a pre-kind database via `migrateCardColumns`; adds `reminders.days` to a pre-weekday database via `migrateReminderColumns` |
+| `openDatabase(path?, { schema, create, readonly, migrate, log })` | applies the schema; rebuilds older `items` tables for task, file, and directory types, with a backup at `<db>.before-tasks`; adds `tasks.parent_id` and Library entries for existing tasks; migrates `cards.kind`, `cards.config`, and `reminders.days` |
 | `defaultDatabasePath()` | `PORTFOLIO_DB`, else `<PORTFOLIO_HOME or ~/proj/portfolio>/portfolio.sqlite` |
 | `openStore(path?, options?)` | `{ db, items, tags, portfolios, categories, settings, watched, projects, tasks, close }` with every function pre-bound |
 | `SCHEMA_PATH`, `readSchema()` | the packaged schema |

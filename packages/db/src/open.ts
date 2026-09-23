@@ -18,26 +18,30 @@ export interface OpenOptions {
 }
 
 /**
- * SQLite cannot widen a CHECK constraint, so a database from before the file
- * and dir item types gets its items table rebuilt. Row ids are kept, so
+ * SQLite cannot widen a CHECK constraint, so databases missing an item kind
+ * get their items table rebuilt. Row ids are kept, so
  * taggings, watched_items, and the external-content FTS index stay valid.
  */
 export function migrateItemKinds(db: Database, path: string, schema: string, log: (message: string) => void = () => {}): boolean {
   const current = db.query<{ sql: string }, []>("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'items'").get()?.sql;
-  if (!current || current.includes("'dir'")) return false;
-  const backup = `${path}.before-kinds`;
-  if (!existsSync(backup)) db.query("VACUUM INTO ?").run(backup);
+  if (!current || ["'file'", "'dir'", "'task'", "task_id"].every(value => current.includes(value))) return false;
+  const backup = `${path}.before-tasks`;
+  if (path !== ":memory:" && !existsSync(backup)) db.query("VACUUM INTO ?").run(backup);
   const create = schema.match(/CREATE TABLE IF NOT EXISTS items \([\s\S]*?\n\);/)![0].replace("IF NOT EXISTS items", "items_next");
   const columns = db.query<{ name: string }, []>("PRAGMA table_info(items)").all().map(column => column.name).join(", ");
-  db.exec("PRAGMA foreign_keys = OFF");
-  db.transaction(() => {
-    db.exec(create);
-    db.exec(`INSERT INTO items_next(${columns}) SELECT ${columns} FROM items`);
-    db.exec("DROP TABLE items");
-    db.exec("ALTER TABLE items_next RENAME TO items");
-  })();
-  db.exec("PRAGMA foreign_keys = ON");
-  log(`rebuilt items for file and dir types; backup at ${backup}`);
+  const legacy = db.query<{ legacy_alter_table: number }, []>("PRAGMA legacy_alter_table").get()!.legacy_alter_table;
+  db.exec("PRAGMA foreign_keys = OFF; PRAGMA legacy_alter_table = ON");
+  try {
+    db.transaction(() => {
+      db.exec(create);
+      db.exec(`INSERT INTO items_next(${columns}) SELECT ${columns} FROM items`);
+      db.exec("DROP TABLE items");
+      db.exec("ALTER TABLE items_next RENAME TO items");
+    })();
+  } finally {
+    db.exec(`PRAGMA foreign_keys = ON; PRAGMA legacy_alter_table = ${legacy}`);
+  }
+  log(`rebuilt items for task items; backup at ${backup}`);
   return true;
 }
 
@@ -64,6 +68,13 @@ export function openDatabase(path: string = defaultDatabasePath(), options: Open
   if (options.migrate ?? true) migrateItemKinds(db, path, schema, options.log);
   migrateCardColumns(db);
   migrateReminderColumns(db);
+  const taskColumns = db.query<{ name: string }, []>("PRAGMA table_info(tasks)").all();
+  if (taskColumns.length && !taskColumns.some(column => column.name === "parent_id")) {
+    db.exec("ALTER TABLE tasks ADD COLUMN parent_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL CHECK (parent_id != id)");
+  }
   db.exec(schema);
+  db.exec(`INSERT INTO items(type, task_id, title, content, created_at)
+    SELECT 'task', tasks.id, tasks.title, tasks.notes, tasks.created_at FROM tasks
+    WHERE NOT EXISTS (SELECT 1 FROM items WHERE items.task_id = tasks.id)`);
   return db;
 }

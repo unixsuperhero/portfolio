@@ -96,7 +96,7 @@ describe("end to end against createApi", () => {
     const { id: taskId } = await client.createTask({ title: "Stretch", recurrence: "daily", reminders: ["08:30"] });
     const task = await client.task(taskId);
     expect(task).toMatchObject({ title: "Stretch", history: [] });
-    expect((await client.completeTask(taskId, "2026-09-22")).completed_today).toBe(true);
+    expect((await client.completeTask(taskId)).completed_today).toBe(true);
     expect((await client.uncompleteTask(taskId)).completed_today).toBe(false);
     expect((await client.tasks(true)).tasks).toHaveLength(1);
     expect((await client.todayTasks()).tasks).toHaveLength(1);

@@ -1,24 +1,31 @@
 import { useState } from "react";
-import { renderMarkdown } from "../lib/markdown.ts";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { updateCard } from "../api.ts";
 
 export function NoteCard({ cardId, text, title, onSaved }: { cardId: number; text: string; title: string; onSaved: () => void }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(text);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const save = () => {
-    updateCard(cardId, { title, kind: "note", config: { text: draft } } as any)
+    setSaving(true);
+    setError("");
+    updateCard(cardId, { title, kind: "note", config: { text: draft } })
       .then(() => { setEditing(false); onSaved(); })
-      .catch(() => {});
+      .catch(err => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setSaving(false));
   };
 
   if (editing) {
     return (
       <div className="note-edit">
-        <textarea value={draft} onChange={event => setDraft(event.target.value)} />
+        <label>Markdown<textarea value={draft} onChange={event => setDraft(event.target.value)} disabled={saving} /></label>
+        {error ? <p role="alert">{error}</p> : null}
         <div className="page-actions" style={{ marginTop: "0.4rem" }}>
-          <button type="button" className="primary" onClick={save}>Save</button>
-          <button type="button" className="secondary" onClick={() => { setDraft(text); setEditing(false); }}>Cancel</button>
+          <button type="button" className="primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save"}</button>
+          <button type="button" className="secondary" disabled={saving} onClick={() => { setDraft(text); setEditing(false); }}>Cancel</button>
         </div>
       </div>
     );
@@ -26,8 +33,8 @@ export function NoteCard({ cardId, text, title, onSaved }: { cardId: number; tex
 
   return (
     <div>
-      <div className="note-render" dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />
-      <button type="button" className="secondary" onClick={() => setEditing(true)}>Edit</button>
+      <div className="note-render"><Markdown remarkPlugins={[remarkGfm]} skipHtml>{text}</Markdown></div>
+      <button type="button" className="secondary" onClick={() => { setDraft(text); setError(""); setEditing(true); }}>Edit</button>
     </div>
   );
 }

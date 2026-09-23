@@ -4,18 +4,19 @@ Everything below is what the code actually passes around, written as JavaScript 
 
 ## Item
 
-One row in `items`. Six types share the table; which columns matter depends on the type.
+One row in `items`. Seven types share the table; which columns matter depends on the type.
 
 ```js
 const item = {
   id: 42,
-  type: "document",          // "document" | "note" | "link" | "pr" | "file" | "dir"
+  type: "document",          // "document" | "note" | "link" | "pr" | "file" | "dir" | "task"
   title: "Procedural thinking: complete master list",
   description: "The 120-item list with every sub-point.",
   content: "# Procedural thinking\n\n…",   // Markdown for document and note
   rendered_html: "<!doctype html>…",       // cached Pandoc output (or the HTML file itself)
   url: null,                                // link and pr: where it points
   source_path: "/Users/me/claude/docs/procedural.md",   // tracked file for imported documents
+  task_id: null,                            // task: the associated tasks row
   path: null,                               // file and dir: the path on disk (need not exist)
   category_id: null,                        // file and dir: optional category
   slot_paths: "{}",                         // JSON: per-item overrides of category slots
@@ -35,6 +36,7 @@ What each type uses:
 | pr | | the PR URL | | | the URL |
 | file | | | | a file path | `/items/:id` (path actions) |
 | dir | | | | a directory | `/items/:id` (path actions, slots) |
+| task | task notes | | | | `/items/:id` (completion and subtasks) |
 
 ## ItemView
 
@@ -72,7 +74,7 @@ const portfolio = { id: 1, name: "YouTube", description: "everything for the cha
 const card = {
   id: 3, portfolio_id: 1, position: 2,
   title: "Scripts",
-  kind: "query",                  // "query" | "reminders" | "ports" | "clock" | "note" | "services"
+  kind: "query",                  // "query" | "tasks" | "reminders" | "ports" | "clock" | "note" | "services"
   config: {},                     // JSON object, shape depends on kind (see below)
   tags: ["yt", "slides"],        // OR: an item matches with any one; [] means any tag
   types: ["document"],           // AND: narrows the tag matches; [] means any type
@@ -85,12 +87,15 @@ const card = {
 `kind: "query"` is what every card was before dashboard widgets existed; `tags`/`types`/`sort_key`/`sort_dir`/`max_items` only matter for that kind. The other kinds are widgets with their own `config`:
 
 ```js
+// tasks:     {}                              // active tasks with nested subtasks and completion checkboxes
 // reminders: { scope: "today" | "all" }
 // ports:     { project_id: undefined }        // omitted or absent = every listener
 // clock:     { format: "24h" | "12h" }
 // note:      { text: "some **markdown**" }    // edited in place
 // services:  { project_id: 12 }               // scripts of one project, with run buttons
 ```
+
+Note cards render CommonMark and GitHub-flavored Markdown, including tables, nested lists, checklists, strikethrough, and fenced code. Raw HTML is ignored and unsafe link protocols are removed. Both the inline editor and the card configuration editor accept Markdown text.
 
 Running a `query` card gives:
 
@@ -228,10 +233,10 @@ const prEvent = {
 
 ## Task, Reminder, and Completion
 
-A task is a to-do with zero or more reminders. `recurrence: "daily"` repeats every day; `recurrence: "once"` fires at a specific date and time.
+A task is a to-do with zero or more reminders. New tasks default to `recurrence: "once"` and need no reminder. Daily tasks repeat every day.
 
 ```js
-const task = { id: 1, title: "Stretch", notes: "", recurrence: "daily", item_id: null, active: 1, created_at: "…" };
+const task = { id: 1, title: "Stretch", notes: "", recurrence: "daily", item_id: null, parent_id: null, active: 1, created_at: "…" };
 const reminder = { id: 1, task_id: 1, at: "08:30", days: "[1,3,5]" };  // daily: "HH:MM" local; days is a JSON array of weekdays, "[]" = every day
 // a "once" task's reminder instead reads "YYYY-MM-DDTHH:MM" local, e.g. "2026-09-22T08:30", and never sets days
 const completion = { id: 1, task_id: 1, on: "2026-09-22", at: "2026-09-22 08:41:00" };  // one row per (task, day)
@@ -239,11 +244,20 @@ const completion = { id: 1, task_id: 1, on: "2026-09-22", at: "2026-09-22 08:41:
 
 `TaskInput.reminders` accepts either a plain `"HH:MM"`/`"YYYY-MM-DDTHH:MM"` string or `{ at, days? }`, where `days` is `number[]` (0 = Sunday … 6 = Saturday), validated to integers 0-6, de-duplicated and sorted. Once-tasks reject `days` with an error. Omitted or `[]` fires every day.
 
+`parent_id` references another task, or is `null` for a top-level task. The API rejects missing parents and cycles. Completing a task does not complete its parent or children. Deleting a parent promotes its direct children to top-level tasks.
+
+Every task has one Library item with `type: "task"` and `task_id` pointing to the task. Database triggers synchronize task titles and notes with item titles and content. Deleting either record removes its counterpart. The existing `tasks.item_id` remains an optional link to another item, not the task's own Library entry. Existing tasks gain Library entries when the database opens.
+
+```js
+const parent = { title: "Ship release", parent_id: null };
+const subtask = { title: "Run checks", parent_id: 12 }; // task 12 is the parent
+```
+
 The JSON API and the React components use `TaskView`, which folds in the reminders and computed completion state:
 
 ```js
 const view = {
-  id: 1, title: "Stretch", notes: "", recurrence: "daily", item_id: null, active: true, created_at: "…",
+  id: 1, title: "Stretch", notes: "", recurrence: "daily", item_id: null, parent_id: null, active: true, created_at: "…",
   reminders: [{ id: 1, at: "08:30", days: [1, 3, 5] }],   // days: number[], [] = every day
   completed_today: true,     // daily: a completion for today; once: any completion at all
   last_completed: "2026-09-22",   // or null

@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { ITEM_TYPES, isItemType, itemHref, toItemView } from "@portfolio/core";
 import type { Item, ItemFilter, ItemType, ItemView } from "@portfolio/core";
 import { tagNamesFor, pruneTags } from "./tags.ts";
+import { createTask } from "./tasks.ts";
 
 export interface NewItem {
   type: ItemType;
@@ -22,6 +23,14 @@ export const countItems = (db: Database): number => db.query<{ count: number }, 
 
 /** Inserts, or updates the item that already tracks `source_path`. Returns the id. */
 export function upsertItem(db: Database, item: NewItem): number {
+  if (item.type === "task") {
+    return db.transaction(() => {
+      const taskId = createTask(db, { title: item.title, notes: item.content ?? "" });
+      const entry = db.query<{ id: number }, [number]>("SELECT id FROM items WHERE task_id = ?").get(taskId)!;
+      db.query("UPDATE items SET description = ? WHERE id = ?").run(item.description ?? "", entry.id);
+      return entry.id;
+    })();
+  }
   const toc = item.toc === undefined ? 1 : Number(item.toc) ? 1 : 0;
   const existing = item.source_path ? db.query<{ id: number }, [string]>("SELECT id FROM items WHERE source_path = ?").get(item.source_path) : null;
   if (existing) {

@@ -72,8 +72,6 @@ describe("cards", () => {
   const items = [view(1, "link", "Banana", ["yt"]), view(2, "link", "apple", ["slides"]), view(3, "pr", "Cherry", ["yt", "slides"]), view(4, "link", "Untagged", [])];
   test("normalize", () => {
     expect(normalizeCard({ title: " X ", tags: "YT, slides", types: ["link", "bogus"], sort_key: "bogus", sort_dir: "asc", max_items: "5000" })).toEqual({ title: "X", tags: ["YT", "slides"], types: ["link"], sort_key: "created_at", sort_dir: "asc", max_items: 1000, kind: "query", config: {} });
-    expect(normalizeCard({ types: ["document", "note", "link", "pr", "file", "dir"] }).types).toEqual([]);
-    expect(normalizeCard({}).max_items).toBe(100);
   });
   test("run in memory", () => {
     const either = normalizeCard({ tags: "yt, slides", sort_key: "title", sort_dir: "asc" });

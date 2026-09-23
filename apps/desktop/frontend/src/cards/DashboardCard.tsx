@@ -9,6 +9,7 @@ import { ClockCard } from "./ClockCard.tsx";
 import { NoteCard } from "./NoteCard.tsx";
 import { ServicesCard } from "./ServicesCard.tsx";
 import { PrsCard } from "./PrsCard.tsx";
+import { TasksCard } from "./TasksCard.tsx";
 
 /** Renders any card by its kind. Non-query kinds get a plain RailSection shell; query cards
  * render through QueryCard (which itself may switch to a tile grid). */
@@ -20,6 +21,9 @@ export function DashboardCard({ card, footer, onChanged }: { card: PortfolioCard
   // "prs" isn't in @portfolio/core's CARD_KINDS yet (the backend agent is adding it); cast so
   // this switches on it ahead of that landing.
   switch (card.kind as CardKind | "prs") {
+    case "tasks":
+      body = <TasksCard />;
+      break;
     case "reminders":
       body = <RemindersCard scope={(config.scope as "today" | "all") ?? "today"} />;
       break;
@@ -45,7 +49,7 @@ export function DashboardCard({ card, footer, onChanged }: { card: PortfolioCard
   return (
     <section className="rail-section portfolio-card">
       <header><h2>{card.title}</h2></header>
-      {body}
+      <div className="card-body">{body}</div>
       {footer}
     </section>
   );

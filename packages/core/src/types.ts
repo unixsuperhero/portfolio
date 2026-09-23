@@ -1,8 +1,8 @@
-export type ItemType = "document" | "note" | "link" | "pr" | "file" | "dir";
+export type ItemType = "document" | "note" | "link" | "pr" | "file" | "dir" | "task";
 export type PathType = "file" | "dir";
 export type CardSortKey = "created_at" | "updated_at" | "title" | "type";
 export type SortDir = "asc" | "desc";
-export type CardKind = "query" | "reminders" | "ports" | "clock" | "note" | "services";
+export type CardKind = "query" | "tasks" | "reminders" | "ports" | "clock" | "note" | "services";
 export type Recurrence = "daily" | "once";
 
 export interface Item {
@@ -14,6 +14,7 @@ export interface Item {
   rendered_html: string;
   url: string | null;
   source_path: string | null;
+  task_id: number | null;
   path: string | null;
   category_id: number | null;
   slot_paths: string;
@@ -141,6 +142,7 @@ export interface Task {
   notes: string;
   recurrence: Recurrence;
   item_id: number | null;
+  parent_id: number | null;
   active: 0 | 1;
   created_at: string;
 }
@@ -167,8 +169,9 @@ export type ReminderInput = string | { at: string; days?: number[] };
 export interface TaskInput {
   title: string;
   notes?: string;
-  recurrence: Recurrence;
+  recurrence?: Recurrence;
   item_id?: number | null;
+  parent_id?: number | null;
   reminders?: ReminderInput[];
 }
 
@@ -179,6 +182,7 @@ export interface TaskView {
   notes: string;
   recurrence: Recurrence;
   item_id: number | null;
+  parent_id: number | null;
   active: boolean;
   created_at: string;
   reminders: { id: number; at: string; days: number[] }[];

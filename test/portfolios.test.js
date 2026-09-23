@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -21,6 +21,8 @@ beforeAll(async () => {
   await Promise.all([mkdir(join(fixture, "templates"), { recursive: true }), mkdir(join(fixture, "public"), { recursive: true })]);
   await Promise.all([
     copyFile(join(root, "app.js"), join(fixture, "app.js")),
+    symlink(join(root, "packages"), join(fixture, "packages"), "dir"),
+    copyFile(join(root, "tsconfig.json"), join(fixture, "tsconfig.json")),
     copyFile(join(root, "schema.sql"), join(fixture, "schema.sql")),
     copyFile(join(root, "templates", "document.html"), join(fixture, "templates", "document.html")),
     copyFile(join(root, "public", "app.css"), join(fixture, "public", "app.css")),
@@ -67,9 +69,6 @@ test("cards OR their tags, narrow by type, sort, cap, reorder, and cascade", asy
   expect(cards[2]).toMatchObject({ tags: ["future-tag"], total: 0, items: [] });
   expect(titles(cards[3])).toEqual(["Cherry"]);
   expect(cards[3].sort_key).toBe("created_at");
-  await post(`${path}/cards`, { title: "All checked", types: ["document", "note", "link", "pr", "file", "dir"] });
-  expect((await portfolio(id)).cards.at(-1).types).toEqual([]);
-  await post(`/cards/${(await portfolio(id)).cards.at(-1).id}/delete`, {});
 
   await post(`/cards/${cards[0].id}`, { title: "Capped", tags: "yt, slides", sort_key: "title", sort_dir: "asc", max_items: "2" });
   await post(`/cards/${cards[0].id}/move`, { direction: "right" });

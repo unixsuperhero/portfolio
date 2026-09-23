@@ -39,7 +39,7 @@ export function PortfolioBoard({ portfolio, reload }: { portfolio: PortfolioView
       ))}
       <section className="rail-section portfolio-card">
         <header><h2>+ Add card</h2></header>
-        <div className="field-row">
+        <div className="card-body field-row">
           <label>Kind
             <select value={addKind} onChange={event => setAddKind(event.target.value as CardKind)}>
               {CARD_KINDS.map(kind => <option key={kind} value={kind}>{kind}</option>)}

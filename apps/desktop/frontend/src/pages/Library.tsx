@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { ItemList } from "@portfolio/ui";
+import { ITEM_TYPES } from "@portfolio/core";
 import type { ItemView } from "@portfolio/core";
 import { detect, listItems, quickAdd, toggleItem } from "../api.ts";
 import { PathField } from "../components/PathField.tsx";
@@ -12,6 +13,7 @@ export default function Library() {
   const [quick, setQuick] = useState("");
   const [detected, setDetected] = useState<{ id: number; href: string; type: string; title: string } | null>(null);
   const [quickDetection, setQuickDetection] = useState<Detection | null>(null);
+  const [quickType, setQuickType] = useState("");
 
   const q = params.get("q") ?? "";
   const type = params.get("type") ?? "";
@@ -47,7 +49,7 @@ export default function Library() {
   const submitQuick = (event: React.FormEvent) => {
     event.preventDefault();
     if (!quick.trim()) return;
-    quickAdd(quick.trim()).then(result => { setDetected(result); setQuick(""); load(); }).catch(() => {});
+    quickAdd(quick.trim(), quickType ? { type: quickType } : {}).then(result => { setDetected(result); setQuick(""); load(); }).catch(() => {});
   };
 
   const onToggle = (item: ItemView, field: "pinned" | "starred") => toggleItem(item.id, field).then(load).catch(() => {});
@@ -63,6 +65,10 @@ export default function Library() {
         ) : (
           <label style={{ flex: 1 }}>Quick add<input style={{ width: "100%" }} value={quick} onChange={event => setQuick(event.target.value)} placeholder="Paste a URL, path, or text…" /></label>
         )}
+        <label>Add as<select value={quickType} onChange={event => setQuickType(event.target.value)}>
+          <option value="">Detect automatically</option>
+          {ITEM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+        </select></label>
         <button className="primary" type="submit">Add</button>
       </form>
       {detected ? <p style={{ color: "var(--text2)" }}>Added as <strong>{detected.type}</strong>: {detected.title}</p> : null}
@@ -71,7 +77,7 @@ export default function Library() {
         <label>Type
           <select value={type} onChange={event => setParam("type", event.target.value)}>
             <option value="">Any</option>
-            {["document", "note", "link", "pr", "file", "dir"].map(t => <option key={t} value={t}>{t}</option>)}
+            {ITEM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </label>
         <label>Tag<input value={tag} onChange={event => setParam("tag", event.target.value)} /></label>

@@ -289,10 +289,10 @@ describe("tasks and reminders", () => {
     expect(detail).toMatchObject({ title: "Stretch", reminders: [{ at: "08:30" }] });
     expect(detail.history).toEqual([]);
 
-    res = await send(api, "POST", `/api/tasks/${id}/complete`, { on: "2026-09-22" });
+    res = await send(api, "POST", `/api/tasks/${id}/complete`, {});
     expect((await res.json()).completed_today).toBe(true);
 
-    res = await send(api, "POST", `/api/tasks/${id}/uncomplete`, { on: "2026-09-22" });
+    res = await send(api, "POST", `/api/tasks/${id}/uncomplete`, {});
     expect((await res.json()).completed_today).toBe(false);
 
     res = await send(api, "PATCH", `/api/tasks/${id}`, { active: false });

@@ -77,6 +77,9 @@ export async function patchItemRoute(ctx: Ctx, request: Request, params: Record<
   const item = ctx.store.items.getItem(id);
   if (!item) return notFound();
   const body = await readJson(request);
+  if (body.type !== undefined && body.type !== item.type && (body.type === "task" || item.type === "task")) {
+    return error(422, "create a new task instead of changing an item's type to or from task");
+  }
   const { tags, ...patch } = body as ItemPatch & { tags?: unknown };
   if ("content" in patch) (patch as ItemPatch).rendered_html = "";
   ctx.store.items.updateItem(id, patch);
@@ -198,6 +201,9 @@ export async function quickAddRoute(ctx: Ctx, request: Request): Promise<Respons
   } else if (type === "document" && detected.shape === "path") {
     if (!detected.exists) return error(422, "that file does not exist yet");
     id = await importDocument(ctx, detected.path!);
+  } else if (type === "task") {
+    if (detected.shape !== "text") return error(422, "a task needs some text");
+    id = insert({ type, content: detected.content });
   } else {
     if (detected.shape !== "text") return error(422, `a ${type} needs some text`);
     id = insert({ type, content: detected.content, rendered_html: await ctx.render(detected.content!, { title: detected.title, toc: true }) });

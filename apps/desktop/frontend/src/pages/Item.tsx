@@ -8,6 +8,7 @@ import { openTerminal } from "../terminal/store.ts";
 import { ServicesCard } from "../cards/ServicesCard.tsx";
 import { PortsCard } from "../cards/PortsCard.tsx";
 import { PathField } from "../components/PathField.tsx";
+import Tasks from "./Tasks.tsx";
 
 export default function Item() {
   const { id } = useParams();
@@ -56,6 +57,7 @@ export default function Item() {
         <label>Add tag<input value={newTag} onChange={event => setNewTag(event.target.value)} /></label>
         <button className="secondary" type="submit">Add</button>
       </form>
+      {item.type === "task" && item.task_id !== null ? <Tasks taskId={item.task_id} onChange={load} /> : null}
 
       {(item.type === "document" || item.type === "note") ? (
         <iframe title={item.title} sandbox="allow-same-origin" srcDoc={html ?? ""} style={{ width: "100%", height: "70vh", border: "1px solid var(--border)", borderRadius: "var(--radius)", background: "#fff" }} />

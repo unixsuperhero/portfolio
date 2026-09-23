@@ -2,12 +2,12 @@
 // pf-cards — cards are saved queries: tags OR-ed, types narrowing, sorted, capped.
 import { cli, flag, json, numberArg, option, table, CliError } from "@portfolio/cli-kit";
 import { openDefaultStore } from "@portfolio/cli";
-import { describeCard, normalizeCard } from "@portfolio/core";
+import { describeCard, normalizeCard, ITEM_TYPES } from "@portfolio/core";
 import type { Store } from "@portfolio/db";
 
 const CARD_OPTS = {
   tags: option("g", "comma-separated tags; an item matches with any one"),
-  types: option("t", "comma-separated types to narrow to (document,note,link,pr,file,dir)"),
+  types: option("t", `comma-separated types to narrow to (${ITEM_TYPES.join(",")})`),
   sort: option("s", "created_at | updated_at | title | type"),
   dir: option("d", "asc | desc"),
   max: option("m", "max items, 1-1000", { type: "number" }),

@@ -30,6 +30,7 @@ export type {
 
 /** GET /api/items/:id */
 export interface ItemDetail extends ItemView {
+  task_id: number | null;
   slots: ResolvedSlot[];
   project: ProjectView | null;
 }

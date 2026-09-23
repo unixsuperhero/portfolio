@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -21,6 +21,8 @@ beforeAll(async () => {
   await Promise.all([mkdir(join(fixture, "templates"), { recursive: true }), mkdir(join(fixture, "public"), { recursive: true }), mkdir(join(directory, "docs", "sub"), { recursive: true })]);
   await Promise.all([
     copyFile(join(root, "app.js"), join(fixture, "app.js")),
+    symlink(join(root, "packages"), join(fixture, "packages"), "dir"),
+    copyFile(join(root, "tsconfig.json"), join(fixture, "tsconfig.json")),
     copyFile(join(root, "schema.sql"), join(fixture, "schema.sql")),
     copyFile(join(root, "templates", "document.html"), join(fixture, "templates", "document.html")),
     copyFile(join(root, "public", "app.css"), join(fixture, "public", "app.css")),

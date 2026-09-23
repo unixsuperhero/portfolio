@@ -107,16 +107,17 @@ GET    /api/reminders/today                     → { tasks: TaskView[] }   (dai
 
 ```js
 // Cards get a kind. "query" is what exists today; the others are dashboard widgets.
-const CARD_KINDS = ["query", "reminders", "ports", "clock", "note", "services"];
+const CARD_KINDS = ["query", "tasks", "reminders", "ports", "clock", "note", "services"];
 const card = {
   id: 3, portfolio_id: 1, position: 2, title: "Scripts",
   kind: "query",                       // NEW, default "query"
   config: {},                          // NEW, JSON object, per kind:
   // query:     { view: "list" | "tiles" }                 tiles = app-launcher grid like Homarr
+  // tasks:     {}                                        active tasks, nested subtasks, completion checkboxes
   // reminders: { scope: "today" | "all" }
   // ports:     { project_id?: number }                    empty = every listener
   // clock:     { format: "24h" | "12h" }
-  // note:      { text: "markdown" }                       edited in place
+  // note:      { text: "markdown" }                       CommonMark + GFM, edited in place; raw HTML ignored
   // services:  { project_id: number }                     scripts of one project, run buttons
   tags: ["yt"], types: ["document"], sort_key: "title", sort_dir: "asc", max_items: 100,
 };
@@ -140,19 +141,25 @@ const projectView = {
 //   serviceCommand(services, name, args = "") → "bun run dev --port 3000"  (the exact shell line to run)
 
 const task = {
-  id: 1, title: "Stretch", notes: "", recurrence: "daily" | "once", item_id: null, active: true,
+  id: 1, title: "Stretch", notes: "", recurrence: "daily" | "once", item_id: null, parent_id: null, active: true,
   created_at: "…",
   reminders: [{ id: 1, at: "08:30" }],           // daily: "HH:MM" local; once: "YYYY-MM-DDTHH:MM" local
   completed_today: true,                          // daily: a completion for today; once: any completion
   last_completed: "2026-09-22" | null,
   streak: 4,                                      // daily only: consecutive days ending today or yesterday
 };
-const taskInput = { title, notes?, recurrence, item_id?, reminders?: ["08:30"] };
+const taskInput = { title, notes?, recurrence?, item_id?, parent_id?, reminders?: ["08:30"] }; // recurrence defaults to "once"
 const completion = { id, task_id, on: "2026-09-22", at: "2026-09-22 08:41:00" };
 const dueReminder = { task: TaskView, reminder: { id, at }, due_at: "2026-09-22T08:30" };
 // "due" = at-time within [now - minutes, now + minutes] and not completed (today for daily). The frontend polls
 // this and never resets page state when it does.
 ```
+
+Tasks also have Library items with `type: "task"` and a unique `task_id`. `GET /api/items/:id` includes `task_id`, which is null for other item types. Existing tasks receive Library entries during database migration. Titles and notes stay synchronized between the task and its item.
+
+`parent_id` is a task ID, not an item ID. Null means top-level. Cycles and missing parents return 422. Deleting a parent keeps its direct children as top-level tasks. Completion is independent for each task. Reopening a once-task clears its completion even if it was completed on an earlier date.
+
+The frontend exposes `/tasks` and `/tasks/:taskId`, with nested creation, editing, reparenting, deletion, and completion. Task item pages expose the same controls. Reminders continue using the same task records.
 
 Schema additions (both `schema.sql` and `packages/db/src/schema.sql` stay identical):
 
@@ -161,7 +168,8 @@ Schema additions (both `schema.sql` and `packages/db/src/schema.sql` stay identi
 --        applied by a migration in packages/db/src/open.ts when PRAGMA table_info(cards) lacks them.
 CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY, title TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '',
   recurrence TEXT NOT NULL CHECK (recurrence IN ('daily','once')), item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
-  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+  active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  parent_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL CHECK (parent_id != id));
 CREATE TABLE IF NOT EXISTS reminders (id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS completions (id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   "on" TEXT NOT NULL, at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (task_id, "on"));
@@ -231,7 +239,7 @@ frontend/src/
                                     when `window.wails`/`window._wails` is absent, so `bun run dev` in a browser works
   context-menu/                     the right-click menu; see below
   pages/{Home,Portfolio,Library,Item,Categories,Category,Projects,Project,Ports,Reminders,Settings}.tsx
-  cards/{QueryCard,TilesCard,RemindersCard,PortsCard,ClockCard,NoteCard,ServicesCard}.tsx   one per card kind
+  cards/{QueryCard,TilesCard,TasksCard,RemindersCard,PortsCard,ClockCard,NoteCard,ServicesCard}.tsx   one per card kind
   terminal/                         OWNED BY THE TERMINAL PART — see below
 ```
 

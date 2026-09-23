@@ -64,14 +64,22 @@ export function setReminders(db: Database, taskId: number, reminders: ReminderIn
   })();
 }
 
+function validateParent(db: Database, parentId: number | null): number | null {
+  if (parentId !== null && (!Number.isSafeInteger(parentId) || !getTask(db, parentId))) throw new Error("parent task not found");
+  return parentId;
+}
+
 export function createTask(db: Database, input: TaskInput): number {
   const title = validateTitle(input.title);
-  const recurrence = validateRecurrence(input.recurrence);
-  const id = db.query<{ id: number }, [string, string, string, number | null]>(
-    "INSERT INTO tasks(title, notes, recurrence, item_id) VALUES (?, ?, ?, ?) RETURNING id",
-  ).get(title, input.notes ?? "", recurrence, input.item_id ?? null)!.id;
-  if (input.reminders) setReminders(db, id, input.reminders);
-  return id;
+  const recurrence = validateRecurrence(input.recurrence ?? "once");
+  const parentId = validateParent(db, input.parent_id ?? null);
+  return db.transaction(() => {
+    const id = db.query<{ id: number }, [string, string, string, number | null, number | null]>(
+      "INSERT INTO tasks(title, notes, recurrence, item_id, parent_id) VALUES (?, ?, ?, ?, ?) RETURNING id",
+    ).get(title, input.notes ?? "", recurrence, input.item_id ?? null, parentId)!.id;
+    if (input.reminders) setReminders(db, id, input.reminders);
+    return id;
+  })();
 }
 
 export function updateTask(db: Database, id: number, patch: Partial<TaskInput> & { active?: boolean }): boolean {
@@ -79,16 +87,20 @@ export function updateTask(db: Database, id: number, patch: Partial<TaskInput> &
   if (!current) return false;
   const title = patch.title !== undefined ? validateTitle(patch.title) : current.title;
   const recurrence = patch.recurrence !== undefined ? validateRecurrence(patch.recurrence) : current.recurrence;
-  db.query("UPDATE tasks SET title = ?, notes = ?, recurrence = ?, item_id = ?, active = ? WHERE id = ?").run(
-    title,
-    patch.notes ?? current.notes,
-    recurrence,
-    patch.item_id === undefined ? current.item_id : patch.item_id,
-    patch.active === undefined ? current.active : Number(patch.active),
-    id,
-  );
-  if (patch.reminders) setReminders(db, id, patch.reminders);
-  return true;
+  const parentId = validateParent(db, patch.parent_id === undefined ? current.parent_id : patch.parent_id);
+  return db.transaction(() => {
+    db.query("UPDATE tasks SET title = ?, notes = ?, recurrence = ?, item_id = ?, active = ?, parent_id = ? WHERE id = ?").run(
+      title,
+      patch.notes ?? current.notes,
+      recurrence,
+      patch.item_id === undefined ? current.item_id : patch.item_id,
+      patch.active === undefined ? current.active : Number(patch.active),
+      parentId,
+      id,
+    );
+    if (patch.reminders) setReminders(db, id, patch.reminders);
+    return true;
+  })();
 }
 
 export const deleteTask = (db: Database, id: number): boolean => db.query("DELETE FROM tasks WHERE id = ?").run(id).changes > 0;
@@ -103,7 +115,8 @@ export function completeTask(db: Database, id: number, on: string = isoDate(new 
 export function uncompleteTask(db: Database, id: number, on: string = isoDate(new Date())): TaskView {
   const task = getTask(db, id);
   if (!task) throw new Error("task not found");
-  db.query('DELETE FROM completions WHERE task_id = ? AND "on" = ?').run(id, on);
+  if (task.recurrence === "once") db.query("DELETE FROM completions WHERE task_id = ?").run(id);
+  else db.query('DELETE FROM completions WHERE task_id = ? AND "on" = ?').run(id, on);
   return taskView(db, task);
 }
 
@@ -123,7 +136,7 @@ export function taskView(db: Database, task: Task, today: string = isoDate(new D
       cursor = addDays(cursor, -1);
     }
   }
-  return { id: task.id, title: task.title, notes: task.notes, recurrence: task.recurrence, item_id: task.item_id, active: Boolean(task.active), created_at: task.created_at, reminders, completed_today, last_completed, streak };
+  return { id: task.id, title: task.title, notes: task.notes, recurrence: task.recurrence, item_id: task.item_id, parent_id: task.parent_id, active: Boolean(task.active), created_at: task.created_at, reminders, completed_today, last_completed, streak };
 }
 
 export const listTaskViews = (db: Database, options: { all?: boolean } = {}): TaskView[] => listTasks(db, options).map(task => taskView(db, task));

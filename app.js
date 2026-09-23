@@ -1,4 +1,4 @@
-import { Database } from "bun:sqlite";
+import { openDatabase, upsertItem as storeItem, getTask, listTaskViews, createTask, updateTask, completeTask, uncompleteTask, taskView } from "@portfolio/db";
 import { basename, dirname, extname, isAbsolute, join, resolve, sep } from "node:path";
 import { mkdir, mkdtemp, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { existsSync, watch } from "node:fs";
@@ -15,34 +15,9 @@ const MARKDOWN_READER = "markdown+lists_without_preceding_blankline-blank_before
 const WATCH_DEBOUNCE_MS = Number(process.env.PORTFOLIO_WATCH_DEBOUNCE_MS ?? 200);
 const OPEN_BIN = process.env.PORTFOLIO_OPEN_BIN ?? "open";
 const PBCOPY_BIN = process.env.PORTFOLIO_PBCOPY_BIN ?? "pbcopy";
-const ITEM_TYPES = ["document", "note", "link", "pr", "file", "dir"];
+const ITEM_TYPES = ["document", "note", "link", "pr", "file", "dir", "task"];
 const PATH_TYPES = ["file", "dir"];
-const db = new Database(DB_PATH, { create: true });
-const schema = await Bun.file(join(ROOT, "schema.sql")).text();
-migrateItemKinds();
-db.exec(schema);
-
-// SQLite cannot widen a CHECK constraint, so a database from before the file
-// and dir types gets its items table rebuilt. Row ids are kept, so taggings,
-// watched_items, and the external-content FTS index stay valid. The schema run
-// that follows restores the indexes and triggers dropped with the old table.
-function migrateItemKinds() {
-  const current = db.query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'items'").get()?.sql;
-  if (!current || current.includes("'dir'")) return;
-  const backup = `${DB_PATH}.before-kinds`;
-  if (!existsSync(backup)) db.query("VACUUM INTO ?").run(backup);
-  const create = schema.match(/CREATE TABLE IF NOT EXISTS items \([\s\S]*?\n\);/)[0].replace("IF NOT EXISTS items", "items_next");
-  const columns = db.query("PRAGMA table_info(items)").all().map(column => column.name).join(", ");
-  db.exec("PRAGMA foreign_keys = OFF");
-  db.transaction(() => {
-    db.exec(create);
-    db.exec(`INSERT INTO items_next(${columns}) SELECT ${columns} FROM items`);
-    db.exec("DROP TABLE items");
-    db.exec("ALTER TABLE items_next RENAME TO items");
-  })();
-  db.exec("PRAGMA foreign_keys = ON");
-  console.error(`portfolio: rebuilt items for file and dir types; backup at ${backup}`);
-}
+const db = openDatabase(DB_PATH, { log: message => console.error(`portfolio: ${message}`) });
 
 const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const redirect = (location, status = 303) => new Response(null, { status, headers: { location } });
@@ -126,6 +101,7 @@ function renderMarkdown(markdown, title, toc = true, sourcePath = null, sourceId
 }
 
 function upsertItem(item) {
+  if (item.type === "task") return storeItem(db, item);
   const existing = item.source_path ? db.query("SELECT id FROM items WHERE source_path = ?").get(item.source_path) : null;
   if (existing) {
     db.query(`UPDATE items SET type = ?, title = ?, description = ?, content = ?, rendered_html = ?, url = ?, toc = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
@@ -693,7 +669,7 @@ function railSection(title, type) {
 
 
 function shell(title, body, active = "all") {
-  const nav = [["all", "/", "Library"], ["starred", "/starred", "Starred"], ["tags", "/tags", "Tags"], ["portfolios", "/portfolios", "Portfolios"], ["categories", "/categories", "Categories"], ["ports", "/ports", "Ports"], ["new", "/new", "Add"], ["settings", "/settings", "Settings"]];
+  const nav = [["all", "/", "Library"], ["tasks", "/tasks", "Tasks"], ["starred", "/starred", "Starred"], ["tags", "/tags", "Tags"], ["portfolios", "/portfolios", "Portfolios"], ["categories", "/categories", "Categories"], ["ports", "/ports", "Ports"], ["new", "/new", "Add"], ["settings", "/settings", "Settings"]];
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} · Portfolios</title><link rel="stylesheet" href="/assets/app.css"></head><body>
     <header class="topbar"><a class="brand" href="/">丸の中で</a><nav>${nav.map(([key, href, label]) => `<a class="${active === key ? "active" : ""}" href="${href}">${label}</a>`).join("")}</nav></header>
     <div class="add-bar"><button type="button" class="add-open" data-add-type="" aria-label="Add an item">+ Add</button><span>Paste a URL, a path, or Markdown. The type is detected as you type.</span></div>
@@ -1104,7 +1080,7 @@ async function quickAdd(request) {
     id = await importDocument(detected.path);
   } else {
     if (detected.shape !== "text") return text(`a ${type} needs some text`, 422);
-    id = insert({ type, content: detected.content, rendered_html: renderMarkdown(detected.content, detected.title, true) });
+    id = insert({ type, content: detected.content, rendered_html: type === "task" ? "" : renderMarkdown(detected.content, detected.title, true) });
   }
   setTags(id, tags);
   return { id, href: itemHref(db.query("SELECT * FROM items WHERE id = ?").get(id)), type, title: detected.title };
@@ -1418,6 +1394,7 @@ async function updateItem(item, form) {
   const title = field(form, "title");
   const content = String(form.get("content") ?? "");
   if (!ITEM_TYPES.includes(type)) throw new Error("invalid item type");
+  if (type !== item.type && (type === "task" || item.type === "task")) throw new Error("create a new task instead of changing an item's type to or from task");
   if (!title) throw new Error("title is required");
   const extra = pathAndCategory(type, form, item.id);
   if (extra.error) throw new Error(extra.error);
@@ -1431,6 +1408,37 @@ async function updateItem(item, form) {
   if (form.has("sync_source") && item.source_path?.toLowerCase().endsWith(".md")) await Bun.write(item.source_path, content);
 }
 
+function tasksPage(taskId = null) {
+  const tasks = listTaskViews(db, { all: true });
+  const entries = new Map(db.query("SELECT id, task_id FROM items WHERE type = 'task'").all().map(item => [item.task_id, item.id]));
+  const children = new Map();
+  for (const task of tasks) {
+    if (!children.has(task.parent_id)) children.set(task.parent_id, []);
+    children.get(task.parent_id).push(task);
+  }
+  const selected = tasks.find(task => task.id === taskId);
+  const parentOptions = current => `<option value="">None, top-level task</option>${tasks.filter(task => task.id !== current?.id).map(task => `<option value="${task.id}"${task.id === (current ? current.parent_id : taskId) ? " selected" : ""}>${escapeHtml(task.title)}</option>`).join("")}`;
+  const render = rows => `<ul class="task-tree">${rows.map(task => `<li>
+    <div class="task-row"><form method="post" action="/tasks/${task.id}/toggle"><button aria-label="${task.completed_today ? "Reopen" : "Complete"} ${escapeHtml(task.title)}">${task.completed_today ? "Reopen" : "Complete"}</button></form>
+    <a href="/items/${entries.get(task.id)}"${task.completed_today ? ' class="task-completed"' : ""}>${escapeHtml(task.title)}</a>
+    <a href="/tasks?parent=${task.id}#task-form">Add subtask</a>
+    <a href="/items/${entries.get(task.id)}/manage">Tags and item settings</a></div>
+    ${task.notes ? `<p>${escapeHtml(task.notes)}</p>` : ""}
+    <details><summary>Edit task</summary><form class="editor" method="post" action="/tasks/${task.id}/edit">
+      <label>Title<input name="title" value="${escapeHtml(task.title)}" required></label>
+      <label>Notes<textarea name="notes">${escapeHtml(task.notes)}</textarea></label>
+      <label>Parent task<select name="parent_id">${parentOptions(task)}</select></label><button>Save task</button>
+    </form></details>
+    ${children.has(task.id) ? render(children.get(task.id)) : ""}</li>`).join("")}</ul>`;
+  return shell("Tasks", `<section class="page-head"><h1>${escapeHtml(selected?.title ?? "Tasks")}</h1><a href="/tasks">All tasks</a></section>
+    <form class="editor" id="task-form" method="post" action="/tasks">
+      <h2>${selected ? "Add subtask" : "Add task"}</h2><label>Title<input name="title" required></label>
+      <label>Notes<textarea name="notes"></textarea></label>
+      <label>Parent task<select name="parent_id">${parentOptions(null)}</select></label><button>Add task</button>
+    </form>
+    ${tasks.length ? render(selected ? [selected] : children.get(null) ?? []) : "<p>No tasks yet.</p>"}`, "tasks");
+}
+
 await reloadWatchedDirectories();
 scanProjects().catch(error => console.error(error));
 
@@ -1442,6 +1450,29 @@ const server = Bun.serve({
     try {
       if (url.pathname === "/health") return Response.json({ ok: true, items: db.query("SELECT count(*) count FROM items").get().count });
       if (url.pathname === "/assets/app.css") return new Response(Bun.file(join(ROOT, "public", "app.css")), { headers: { "content-type": "text/css; charset=utf-8" } });
+      if (request.method === "GET" && url.pathname === "/tasks") return html(tasksPage(Number(url.searchParams.get("parent")) || null));
+      if (request.method === "POST" && url.pathname === "/tasks") {
+        const form = await request.formData();
+        try {
+          createTask(db, { title: field(form, "title"), notes: field(form, "notes"), parent_id: Number(field(form, "parent_id")) || null });
+          return redirect("/tasks");
+        } catch (error) { return text(error.message, 422); }
+      }
+      const taskAction = url.pathname.match(/^\/tasks\/(\d+)\/(toggle|edit)$/);
+      if (request.method === "POST" && taskAction) {
+        const task = getTask(db, Number(taskAction[1]));
+        if (!task) return text("task not found", 404);
+        try {
+          if (taskAction[2] === "toggle") {
+            if (taskView(db, task).completed_today) uncompleteTask(db, task.id);
+            else completeTask(db, task.id);
+          } else {
+            const form = await request.formData();
+            updateTask(db, task.id, { title: field(form, "title"), notes: field(form, "notes"), parent_id: Number(field(form, "parent_id")) || null });
+          }
+          return redirect("/tasks");
+        } catch (error) { return text(error.message, 422); }
+      }
       if (request.method === "GET" && url.pathname === "/api/items") {
         const limit = Math.min(Math.max(Number(url.searchParams.get("limit") || 0), 0), 1000);
         const items = listItems(url).slice(0, limit || undefined).map(item => ({
@@ -1717,6 +1748,7 @@ const server = Bun.serve({
       if (request.method === "GET" && itemMatch) {
         const item = db.query("SELECT * FROM items WHERE id = ?").get(Number(itemMatch[1]));
         if (!item) return text("not found", 404);
+        if (item.type === "task") return html(tasksPage(item.task_id));
         if (PATH_TYPES.includes(item.type)) return html(pathItemPage(item));
         if (!item.rendered_html && item.content) {
           item.rendered_html = renderMarkdown(item.content, item.title, Boolean(item.toc), item.source_path);

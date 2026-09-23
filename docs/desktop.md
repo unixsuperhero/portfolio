@@ -49,12 +49,14 @@ Security exceptions.
 ## Data added for the desktop
 
 ```js
-const card = { kind: "query" | "reminders" | "ports" | "clock" | "note" | "services" | "prs", config: {} };
+const card = { kind: "query" | "tasks" | "reminders" | "ports" | "clock" | "note" | "services" | "prs", config: {} };
 const settings = { home_portfolio_id: 3 };                      // GET /api/home renders it
 const task = { recurrence: "daily" | "once", reminders: [{ at: "08:30" }], completed_today: true, streak: 4 };
 const project = { services: { runner: "bun", scripts: { dev: "…" } }, ports: [/* listeners in this dir */] };
 const pr = { state: "open", checks_summary: "success", watched: true, ignored_checks: ["codecov/*"] };
 ```
+
+The `tasks` card shows active tasks with nested subtasks and completion checkboxes. Each task links to its task page. Note cards support GitHub-flavored Markdown and a plain-text Markdown editor. Widget bodies and tile cards use the same horizontal padding as query rows.
 
 See [data-model.md](data-model.md) for the full shapes and
 [packages/api.md](packages/api.md), [packages/github.md](packages/github.md) for the routes.
