@@ -58,7 +58,7 @@ Errors are `{ error: string }` with a 4xx/5xx status. An uncaught handler error 
 | `portfolios.ts`, `categories.ts`, `settings.ts`, `tasks.ts`, `reminders.ts`, `watched.ts` | one file per resource, same shape |
 | `ports.ts` | the ports snapshot and kill route |
 | `projects.ts` | building a `ProjectView` from a category member, and the project/project-parent routes |
-| `server.ts` | `Bun.serve` on `PORTFOLIO_API_PORT` (default 4388), CORS on every response including `OPTIONS`, one log line per request |
+| `server.ts` | `Bun.serve` on `PORTFOLIO_API_PORT` (default 4388), CORS on every response including `OPTIONS`, one log line per request, `idleTimeout` of 120s so a PR refresh or watch that waits on slow `gh` calls is not cut off at Bun's 10s default (the desktop proxy reported that cut-off as 502) |
 
 ## Example
 

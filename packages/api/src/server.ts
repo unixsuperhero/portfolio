@@ -60,8 +60,14 @@ const api = createApi(store, {
   prPoller,
 });
 
+// Bun drops any request that runs longer than idleTimeout (default 10s) with an empty reply,
+// which the desktop app's Go proxy reports to the page as 502 Bad Gateway. PR refresh and
+// watch run up to two `gh` calls with a 30s timeout each, so give those requests room.
+const IDLE_TIMEOUT_SECONDS = 120;
+
 const server = Bun.serve({
   port,
+  idleTimeout: IDLE_TIMEOUT_SECONDS,
   async fetch(request) {
     const start = Date.now();
     if (request.method === "OPTIONS") return withCors(new Response(null, { status: 204 }));
