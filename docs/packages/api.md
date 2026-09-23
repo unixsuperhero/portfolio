@@ -28,6 +28,8 @@ const response = await api(new Request("http://x/api/items"));
 
 Every route in the contract is implemented: items (list/create/get/patch/delete, tags, `path-action`/`slot-path`, lazy HTML rendering cached back onto the row), `detect`/`quick` add, portfolios and cards (with `kind`/`config`), categories, settings/home/directories, watched directories (add/remove/sync), ports (cached snapshot, each entry annotated with its project via `matchPortsToProjects`), projects and project parents, tasks/reminders, and PRs (`/api/prs`). See the contract for exact paths, bodies, and response shapes — this package does not restate them.
 
+Reminders use their own CRUD and completion endpoints under `/api/reminders`. `POST /api/reminders` accepts a title and schedule without a task; `task_id` is optional. The today endpoint returns `{ reminders: ReminderView[] }`, and due entries contain `{ reminder, due_at }`. Reminder completion never completes a task.
+
 ## PRs
 
 `prs.ts` wires `/api/prs*` to the `prPoller` option (a `@portfolio/github` `PrPoller`). With no `prPoller`, `GET /api/prs` returns `{ mine: [], review_requested: [], watched: [], status }` where `status` is idle (`polling: false, gh_ok: false`) — the routes never touch `gh` themselves.
@@ -53,7 +55,7 @@ Errors are `{ error: string }` with a 4xx/5xx status. An uncaught handler error 
 | `http.ts` | the route table type, `json`/`error`/`readJson`, `:param` path compilation |
 | `items.ts` | item CRUD, tags, path actions, detect/quick add |
 | `paths.ts` | `pathAndCategory` validation and `runPathAction` (copy/reveal/open/create via `open`/`pbcopy`, overridable with `PORTFOLIO_OPEN_BIN`/`PORTFOLIO_PBCOPY_BIN`) |
-| `portfolios.ts`, `categories.ts`, `settings.ts`, `tasks.ts`, `watched.ts` | one file per resource, same shape |
+| `portfolios.ts`, `categories.ts`, `settings.ts`, `tasks.ts`, `reminders.ts`, `watched.ts` | one file per resource, same shape |
 | `ports.ts` | the ports snapshot and kill route |
 | `projects.ts` | building a `ProjectView` from a category member, and the project/project-parent routes |
 | `server.ts` | `Bun.serve` on `PORTFOLIO_API_PORT` (default 4388), CORS on every response including `OPTIONS`, one log line per request |

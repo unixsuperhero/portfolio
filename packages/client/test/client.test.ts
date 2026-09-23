@@ -99,7 +99,7 @@ describe("end to end against createApi", () => {
     expect((await client.completeTask(taskId)).completed_today).toBe(true);
     expect((await client.uncompleteTask(taskId)).completed_today).toBe(false);
     expect((await client.tasks(true)).tasks).toHaveLength(1);
-    expect((await client.todayTasks()).tasks).toHaveLength(1);
+    expect((await client.todayReminders()).reminders).toHaveLength(1);
     expect(await client.deleteTask(taskId)).toEqual({ ok: true });
   });
 

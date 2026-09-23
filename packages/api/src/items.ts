@@ -80,9 +80,21 @@ export async function patchItemRoute(ctx: Ctx, request: Request, params: Record<
   if (body.type !== undefined && body.type !== item.type && (body.type === "task" || item.type === "task")) {
     return error(422, "create a new task instead of changing an item's type to or from task");
   }
+  let categoryId = item.category_id;
+  if ("category_id" in body) {
+    if (body.category_id === null) categoryId = null;
+    else {
+      if (typeof body.category_id !== "number" || !Number.isSafeInteger(body.category_id) || body.category_id <= 0) return error(422, "category_id must be a positive integer or null");
+      const category = ctx.store.categories.getCategory(body.category_id);
+      if (!category) return error(422, "category not found");
+      if (category.kind !== (body.type ?? item.type)) return error(422, `category requires items of type ${category.kind}`);
+      categoryId = category.id;
+    }
+  }
   const { tags, ...patch } = body as ItemPatch & { tags?: unknown };
   if ("content" in patch) (patch as ItemPatch).rendered_html = "";
   ctx.store.items.updateItem(id, patch);
+  if ("category_id" in body) ctx.store.items.setPathAndCategory(id, item.path, categoryId);
   if (tags !== undefined) {
     const desired = tagsFromInput(tags);
     const current = ctx.store.tags.tagNamesFor(id);

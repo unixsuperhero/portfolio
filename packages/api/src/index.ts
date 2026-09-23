@@ -22,9 +22,13 @@ import {
 } from "./projects.ts";
 import { directoriesRoute, getHomeRoute, getSettingsRoute, patchSettingsRoute } from "./settings.ts";
 import {
-  completeTaskRoute, createTaskRoute, deleteTaskRoute, dueRemindersRoute, getTaskRoute, listTasksRoute,
-  patchTaskRoute, todayTasksRoute, uncompleteTaskRoute,
+  completeTaskRoute, createTaskRoute, deleteTaskRoute, getTaskRoute, listTasksRoute,
+  patchTaskRoute, uncompleteTaskRoute,
 } from "./tasks.ts";
+import {
+  completeReminderRoute, createReminderRoute, deleteReminderRoute, dueRemindersRoute, getReminderRoute,
+  listRemindersRoute, patchReminderRoute, todayRemindersRoute, uncompleteReminderRoute,
+} from "./reminders.ts";
 import { addWatchedDirectoryRoute, removeWatchedDirectoryRoute, syncWatchedDirectoriesRoute } from "./watched.ts";
 
 export type { ApiOptions } from "./context.ts";
@@ -98,8 +102,15 @@ const ROUTES: [string, string, (ctx: ReturnType<typeof createContext>, request: 
   ["DELETE", "/api/tasks/:id", deleteTaskRoute],
   ["POST", "/api/tasks/:id/complete", completeTaskRoute],
   ["POST", "/api/tasks/:id/uncomplete", uncompleteTaskRoute],
+  ["GET", "/api/reminders", listRemindersRoute],
+  ["POST", "/api/reminders", createReminderRoute],
+  ["GET", "/api/reminders/today", todayRemindersRoute],
   ["GET", "/api/reminders/due", dueRemindersRoute],
-  ["GET", "/api/reminders/today", todayTasksRoute],
+  ["GET", "/api/reminders/:id", getReminderRoute],
+  ["PATCH", "/api/reminders/:id", patchReminderRoute],
+  ["DELETE", "/api/reminders/:id", deleteReminderRoute],
+  ["POST", "/api/reminders/:id/complete", completeReminderRoute],
+  ["POST", "/api/reminders/:id/uncomplete", uncompleteReminderRoute],
 ];
 
 /** Builds the JSON HTTP handler for the desktop app's backend. Every route in apps/desktop/CONTRACT.md. */

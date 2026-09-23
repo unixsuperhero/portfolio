@@ -68,7 +68,7 @@ describe("slots", () => {
 });
 
 describe("cards", () => {
-  const view = (id: number, type: ItemView["type"], title: string, tags: string[]): ItemView => ({ id, type, title, description: "", url: null, source_path: null, path: null, pinned: false, starred: false, created_at: `2026-01-0${id}`, updated_at: `2026-01-0${id}`, href: `/items/${id}`, tags });
+  const view = (id: number, type: ItemView["type"], title: string, tags: string[]): ItemView => ({ id, type, title, description: "", url: null, source_path: null, path: null, task_id: null, pinned: false, starred: false, created_at: `2026-01-0${id}`, updated_at: `2026-01-0${id}`, href: `/items/${id}`, tags });
   const items = [view(1, "link", "Banana", ["yt"]), view(2, "link", "apple", ["slides"]), view(3, "pr", "Cherry", ["yt", "slides"]), view(4, "link", "Untagged", [])];
   test("normalize", () => {
     expect(normalizeCard({ title: " X ", tags: "YT, slides", types: ["link", "bogus"], sort_key: "bogus", sort_dir: "asc", max_items: "5000" })).toEqual({ title: "X", tags: ["YT", "slides"], types: ["link"], sort_key: "created_at", sort_dir: "asc", max_items: 1000, kind: "query", config: {} });

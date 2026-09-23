@@ -11,6 +11,8 @@ import type {
   PortsSnapshot,
   ProjectParentSummary,
   ProjectView,
+  ReminderCreateInput,
+  ReminderView,
   TaskView,
 } from "./types.ts";
 
@@ -169,10 +171,31 @@ export const completeTask = (id: number, on?: string) =>
 export const uncompleteTask = (id: number, on?: string) =>
   api.request<TaskView>(`/api/tasks/${id}/uncomplete`, { method: "POST", json: { on } });
 
+export const listReminders = (all = false) =>
+  api.request<{ reminders: ReminderView[] }>("/api/reminders", { query: { all } });
+
+export const createReminder = (reminder: ReminderCreateInput) =>
+  api.request<{ id: number }>("/api/reminders", { method: "POST", json: reminder });
+
+export const getReminder = (id: number) =>
+  api.request<ReminderView>(`/api/reminders/${id}`);
+
+export const patchReminder = (id: number, patch: Partial<ReminderCreateInput>) =>
+  api.request<{ ok: true }>(`/api/reminders/${id}`, { method: "PATCH", json: patch });
+
+export const deleteReminder = (id: number) =>
+  api.request<{ ok: boolean }>(`/api/reminders/${id}`, { method: "DELETE" });
+
+export const completeReminder = (id: number, on?: string) =>
+  api.request<ReminderView>(`/api/reminders/${id}/complete`, { method: "POST", json: { on } });
+
+export const uncompleteReminder = (id: number, on?: string) =>
+  api.request<ReminderView>(`/api/reminders/${id}/uncomplete`, { method: "POST", json: { on } });
+
 export const getDueReminders = (minutes = 60) =>
   api.request<{ due: DueReminder[] }>("/api/reminders/due", { query: { minutes } });
 
-export const getTodayReminders = () => api.request<{ tasks: TaskView[] }>("/api/reminders/today");
+export const getTodayReminders = () => api.request<{ reminders: ReminderView[] }>("/api/reminders/today");
 
 export const health = () => api.request<{ ok: boolean; items: number }>("/health");
 

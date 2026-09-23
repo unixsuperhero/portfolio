@@ -1,13 +1,16 @@
-import { useEffect, useRef, useState } from "react";
-import { createHashRouter, Link, NavLink, Outlet, RouterProvider, useNavigate } from "react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createHashRouter, Link, NavLink, Outlet, RouterProvider, useLocation, useNavigate } from "react-router";
 import { TerminalDock } from "./terminal/TerminalDock.tsx";
 import { useTerminalStore } from "./terminal/store.ts";
 import { ContextMenuProvider } from "./context-menu/ContextMenu.tsx";
+import { CommandPalette } from "./components/CommandPalette.tsx";
 import { ToastStack } from "./components/ToastStack.tsx";
 import { useSidecarStatus } from "./hooks/useSidecarStatus.ts";
 import { useReminderPolling } from "./hooks/useReminderPolling.ts";
 import { usePrEvents } from "./hooks/usePrEvents.ts";
-import { openInApp } from "./native.ts";
+import { openInApp, openSystem } from "./native.ts";
+import { isWails } from "./lib/wails.ts";
+import "./shell.css";
 
 import Home from "./pages/Home.tsx";
 import Portfolios from "./pages/Portfolios.tsx";
@@ -35,7 +38,14 @@ const NAV_ITEMS = [
   { to: "/reminders", label: "Reminders" },
   { to: "/prs", label: "PRs" },
   { to: "/settings", label: "Settings" },
-];
+] as const;
+
+const isNativeMac = () => isWails() && /Mac/i.test(navigator.platform);
+
+function browserUrlForLocation(pathname: string, search: string): string {
+  if (!isWails()) return window.location.href;
+  return `http://127.0.0.1:4388/app/#${pathname}${search}`;
+}
 
 /** Renders GET /api/prs/events toasts (from usePrEvents) in their own stack, separate from the
  * reminder toasts, with an "Open" action that opens the PR in the in-app browser. */
@@ -70,37 +80,69 @@ function useTheme() {
 
 function TopBar() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { theme, toggle } = useTheme();
-  const searchRef = useRef<HTMLInputElement>(null);
-  const [q, setQ] = useState("");
+  const commandButtonRef = useRef<HTMLButtonElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [browserBusy, setBrowserBusy] = useState(false);
+  const [browserError, setBrowserError] = useState("");
+
+  const commands = useMemo(() => [
+    ...NAV_ITEMS.map(item => ({
+      id: `go-${item.to}`,
+      label: `Go to ${item.label}`,
+      hint: item.to,
+      run: () => navigate(item.to),
+    })),
+    {
+      id: "search-library",
+      label: "Search Library",
+      hint: "Use the palette text as a library query",
+      run: (query: string) => navigate(query ? `/library?q=${encodeURIComponent(query)}` : "/library"),
+    },
+  ], [navigate]);
+
+  const openPalette = (trigger: HTMLElement | null) => {
+    if (trigger?.closest(".command-palette")) return;
+    returnFocusRef.current = trigger;
+    setPaletteOpen(true);
+  };
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        searchRef.current?.focus();
+        openPalette(document.activeElement instanceof HTMLElement ? document.activeElement : commandButtonRef.current);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const onChange = (value: string) => {
-    setQ(value);
-    navigate(`/library?q=${encodeURIComponent(value)}`);
+  const openCurrentPage = async () => {
+    setBrowserBusy(true);
+    setBrowserError("");
+    try {
+      await openSystem(browserUrlForLocation(location.pathname, location.search));
+    } catch (error) {
+      setBrowserError(error instanceof Error ? error.message : "Could not open this page in a browser.");
+    } finally {
+      setBrowserBusy(false);
+    }
   };
 
   return (
     <div className="topbar">
-      <input
-        ref={searchRef}
-        className="topbar-search"
-        type="search"
-        placeholder="Search… (⌘K)"
-        value={q}
-        onChange={event => onChange(event.target.value)}
-      />
+      <button ref={commandButtonRef} type="button" className="topbar-command" onClick={() => openPalette(commandButtonRef.current)}>
+        Commands <span aria-hidden="true">⌘K</span>
+      </button>
+      <button type="button" className="topbar-browser" onClick={() => void openCurrentPage()} disabled={browserBusy}>
+        {browserBusy ? "Opening…" : "Open in browser"}
+      </button>
+      {browserError ? <span className="topbar-error" role="alert">{browserError}</span> : null}
       <button type="button" className="topbar-theme" onClick={toggle}>{theme === "dark" ? "Light" : "Dark"} theme</button>
+      <CommandPalette commands={commands} open={paletteOpen} onOpenChange={setPaletteOpen} returnFocusRef={returnFocusRef} />
     </div>
   );
 }
@@ -113,7 +155,7 @@ function Sidebar() {
       <div className="sidebar-brand">Portfolio</div>
       <nav className="sidebar-nav">
         {NAV_ITEMS.map(item => (
-          <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => (isActive ? "active" : "")}>
+          <NavLink key={item.to} to={item.to} end={"end" in item ? item.end : undefined} className={({ isActive }) => (isActive ? "active" : "")}>
             {item.label}
           </NavLink>
         ))}
@@ -133,7 +175,7 @@ function Sidebar() {
 
 function Layout() {
   const terminal = useTerminalStore();
-  const { toasts, dismiss, complete } = useReminderPolling();
+  const { toasts, dismiss, complete, error: reminderToastError } = useReminderPolling();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -147,7 +189,7 @@ function Layout() {
   }, [terminal]);
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${isNativeMac() ? " native-macos" : ""}`}>
       <Sidebar />
       <div className="main-area">
         <TopBar />
@@ -160,6 +202,7 @@ function Layout() {
       </div>
       <ContextMenuProvider />
       <ToastStack toasts={toasts} onDismiss={dismiss} onComplete={complete} />
+      {reminderToastError ? <div className="toast-stack"><div className="toast-card"><strong>Reminder polling failed</strong><p>{reminderToastError}</p></div></div> : null}
       <PrToastStack />
     </div>
   );

@@ -52,11 +52,16 @@ Security exceptions.
 const card = { kind: "query" | "tasks" | "reminders" | "ports" | "clock" | "note" | "services" | "prs", config: {} };
 const settings = { home_portfolio_id: 3 };                      // GET /api/home renders it
 const task = { recurrence: "daily" | "once", reminders: [{ at: "08:30" }], completed_today: true, streak: 4 };
+const reminder = { title: "Call the dentist", recurrence: "once", at: "2026-09-24T09:00", task_id: null };
 const project = { services: { runner: "bun", scripts: { dev: "…" } }, ports: [/* listeners in this dir */] };
 const pr = { state: "open", checks_summary: "success", watched: true, ignored_checks: ["codecov/*"] };
 ```
 
 The `tasks` card shows active tasks with nested subtasks and completion checkboxes. Each task links to its task page. Note cards support GitHub-flavored Markdown and a plain-text Markdown editor. Widget bodies and tile cards use the same horizontal padding as query rows.
+
+Reminders are independent records with their own schedule and completion history. The Reminders form defaults to **No task**; selecting a task is optional. Creating a reminder does not create a task or a Library item. Completing a linked reminder does not complete its task. Existing task-linked reminders and their completion history migrate when the database opens.
+
+Single and bulk reminder deletion use an in-app confirmation dialog. Cancel or Escape keeps the reminders; Confirm delete removes only the listed reminders. This avoids `window.confirm`, which the macOS webview does not implement.
 
 See [data-model.md](data-model.md) for the full shapes and
 [packages/api.md](packages/api.md), [packages/github.md](packages/github.md) for the routes.

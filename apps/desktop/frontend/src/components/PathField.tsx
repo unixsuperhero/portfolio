@@ -5,9 +5,8 @@ import { BrowsePicker } from "./BrowsePicker.tsx";
 
 /**
  * A read-mostly text input plus a "Choose…" button for any file/dir path field. Inside the
- * Wails webview the button opens the native OS picker; in a plain browser, directories fall
- * back to BrowsePicker (a modal browsing GET /api/directories) and files fall back to typing
- * the path directly (browsers can't hand back a real filesystem path from an <input type=file>).
+ * Wails webview the button opens the native OS picker; in a plain browser it falls back to
+ * BrowsePicker, which reads real server filesystem paths from GET /api/directories.
  */
 export function PathField({
   value,
@@ -32,12 +31,7 @@ export function PathField({
       if (picked) onChange(picked);
       return;
     }
-    if (kind === "dir") {
-      setBrowsing(true);
-      return;
-    }
-    // No browser API can return a real filesystem path for a file input outside Wails; the
-    // text input stays editable.
+    setBrowsing(true);
   };
 
   const input = (

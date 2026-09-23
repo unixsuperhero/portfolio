@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { Completion, DueReminder, Recurrence, ReminderInput, Task, TaskInput, TaskView } from "@portfolio/core";
+import type { Completion, Recurrence, ReminderInput, Task, TaskInput, TaskView } from "@portfolio/core";
 
 const pad = (n: number): string => String(n).padStart(2, "0");
 const isoDate = (date: Date): string => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
@@ -59,8 +59,8 @@ export function setReminders(db: Database, taskId: number, reminders: ReminderIn
   for (const { at } of normalized) if (!pattern.test(at)) throw new Error(`reminder "${at}" must match ${task.recurrence === "daily" ? "HH:MM" : "YYYY-MM-DDTHH:MM"}`);
   db.transaction(() => {
     db.query("DELETE FROM reminders WHERE task_id = ?").run(taskId);
-    const insert = db.query("INSERT INTO reminders(task_id, at, days) VALUES (?, ?, ?)");
-    for (const { at, days } of normalized) insert.run(taskId, at, JSON.stringify(days));
+    const insert = db.query("INSERT INTO reminders(task_id, title, notes, recurrence, at, days, active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    for (const { at, days } of normalized) insert.run(taskId, task.title, task.notes, task.recurrence, at, JSON.stringify(days), task.active, task.created_at);
   })();
 }
 
@@ -141,31 +141,3 @@ export function taskView(db: Database, task: Task, today: string = isoDate(new D
 
 export const listTaskViews = (db: Database, options: { all?: boolean } = {}): TaskView[] => listTasks(db, options).map(task => taskView(db, task));
 
-/** Reminders due within `minutes` of `now` (default 60), excluding ones already completed. */
-export function dueReminders(db: Database, options: { now?: Date; minutes?: number } = {}): DueReminder[] {
-  const now = options.now ?? new Date();
-  const windowMs = (options.minutes ?? 60) * 60 * 1000;
-  const today = isoDate(now);
-  const due: DueReminder[] = [];
-  for (const task of listTasks(db, { all: false })) {
-    const view = taskView(db, task, today);
-    if (view.completed_today) continue;
-    for (const reminder of view.reminders) {
-      if (task.recurrence === "daily" && reminder.days.length > 0 && !reminder.days.includes(now.getDay())) continue;
-      const due_at = task.recurrence === "daily" ? `${today}T${reminder.at}` : reminder.at;
-      const at = new Date(due_at);
-      if (Number.isNaN(at.getTime())) continue;
-      if (Math.abs(at.getTime() - now.getTime()) <= windowMs) due.push({ task: view, reminder, due_at });
-    }
-  }
-  return due;
-}
-
-/** Daily tasks (unless every reminder's weekdays exclude today) plus once tasks with a reminder dated today, each with its completed flag. */
-export function todayTasks(db: Database, today: string = isoDate(new Date())): TaskView[] {
-  const weekday = new Date(`${today}T00:00:00`).getDay();
-  return listTaskViews(db, { all: false }).filter(view => {
-    if (view.recurrence === "once") return view.reminders.some(reminder => reminder.at.startsWith(today));
-    return view.reminders.length === 0 || view.reminders.some(reminder => reminder.days.length === 0 || reminder.days.includes(weekday));
-  });
-}

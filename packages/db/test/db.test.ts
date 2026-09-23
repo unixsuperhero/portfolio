@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addProjectParent, addWatchedDirectory, cardItems, categoryMembers, claimItem, completeTask, countByType, createCard, createCategory, createPortfolio, createTask, deleteCard, deleteItems, deletePortfolio, deleteTask, dueReminders, ensureCategory, getCard, getHomePortfolioId, getItem, getTask, listItems, listProjectParents, listTags, listTaskViews, listTasks, memberSlots, migrateCardColumns, migrateReminderColumns, moveCard, openDatabase, openStore, portfolioCards, portfolioView, readSchema, removeTags, removeWatchedDirectory, setHomePortfolioId, setPathAndCategory, setReminders, setSlotOverride, setTags, taskView, todayTasks, toggleItemField, uncompleteTask, updateCard, updateCategory, updateItem, updateTask, upsertItem, viewItem } from "../src/index.ts";
+import { addProjectParent, addWatchedDirectory, cardItems, categoryMembers, claimItem, completeReminder, completeTask, countByType, createCard, createCategory, createPortfolio, createReminder, createTask, deleteCard, deleteItems, deletePortfolio, deleteTask, dueReminders, ensureCategory, getCard, getHomePortfolioId, getItem, getTask, listItems, listProjectParents, listReminderViews, listTags, listTaskViews, listTasks, memberSlots, migrateCardColumns, migrateReminderColumns, moveCard, openDatabase, openStore, portfolioCards, portfolioView, readSchema, removeTags, removeWatchedDirectory, setHomePortfolioId, setPathAndCategory, setReminders, setSlotOverride, setTags, taskView, todayReminders, toggleItemField, uncompleteTask, updateCard, updateCategory, updateItem, updateTask, upsertItem, viewItem } from "../src/index.ts";
 
 const fresh = () => openDatabase(":memory:");
 
@@ -189,19 +189,21 @@ describe("tasks", () => {
     expect(getTask(db, once)).toBeNull();
   });
 
-  test("dueReminders and todayTasks", () => {
+  test("dueReminders and todayReminders", () => {
     const db = fresh();
     const daily = createTask(db, { title: "Stretch", recurrence: "daily", reminders: ["08:30"] });
+    const standalone = createReminder(db, { title: "Water", recurrence: "daily", at: "08:45" });
     const once = createTask(db, { title: "Ship it", recurrence: "once", reminders: ["2026-09-22T09:00"] });
     const now = new Date("2026-09-22T08:35:00");
     const due = dueReminders(db, { now, minutes: 60 });
-    expect(due.map(d => d.task.id).sort()).toEqual([daily, once].sort());
+    expect(due.map(d => d.reminder.task_id ?? d.reminder.id).sort()).toEqual([daily, standalone, once].sort());
     expect(dueReminders(db, { now, minutes: 4 })).toHaveLength(0);
+    completeReminder(db, standalone, "2026-09-22");
     completeTask(db, daily, "2026-09-22");
-    expect(dueReminders(db, { now, minutes: 60 }).map(d => d.task.id)).toEqual([once]);
-    const today = todayTasks(db, "2026-09-22");
-    expect(today.map(t => t.id).sort()).toEqual([daily, once].sort());
-    expect(todayTasks(db, "2026-01-01").map(t => t.id)).toEqual([daily]);
+    expect(dueReminders(db, { now, minutes: 60 }).map(d => d.reminder.task_id)).toEqual([once]);
+    const today = todayReminders(db, "2026-09-22");
+    expect(today.map(t => t.task_id ?? t.id).sort()).toEqual([daily, standalone, once].sort());
+    expect(todayReminders(db, "2026-01-01").map(t => t.task_id ?? t.id).sort()).toEqual([daily, standalone].sort());
   });
 
   test("reminder weekdays: validation", () => {
@@ -219,7 +221,7 @@ describe("tasks", () => {
     expect(taskView(db, getTask(db, once)!).reminders).toEqual([{ id: expect.any(Number), at: "2026-09-22T08:30", days: [] }]);
   });
 
-  test("reminder weekdays: dueReminders and todayTasks skip non-matching days", () => {
+  test("reminder weekdays: dueReminders and todayReminders skip non-matching days", () => {
     const db = fresh();
     // 2026-09-21 is a Monday (weekday 1); Wednesday is 2026-09-23 (weekday 3).
     const monday = createTask(db, { title: "Standup", recurrence: "daily", reminders: [{ at: "08:30", days: [1] }] });
@@ -227,13 +229,14 @@ describe("tasks", () => {
     const everyDay = createTask(db, { title: "Stretch", recurrence: "daily", reminders: ["08:30"] });
 
     const mondayNow = new Date("2026-09-21T08:35:00");
-    expect(dueReminders(db, { now: mondayNow, minutes: 60 }).map(d => d.task.id).sort()).toEqual([monday, everyDay].sort());
-    expect(todayTasks(db, "2026-09-21").map(t => t.id).sort()).toEqual([monday, everyDay].sort());
+    expect(dueReminders(db, { now: mondayNow, minutes: 60 }).map(d => d.reminder.task_id).sort()).toEqual([monday, everyDay].sort());
+    expect(todayReminders(db, "2026-09-21").map(t => t.task_id).sort()).toEqual([monday, everyDay].sort());
 
     const wednesdayNow = new Date("2026-09-23T08:35:00");
-    expect(dueReminders(db, { now: wednesdayNow, minutes: 60 }).map(d => d.task.id).sort()).toEqual([wednesday, everyDay].sort());
-    expect(todayTasks(db, "2026-09-23").map(t => t.id).sort()).toEqual([wednesday, everyDay].sort());
+    expect(dueReminders(db, { now: wednesdayNow, minutes: 60 }).map(d => d.reminder.task_id).sort()).toEqual([wednesday, everyDay].sort());
+    expect(todayReminders(db, "2026-09-23").map(t => t.task_id).sort()).toEqual([wednesday, everyDay].sort());
   });
+  type ColumnInfo = { name: string };
 
   test("migrateReminderColumns adds days to a pre-existing reminders table", () => {
     const raw = new Database(":memory:");
@@ -245,9 +248,9 @@ describe("tasks", () => {
       INSERT INTO tasks(title, recurrence) VALUES ('Stretch', 'daily');
       INSERT INTO reminders(task_id, at) VALUES (1, '08:30');
     `);
-    expect(raw.query("PRAGMA table_info(reminders)").all().map((c: any) => c.name)).not.toContain("days");
+    expect(raw.query<ColumnInfo, []>("PRAGMA table_info(reminders)").all().map(c => c.name)).not.toContain("days");
     migrateReminderColumns(raw);
-    const columns = raw.query("PRAGMA table_info(reminders)").all().map((c: any) => c.name);
+    const columns = raw.query<ColumnInfo, []>("PRAGMA table_info(reminders)").all().map(c => c.name);
     expect(columns).toContain("days");
     expect(raw.query("SELECT days FROM reminders WHERE id = 1").get()).toEqual({ days: "[]" });
     raw.close();
@@ -266,8 +269,9 @@ describe("tasks", () => {
     `);
     raw.close();
     const db = openDatabase(path);
-    expect(db.query("PRAGMA table_info(reminders)").all().map((c: any) => c.name)).toContain("days");
+    expect(db.query<ColumnInfo, []>("PRAGMA table_info(reminders)").all().map(c => c.name)).toContain("days");
     expect(taskView(db, getTask(db, 1)!).reminders).toEqual([{ id: 1, at: "08:30", days: [] }]);
+    expect(listReminderViews(db, { all: true })[0]).toMatchObject({ id: 1, title: "Stretch", task_id: 1, at: "08:30", days: [] });
     db.close();
     unlinkSync(path);
   });

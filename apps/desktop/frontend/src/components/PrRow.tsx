@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router";
+import { PortfolioApiError } from "@portfolio/client";
 import type { Pr, PrReviewDecision } from "../types.ts";
 import { patchPr, watchPr } from "../api.ts";
 import { PrChecks } from "./PrChecks.tsx";
@@ -18,19 +19,27 @@ export function PrRow({ pr, onChanged }: { pr: Pr; onChanged: () => void }) {
   const [ignoredText, setIgnoredText] = useState(pr.ignored_checks.join("\n"));
   const [saving, setSaving] = useState(false);
   const [watching, setWatching] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => { setIgnoredText(pr.ignored_checks.join("\n")); }, [pr.id, pr.ignored_checks]);
 
   const toggleWatch = () => {
     setWatching(true);
-    watchPr(pr.url, !pr.watched).then(onChanged).catch(() => {}).finally(() => setWatching(false));
+    setError("");
+    watchPr(pr.url, !pr.watched)
+      .then(onChanged)
+      .catch(err => setError(err instanceof PortfolioApiError ? err.message : "Could not update watch status."))
+      .finally(() => setWatching(false));
   };
 
   const saveIgnored = (event: React.FormEvent) => {
     event.preventDefault();
     const ignored_checks = ignoredText.split("\n").map(line => line.trim()).filter(Boolean);
     setSaving(true);
+    setError("");
     patchPr(pr.id, { ignored_checks })
       .then(() => { setEditing(false); onChanged(); })
-      .catch(() => {})
+      .catch(err => setError(err instanceof PortfolioApiError ? err.message : "Could not save ignored checks."))
       .finally(() => setSaving(false));
   };
 
@@ -46,6 +55,7 @@ export function PrRow({ pr, onChanged }: { pr: Pr; onChanged: () => void }) {
         <button type="button" className="secondary" onClick={toggleWatch} disabled={watching}>{pr.watched ? "Unwatch" : "Watch"}</button>
         <button type="button" className="secondary" onClick={() => setEditing(value => !value)}>Ignore checks…</button>
       </div>
+      {error ? <p className="pr-status pr-status-error">{error}</p> : null}
       {editing ? (
         <form className="pr-ignore-form" onSubmit={saveIgnored}>
           <textarea

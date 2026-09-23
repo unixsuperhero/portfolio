@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import { Link, useSearchParams } from "react-router";
 import type { ProjectParentSummary, ProjectView } from "../types.ts";
 import { addProjectParent, listProjectParents, listProjects, removeProjectParent, scanProjects } from "../api.ts";
 import { PathField } from "../components/PathField.tsx";
+import { CollectionToolbar, ItemBulkActions, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
 
-type SortKey = "name" | "updated" | "ports" | "scripts";
+type SortKey = "title" | "path" | "updated" | "ports" | "scripts";
 
-/** ProjectView doesn't carry updated_at in the current contract; read it defensively so sorting
- * degrades gracefully (falls back to 0, keeping relative order) instead of breaking if it's missing. */
 const updatedAtMs = (project: ProjectView): number => {
-  const value = (project as unknown as { updated_at?: string }).updated_at;
-  const parsed = value ? Date.parse(value) : NaN;
+  const parsed = Date.parse(project.updated_at);
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
@@ -19,10 +18,13 @@ export default function Projects() {
   const [parents, setParents] = useState<ProjectParentSummary[]>([]);
   const [newParent, setNewParent] = useState("");
   const [scanResult, setScanResult] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const [params, setParams] = useSearchParams();
 
-  const q = params.get("q") ?? "";
-  const sort = (params.get("sort") ?? "name") as SortKey;
+  const query = params.get("q") ?? "";
+  const sort = (params.get("sort") ?? "title") as SortKey;
   const runner = params.get("runner") ?? "";
   const runningOnly = params.get("running") === "1";
   const tag = params.get("tag") ?? "";
@@ -34,90 +36,137 @@ export default function Projects() {
   };
 
   const load = () => {
-    listProjects().then(({ projects }) => setProjects(projects)).catch(() => {});
-    listProjectParents().then(({ parents }) => setParents(parents)).catch(() => {});
+    setLoading(true);
+    return Promise.all([
+      listProjects().then(({ projects }) => setProjects(projects)),
+      listProjectParents().then(({ parents }) => setParents(parents)),
+    ]).catch(error => setError((error as Error).message)).finally(() => setLoading(false));
   };
-  useEffect(load, []);
+  useEffect(() => { void load(); }, []);
 
-  const scan = () => scanProjects().then(({ added }) => { setScanResult(`${added.length} added`); load(); }).catch(() => {});
-  const addParent = (event: React.FormEvent) => { event.preventDefault(); if (!newParent.trim()) return; addProjectParent(newParent.trim()).then(() => { setNewParent(""); load(); }).catch(() => {}); };
+  const scan = () => {
+    setBusy(true);
+    setError("");
+    scanProjects()
+      .then(({ added }) => { setScanResult(`${added.length} added`); load(); })
+      .catch(error => setError((error as Error).message))
+      .finally(() => setBusy(false));
+  };
+  const addParent = (event: FormEvent) => {
+    event.preventDefault();
+    if (!newParent.trim()) return;
+    setBusy(true);
+    setError("");
+    addProjectParent(newParent.trim())
+      .then(() => { setNewParent(""); load(); })
+      .catch(error => setError((error as Error).message))
+      .finally(() => setBusy(false));
+  };
 
-  const allTags = useMemo(() => Array.from(new Set(projects.flatMap(p => p.tags ?? []))).sort(), [projects]);
+  const allTags = useMemo(() => Array.from(new Set(projects.flatMap(project => project.tags ?? []))).sort(), [projects]);
 
   const visible = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    let list = projects.filter(project => {
-      if (needle) {
-        const haystack = [project.title, project.path, ...(project.tags ?? []), ...Object.keys(project.services.scripts ?? {})]
-          .join(" ")
-          .toLowerCase();
-        if (!haystack.includes(needle)) return false;
-      }
-      if (runner && (project.services.runner ?? "none") !== runner) return false;
-      if (runningOnly && project.ports.length === 0) return false;
-      if (tag && !(project.tags ?? []).includes(tag)) return false;
-      return true;
-    });
-    list = [...list].sort((a, b) => {
-      switch (sort) {
-        case "updated": return updatedAtMs(b) - updatedAtMs(a);
-        case "ports": return b.ports.length - a.ports.length;
-        case "scripts": return Object.keys(b.services.scripts ?? {}).length - Object.keys(a.services.scripts ?? {}).length;
-        default: return a.title.localeCompare(b.title);
-      }
-    });
-    return list;
-  }, [projects, q, sort, runner, runningOnly, tag]);
+    const needle = query.trim().toLowerCase();
+    return projects
+      .filter(project => {
+        if (needle) {
+          const haystack = [project.title, project.path, project.description, ...(project.tags ?? []), ...Object.keys(project.services.scripts ?? {})]
+            .join(" ")
+            .toLowerCase();
+          if (!haystack.includes(needle)) return false;
+        }
+        if (runner && (project.services.runner ?? "none") !== runner) return false;
+        if (runningOnly && project.ports.length === 0) return false;
+        if (tag && !(project.tags ?? []).includes(tag)) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        switch (sort) {
+          case "path": return a.path.localeCompare(b.path);
+          case "updated": return updatedAtMs(b) - updatedAtMs(a);
+          case "ports": return b.ports.length - a.ports.length;
+          case "scripts": return Object.keys(b.services.scripts ?? {}).length - Object.keys(a.services.scripts ?? {}).length;
+          default: return a.title.localeCompare(b.title);
+        }
+      });
+  }, [projects, query, sort, runner, runningOnly, tag]);
+
+  const selection = useSelection(visible.map(project => project.id));
+  const selectedIds = Array.from(selection.selected);
+
+  const removeParent = (parent: ProjectParentSummary) => {
+    if (!window.confirm(`Remove project parent ${parent.path}? Projects and disk files are preserved.`)) return;
+    removeProjectParent(parent.id).then(load).catch(error => setError((error as Error).message));
+  };
 
   return (
     <div>
       <div className="page-header">
         <h1>Projects</h1>
         <div className="page-actions">
-          <button type="button" className="primary" onClick={scan}>Scan</button>
+          <button type="button" className="primary" onClick={scan} disabled={busy}>Scan</button>
         </div>
       </div>
       {scanResult ? <p style={{ color: "var(--text2)" }}>{scanResult}</p> : null}
+      {error ? <p className="error">{error}</p> : null}
 
-      <div className="field-row">
-        <label>Search<input value={q} onChange={event => setParam("q", event.target.value)} placeholder="title, path, tag, script…" /></label>
-        <label>Sort
-          <select value={sort} onChange={event => setParam("sort", event.target.value)}>
-            <option value="name">Name</option>
-            <option value="updated">Recently updated</option>
-            <option value="ports">Running ports</option>
-            <option value="scripts">Script count</option>
-          </select>
-        </label>
+      <CollectionToolbar
+        query={query}
+        onQueryChange={value => setParam("q", value)}
+        sort={sort}
+        onSortChange={value => setParam("sort", value)}
+        sortOptions={[
+          { value: "title", label: "Title" },
+          { value: "path", label: "Path" },
+          { value: "updated", label: "Recently updated" },
+          { value: "ports", label: "Running ports" },
+          { value: "scripts", label: "Script count" },
+        ]}
+      >
         <label>Runner
           <select value={runner} onChange={event => setParam("runner", event.target.value)}>
             <option value="">Any</option>
-            {["bun", "pnpm", "yarn", "npm", "none"].map(r => <option key={r} value={r}>{r}</option>)}
+            {["bun", "pnpm", "yarn", "npm", "none"].map(runner => <option key={runner} value={runner}>{runner}</option>)}
           </select>
         </label>
         <label>Tag
           <select value={tag} onChange={event => setParam("tag", event.target.value)}>
             <option value="">Any</option>
-            {allTags.map(t => <option key={t} value={t}>{t}</option>)}
+            {allTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
           </select>
         </label>
         <label><input type="checkbox" checked={runningOnly} onChange={event => setParam("running", event.target.checked ? "1" : "")} /> Has running ports</label>
-      </div>
+      </CollectionToolbar>
+      <SelectionBar count={selectedIds.length} total={visible.length} allSelected={selection.allSelected} onToggleAll={selection.toggleAll} onClear={selection.clear} busy={busy}>
+        <ItemBulkActions ids={selectedIds} onChanged={async () => { await load(); }} />
+      </SelectionBar>
       <p style={{ color: "var(--text3)", fontSize: "0.82rem", marginTop: "-0.4rem" }}>{visible.length} of {projects.length} projects</p>
 
-      <div className="tiles-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", marginBottom: "1.5rem" }}>
-        {visible.map(project => (
-          <Link key={project.id} to={`/projects/${project.id}`} className="tile" style={{ alignItems: "start", textAlign: "left", minHeight: "auto", padding: "0.8rem" }} data-item={project.id} data-path={project.path} data-kind="dir">
-            <strong>{project.title}</strong>
-            <span style={{ color: "var(--text3)", fontSize: "0.78rem" }}>{project.services.runner ?? "no runner"} · {Object.keys(project.services.scripts).length} scripts · {project.ports.length} ports</span>
-          </Link>
-        ))}
-      </div>
+      {loading && !projects.length ? <div className="empty"><strong>Loading…</strong></div> : null}
+      {!loading && !projects.length ? <div className="empty"><strong>No projects yet.</strong><p>Add a parent folder and scan.</p></div> : null}
+      {projects.length && !visible.length ? <div className="empty"><strong>No matching projects.</strong><p>Adjust search or filters.</p></div> : null}
+      {visible.length ? (
+        <table className="data-table" style={{ marginBottom: "1.5rem" }}>
+          <thead><tr><th>Select</th><th>Project</th><th>Path</th><th>Runner</th><th>Scripts</th><th>Ports</th></tr></thead>
+          <tbody>
+            {visible.map(project => (
+              <tr key={project.id} data-item={project.id} data-path={project.path} data-kind="dir">
+                <td><input type="checkbox" checked={selection.selected.has(project.id)} onChange={() => selection.toggle(project.id)} aria-label={`Select ${project.title}`} /></td>
+                <td><Link to={`/projects/${project.id}`}>{project.title}</Link></td>
+                <td><code>{project.path}</code></td>
+                <td>{project.services.runner ?? "none"}</td>
+                <td>{Object.keys(project.services.scripts).length}</td>
+                <td>{project.ports.length}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
 
       <h2>Project parents</h2>
       <form className="field-row" onSubmit={addParent}>
         <PathField label="Path" kind="dir" value={newParent} onChange={setNewParent} placeholder="~/proj" />
-        <button className="secondary" type="submit">Add</button>
+        <button className="secondary" type="submit" disabled={busy}>Add</button>
       </form>
       <table className="data-table">
         <thead><tr><th>Path</th><th>Projects</th><th></th></tr></thead>
@@ -126,7 +175,7 @@ export default function Projects() {
             <tr key={parent.id}>
               <td><code>{parent.path}</code></td>
               <td>{parent.count}</td>
-              <td><button type="button" className="danger" onClick={() => removeProjectParent(parent.id).then(load)}>Remove</button></td>
+              <td><button type="button" className="danger" onClick={() => removeParent(parent)}>Remove</button></td>
             </tr>
           ))}
         </tbody>

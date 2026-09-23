@@ -1,32 +1,35 @@
 import { useEffect, useState } from "react";
-import type { TaskView } from "../types.ts";
-import { completeTask, getTodayReminders, listTasks, uncompleteTask } from "../api.ts";
+import type { ReminderView } from "../types.ts";
+import { completeReminder, getTodayReminders, listReminders, uncompleteReminder } from "../api.ts";
 
 export function RemindersCard({ scope = "today" }: { scope?: "today" | "all" }) {
-  const [tasks, setTasks] = useState<TaskView[] | null>(null);
+  const [reminders, setReminders] = useState<ReminderView[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const load = () => {
-    (scope === "all" ? listTasks() : getTodayReminders())
-      .then(result => setTasks("tasks" in result ? result.tasks : []))
-      .catch(() => setTasks([]));
+    setError(null);
+    (scope === "all" ? listReminders() : getTodayReminders())
+      .then(result => setReminders(result.reminders))
+      .catch(err => { setError(err instanceof Error ? err.message : String(err)); setReminders([]); });
   };
 
   useEffect(() => { load(); }, [scope]);
 
-  const toggle = (task: TaskView) => {
-    const call = task.completed_today ? uncompleteTask(task.id) : completeTask(task.id);
-    call.then(load).catch(() => {});
+  const toggle = (reminder: ReminderView) => {
+    const call = reminder.completed_today ? uncompleteReminder(reminder.id) : completeReminder(reminder.id);
+    call.then(load).catch(err => setError(err instanceof Error ? err.message : String(err)));
   };
 
-  if (tasks === null) return <div className="empty"><strong>Loading…</strong></div>;
-  if (!tasks.length) return <div className="empty"><strong>Nothing due.</strong></div>;
+  if (reminders === null) return <div className="empty"><strong>Loading…</strong></div>;
+  if (error) return <div className="empty"><strong>{error}</strong></div>;
+  if (!reminders.length) return <div className="empty"><strong>Nothing due.</strong></div>;
   return (
     <div>
-      {tasks.map(task => (
-        <label className="reminder-row" key={task.id}>
-          <input type="checkbox" checked={task.completed_today} onChange={() => toggle(task)} />
-          <span>{task.title}</span>
-          {task.recurrence === "daily" && task.streak > 0 ? <span className="streak">🔥{task.streak}</span> : null}
+      {reminders.map(reminder => (
+        <label className="reminder-row" key={reminder.id}>
+          <input type="checkbox" checked={reminder.completed_today} onChange={() => toggle(reminder)} />
+          <span>{reminder.title}</span>
+          {reminder.recurrence === "daily" && reminder.streak > 0 ? <span className="streak">🔥{reminder.streak}</span> : null}
         </label>
       ))}
     </div>

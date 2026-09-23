@@ -8,6 +8,7 @@ import * as settings from "./settings.ts";
 import * as watched from "./watched.ts";
 import * as projects from "./projects.ts";
 import * as tasks from "./tasks.ts";
+import * as reminders from "./reminders.ts";
 import * as github from "./github.ts";
 
 type Bound<T> = { [K in keyof T]: T[K] extends (db: Database, ...rest: infer A) => infer R ? (...rest: A) => R : never };
@@ -32,6 +33,7 @@ export function openStore(path?: string, options?: OpenOptions) {
     watched: bind(db, watched),
     projects: bind(db, projects),
     tasks: bind(db, tasks),
+    reminders: bind(db, reminders),
     github: bind(db, github),
     close: () => db.close(),
   };

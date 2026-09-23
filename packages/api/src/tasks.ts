@@ -1,6 +1,6 @@
 import type { TaskInput } from "@portfolio/core";
 import type { Ctx } from "./context.ts";
-import { bool, error, json, notFound, num, readJson } from "./http.ts";
+import { bool, error, json, notFound, readJson } from "./http.ts";
 
 export async function listTasksRoute(ctx: Ctx, request: Request): Promise<Response> {
   const all = bool(new URL(request.url).searchParams.get("all"));
@@ -50,11 +50,3 @@ export async function uncompleteTaskRoute(ctx: Ctx, request: Request, params: Re
   return json(ctx.store.tasks.uncompleteTask(id, body.on as string | undefined));
 }
 
-export async function dueRemindersRoute(ctx: Ctx, request: Request): Promise<Response> {
-  const minutes = num(new URL(request.url).searchParams.get("minutes")) ?? 60;
-  return json({ due: ctx.store.tasks.dueReminders({ minutes }) });
-}
-
-export async function todayTasksRoute(ctx: Ctx): Promise<Response> {
-  return json({ tasks: ctx.store.tasks.todayTasks() });
-}

@@ -70,6 +70,23 @@ describe("items", () => {
     expect(res.status).toBe(404);
   });
 
+  test("category changes preserve paths and reject incompatible assignments before editing", async () => {
+    const { store, api } = makeApi();
+    try {
+      const category = store.categories.createCategory({ name: "Folders", kind: "dir", slots: [] });
+      const incompatible = store.categories.createCategory({ name: "Notes", kind: "note", slots: [] });
+      const id = store.items.upsertItem({ type: "dir", title: "Work" });
+      store.items.setPathAndCategory(id, "/tmp/work", null);
+      expect((await send(api, "PATCH", `/api/items/${id}`, { category_id: category })).status).toBe(200);
+      expect((await (await get(api, `/api/categories/${category}`)).json()).members.map((item: { title: string }) => item.title)).toEqual(["Work"]);
+      expect((await send(api, "PATCH", `/api/items/${id}`, { category_id: incompatible, title: "Must not change" })).status).toBe(422);
+      expect((await (await get(api, `/api/items/${id}`)).json())).toMatchObject({ title: "Work", path: "/tmp/work", category_id: category });
+      expect((await send(api, "PATCH", `/api/items/${id}`, { category_id: null })).status).toBe(200);
+      expect((await (await get(api, `/api/categories/${category}`)).json()).members).toEqual([]);
+      expect((await (await get(api, `/api/items/${id}`)).json()).path).toBe("/tmp/work");
+    } finally { store.close(); }
+  });
+
   test("errors: missing title, toggle on bad field, not found", async () => {
     const { api } = makeApi();
     let res = await send(api, "POST", "/api/items", { type: "note", content: "" });
@@ -325,18 +342,29 @@ describe("tasks and reminders", () => {
     expect((await res.json()).reminders).toEqual([{ id: expect.any(Number), at: "09:00", days: [] }]);
   });
 
-  test("errors: missing title, bad recurrence, due reminders and today", async () => {
-    const { api } = makeApi();
+  test("errors and standalone reminders", async () => {
+    const { api, store } = makeApi();
     let res = await send(api, "POST", "/api/tasks", { title: "", recurrence: "daily" });
     expect(res.status).toBe(422);
     res = await send(api, "POST", "/api/tasks", { title: "x", recurrence: "weekly" });
     expect(res.status).toBe(422);
 
-    await send(api, "POST", "/api/tasks", { title: "Stretch", recurrence: "daily", reminders: ["08:30"] });
-    res = await get(api, "/api/reminders/due?minutes=1440");
-    expect((await res.json()).due.length).toBeGreaterThanOrEqual(0);
+    res = await send(api, "POST", "/api/reminders", { title: "Water", recurrence: "daily", at: "08:30" });
+    expect(res.status).toBe(201);
+    const { id } = await res.json();
+    expect(store.tasks.listTasks({ all: true })).toHaveLength(0);
+    res = await get(api, `/api/reminders/${id}`);
+    expect(await res.json()).toMatchObject({ id, title: "Water", task_id: null, at: "08:30" });
     res = await get(api, "/api/reminders/today");
-    expect((await res.json()).tasks).toHaveLength(1);
+    expect((await res.json()).reminders).toEqual([expect.objectContaining({ id, task_id: null })]);
+    res = await get(api, "/api/reminders/due?minutes=1440");
+    expect((await res.json()).due.map((entry: { reminder: { id: number } }) => entry.reminder.id)).toContain(id);
+    res = await send(api, "POST", `/api/reminders/${id}/complete`, { on: "2026-09-22" });
+    expect((await res.json()).completed_today).toBe(true);
+    res = await send(api, "PATCH", `/api/reminders/${id}`, { title: "Drink water" });
+    expect(await res.json()).toEqual({ ok: true });
+    res = await send(api, "DELETE", `/api/reminders/${id}`);
+    expect(await res.json()).toEqual({ ok: true });
   });
 });
 

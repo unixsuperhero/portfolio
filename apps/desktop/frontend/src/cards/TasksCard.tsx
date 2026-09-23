@@ -1,16 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import type { TaskView } from "@portfolio/core";
-import { completeTask, listTasks, uncompleteTask } from "../api.ts";
+import { TagList } from "@portfolio/ui";
+import type { ItemView, TaskView } from "@portfolio/core";
+import { completeTask, listItems, listTasks, uncompleteTask } from "../api.ts";
+import { MarkdownContent } from "../components/MarkdownContent.tsx";
+import "../pages/Tasks.css";
 
 export function TasksCard() {
   const [tasks, setTasks] = useState<TaskView[] | null>(null);
+  const [items, setItems] = useState<ItemView[]>([]);
   const [error, setError] = useState("");
   const [pending, setPending] = useState<number | null>(null);
 
   useEffect(() => {
     let live = true;
-    listTasks().then(result => { if (live) setTasks(result.tasks); })
+    Promise.all([listTasks(), listItems({ type: "task" })])
+      .then(([taskResult, itemResult]) => {
+        if (!live) return;
+        setTasks(taskResult.tasks);
+        setItems(itemResult.items);
+      })
       .catch(err => { if (live) setError(err instanceof Error ? err.message : String(err)); });
     return () => { live = false; };
   }, []);
@@ -25,6 +34,7 @@ export function TasksCard() {
     finally { setPending(null); }
   };
 
+  const itemById = useMemo(() => new Map(items.map(item => [item.task_id, item])), [items]);
   const ids = new Set(tasks?.map(task => task.id));
   const children = new Map<number | null, TaskView[]>();
   for (const task of tasks ?? []) {
@@ -35,15 +45,22 @@ export function TasksCard() {
   }
   const rows = (parent: number | null) => (
     <ul className="tasks-card-list">
-      {(children.get(parent) ?? []).map(task => (
-        <li key={task.id}>
-          <div className="reminder-row">
-            <input type="checkbox" aria-label={`Complete ${task.title}`} checked={task.completed_today} disabled={pending !== null} onChange={() => void toggle(task)} />
-            <Link to={`/tasks/${task.id}`} className={task.completed_today ? "task-completed" : ""}>{task.title}</Link>
-          </div>
-          {children.has(task.id) ? rows(task.id) : null}
-        </li>
-      ))}
+      {(children.get(parent) ?? []).map(task => {
+        const tags = itemById.get(task.id)?.tags ?? [];
+        return (
+          <li key={task.id}>
+            <div className="reminder-row tasks-card-row">
+              <input type="checkbox" aria-label={`${task.completed_today ? "Reopen" : "Complete"} ${task.title}`} checked={task.completed_today} disabled={pending !== null} onChange={() => void toggle(task)} />
+              <div className="task-copy">
+                <Link to={`/tasks/${task.id}`} className={task.completed_today ? "task-completed" : ""}>{task.title}</Link>
+                {task.notes ? <MarkdownContent text={task.notes} /> : null}
+                <TagList tags={tags} hrefFor={name => `/tasks?tag=${encodeURIComponent(name)}`} />
+              </div>
+            </div>
+            {children.has(task.id) ? rows(task.id) : null}
+          </li>
+        );
+      })}
     </ul>
   );
 

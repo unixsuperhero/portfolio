@@ -1,8 +1,8 @@
 // Response shapes for the desktop frontend's API calls, copied from apps/desktop/CONTRACT.md.
-// Most are already defined in @portfolio/core (TaskView, TaskInput, DueReminder, ProjectView,
+// Most are already defined in @portfolio/core (TaskView, TaskInput, ProjectView,
 // Settings, ResolvedSlot, Card/CardSpec with kind + config) and are re-exported here so callers
 // only need to import from "./types.ts".
-import type { Card, ItemType, ItemView, Portfolio, ProjectView, ResolvedSlot, Settings } from "@portfolio/core";
+import type { Card, ItemType, ItemView, Portfolio, ProjectView, Recurrence, ResolvedSlot, Settings } from "@portfolio/core";
 import type { PortEntry } from "@portfolio/ports";
 
 export type {
@@ -10,7 +10,6 @@ export type {
   CardKind,
   CardSpec,
   Completion,
-  DueReminder,
   Item,
   ItemFilter,
   ItemType,
@@ -27,6 +26,10 @@ export type {
   TaskInput,
   TaskView,
 } from "@portfolio/core";
+
+export type ReminderCreateInput = { title: string; notes?: string; recurrence?: Recurrence; at: string; days?: number[]; task_id?: number | null; active?: boolean };
+export type ReminderView = { id: number; title: string; notes: string; recurrence: Recurrence; at: string; days: number[]; task_id: number | null; active: boolean; created_at: string; completed_today: boolean; last_completed: string | null; streak: number };
+export type DueReminder = { reminder: ReminderView; due_at: string };
 
 /** GET /api/items/:id */
 export interface ItemDetail extends ItemView {

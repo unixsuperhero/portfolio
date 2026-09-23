@@ -60,6 +60,51 @@ export function migrateReminderColumns(db: Database): void {
   if (!columns.includes("days")) db.exec("ALTER TABLE reminders ADD COLUMN days TEXT NOT NULL DEFAULT '[]'");
 }
 
+/** Rebuilds legacy task-owned reminders into standalone reminder records while preserving ids. */
+export function migrateReminderEntities(db: Database): void {
+  const columns = db.query<{ name: string; notnull: number }, []>("PRAGMA table_info(reminders)").all();
+  if (!columns.length) return;
+  if (columns.some(column => column.name === "title")) {
+    db.exec(`CREATE TABLE IF NOT EXISTS reminder_completions (id INTEGER PRIMARY KEY, reminder_id INTEGER NOT NULL REFERENCES reminders(id) ON DELETE CASCADE,
+      "on" TEXT NOT NULL, at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (reminder_id, "on"))`);
+    return;
+  }
+  const hasCompletions = Boolean(db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'completions'").get());
+  db.transaction(() => {
+    db.exec(`
+      CREATE TABLE reminders_next (
+        id INTEGER PRIMARY KEY,
+        title TEXT NOT NULL,
+        notes TEXT NOT NULL DEFAULT '',
+        recurrence TEXT NOT NULL CHECK (recurrence IN ('daily','once')),
+        task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+        at TEXT NOT NULL,
+        days TEXT NOT NULL DEFAULT '[]',
+        active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT INTO reminders_next(id, title, notes, recurrence, task_id, at, days, active, created_at)
+        SELECT reminders.id, tasks.title, tasks.notes, tasks.recurrence, reminders.task_id, reminders.at,
+          COALESCE(reminders.days, '[]'), tasks.active, tasks.created_at
+        FROM reminders JOIN tasks ON tasks.id = reminders.task_id;
+      DROP TABLE reminders;
+      ALTER TABLE reminders_next RENAME TO reminders;
+      CREATE INDEX IF NOT EXISTS reminders_task ON reminders(task_id);
+      CREATE TABLE IF NOT EXISTS reminder_completions (id INTEGER PRIMARY KEY, reminder_id INTEGER NOT NULL REFERENCES reminders(id) ON DELETE CASCADE,
+        "on" TEXT NOT NULL, at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (reminder_id, "on"));
+    `);
+    if (hasCompletions) {
+      db.exec(`
+        INSERT INTO reminder_completions(reminder_id, "on", at)
+          SELECT reminders.id, completions."on", completions.at
+          FROM reminders JOIN completions ON completions.task_id = reminders.task_id
+          WHERE true
+          ON CONFLICT(reminder_id, "on") DO NOTHING;
+      `);
+    }
+  })();
+}
+
 /** Opens (and creates) a Portfolio database and applies the schema. ":memory:" works for tests. */
 export function openDatabase(path: string = defaultDatabasePath(), options: OpenOptions = {}): Database {
   const db = options.readonly ? new Database(path, { readonly: true }) : new Database(path, { create: options.create ?? true, readwrite: true });
@@ -68,6 +113,7 @@ export function openDatabase(path: string = defaultDatabasePath(), options: Open
   if (options.migrate ?? true) migrateItemKinds(db, path, schema, options.log);
   migrateCardColumns(db);
   migrateReminderColumns(db);
+  migrateReminderEntities(db);
   const taskColumns = db.query<{ name: string }, []>("PRAGMA table_info(tasks)").all();
   if (taskColumns.length && !taskColumns.some(column => column.name === "parent_id")) {
     db.exec("ALTER TABLE tasks ADD COLUMN parent_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL CHECK (parent_id != id)");

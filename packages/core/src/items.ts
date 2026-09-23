@@ -29,6 +29,7 @@ export function toItemView(item: Item, tags: string[], href = itemHref(item)): I
     description: item.description,
     url: item.url,
     source_path: item.source_path,
+    task_id: item.task_id,
     path: item.path,
     pinned: Boolean(item.pinned),
     starred: Boolean(item.starred),

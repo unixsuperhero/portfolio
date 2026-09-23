@@ -1,0 +1,14 @@
+.operational-error { color: var(--danger); font-size: 0.82rem; margin: 0 0 1rem; }
+.operational-status { color: var(--text2); font-size: 0.82rem; margin: 0 0 1rem; }
+.empty-table-cell { color: var(--text2); text-align: center !important; padding: 1rem !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.data-table tr.is-selected { background: var(--surface2); }
+.data-table input[type="checkbox"], .selectable-pr-row > input[type="checkbox"] { accent-color: var(--accent); }
+.selectable-pr-row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; border-bottom: 1px solid var(--border); }
+.selectable-pr-row > input[type="checkbox"] { margin: 0.75rem 0 0 0.75rem; }
+.selectable-pr-row .pr-row { border-bottom: none; min-width: 0; }
+.selectable-pr-row.is-selected { background: var(--surface2); }
+.bulk-inline-field { display: flex; flex-direction: column; gap: 0.25rem; color: var(--text2); font-size: 0.78rem; }
+.bulk-inline-field textarea { min-width: 13rem; max-width: 18rem; resize: vertical; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: 0.35rem 0.5rem; font: 0.8rem var(--mono); }
+.reminder-notes { margin-top: 0.35rem; color: var(--text2); max-width: 42rem; }
+.reminder-notes .note-render { font-size: 0.82rem; }

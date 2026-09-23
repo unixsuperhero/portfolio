@@ -99,8 +99,15 @@ PATCH  /api/tasks/:id      body Partial<TaskInput> & { active?: boolean } → { 
 DELETE /api/tasks/:id                           → { ok }
 POST   /api/tasks/:id/complete   { on?: "YYYY-MM-DD" } → TaskView
 POST   /api/tasks/:id/uncomplete { on?: "YYYY-MM-DD" } → TaskView
+GET    /api/reminders?all                       → { reminders: ReminderView[] }
+POST   /api/reminders body ReminderCreateInput → { id }
+GET    /api/reminders/:id                      → ReminderView
+PATCH  /api/reminders/:id body Partial<ReminderCreateInput> → { ok }
+DELETE /api/reminders/:id                      → { ok }
+POST   /api/reminders/:id/complete   { on?: "YYYY-MM-DD" } → ReminderView
+POST   /api/reminders/:id/uncomplete { on?: "YYYY-MM-DD" } → ReminderView
 GET    /api/reminders/due?minutes=60            → { due: DueReminder[] }
-GET    /api/reminders/today                     → { tasks: TaskView[] }   (daily tasks + once tasks due today, with completed flag)
+GET    /api/reminders/today                     → { reminders: ReminderView[] }
 ```
 
 ### Shapes (additions to `@portfolio/core` types)
@@ -150,7 +157,9 @@ const task = {
 };
 const taskInput = { title, notes?, recurrence?, item_id?, parent_id?, reminders?: ["08:30"] }; // recurrence defaults to "once"
 const completion = { id, task_id, on: "2026-09-22", at: "2026-09-22 08:41:00" };
-const dueReminder = { task: TaskView, reminder: { id, at }, due_at: "2026-09-22T08:30" };
+const reminder = { id: 1, title: "Call the dentist", notes: "", recurrence: "once", at: "2026-09-24T09:00", days: [], task_id: null, active: true, created_at: "…", completed_today: false, last_completed: null, streak: 0 };
+const reminderInput = { title: "Call the dentist", at: "2026-09-24T09:00" }; // notes, recurrence, days, task_id, active are optional
+const dueReminder = { reminder, due_at: "2026-09-24T09:00" };
 // "due" = at-time within [now - minutes, now + minutes] and not completed (today for daily). The frontend polls
 // this and never resets page state when it does.
 ```
@@ -159,7 +168,7 @@ Tasks also have Library items with `type: "task"` and a unique `task_id`. `GET /
 
 `parent_id` is a task ID, not an item ID. Null means top-level. Cycles and missing parents return 422. Deleting a parent keeps its direct children as top-level tasks. Completion is independent for each task. Reopening a once-task clears its completion even if it was completed on an earlier date.
 
-The frontend exposes `/tasks` and `/tasks/:taskId`, with nested creation, editing, reparenting, deletion, and completion. Task item pages expose the same controls. Reminders continue using the same task records.
+The frontend exposes `/tasks` and `/tasks/:taskId`, with nested creation, editing, reparenting, deletion, and completion. Task item pages expose the same controls. Reminders are independent records. Their optional task link defaults to null; completing a reminder does not complete its task, and deleting a task detaches its reminders.
 
 Schema additions (both `schema.sql` and `packages/db/src/schema.sql` stay identical):
 
@@ -170,7 +179,12 @@ CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY, title TEXT NOT NULL, n
   recurrence TEXT NOT NULL CHECK (recurrence IN ('daily','once')), item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
   active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   parent_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL CHECK (parent_id != id));
-CREATE TABLE IF NOT EXISTS reminders (id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS reminders (id INTEGER PRIMARY KEY, title TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '',
+  recurrence TEXT NOT NULL CHECK (recurrence IN ('daily','once')), task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+  at TEXT NOT NULL, days TEXT NOT NULL DEFAULT '[]', active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS reminder_completions (id INTEGER PRIMARY KEY, reminder_id INTEGER NOT NULL REFERENCES reminders(id) ON DELETE CASCADE,
+  "on" TEXT NOT NULL, at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (reminder_id, "on"));
 CREATE TABLE IF NOT EXISTS completions (id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   "on" TEXT NOT NULL, at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (task_id, "on"));
 ```
@@ -365,13 +379,12 @@ and edit (path), slot overrides on the item page, category slot editor (absolute
 // Reminders gain weekdays; once-tasks pick a date.
 const reminder = { id: 1, at: "08:30", days: [1, 3, 5] };   // 0 = Sunday … 6 = Saturday; [] = every day
 // TaskInput.reminders accepts either "08:30" or { at: "08:30", days?: [1,3,5] }; once-tasks use "YYYY-MM-DDTHH:MM".
-// dueReminders / todayTasks: a daily reminder with non-empty days fires only on those weekdays (local time).
-// A daily task counts as "today" when at least one reminder fires today, or when it has no reminders.
+// dueReminders / todayReminders: daily reminders with non-empty days fire only on those weekdays (local time).
+// Tasks without schedules do not appear in reminder lists.
 // Schema: ALTER TABLE reminders ADD COLUMN days TEXT NOT NULL DEFAULT '[]' (migration in open.ts + both schema files).
 ```
 
-Reminders form: `<input type="time">` per reminder row, add/remove rows, weekday toggle buttons per row
-for daily tasks, `<input type="datetime-local">` for once tasks. The list shows `08:30 · Mon Wed Fri`.
+The Reminders form creates one independent schedule per record, using `<input type="time">` and weekday toggles for daily reminders or `<input type="datetime-local">` for once reminders. Task association is optional. The list shows `08:30 · Mon Wed Fri`.
 
 Projects page: client-side over `GET /api/projects`. Search box (`q` in the URL) matches title, path,
 tags, script names. Sort: name, recently updated, running ports, script count. Filters: runner

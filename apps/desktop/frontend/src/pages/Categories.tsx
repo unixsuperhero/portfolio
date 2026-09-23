@@ -1,19 +1,38 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
+import { Link, useSearchParams } from "react-router";
 import { ITEM_TYPES } from "@portfolio/core";
 import type { ItemType } from "@portfolio/core";
 import type { CategorySummary } from "../types.ts";
-import { createCategory, deleteCategory, listCategories } from "../api.ts";
+import { createCategory, deleteCategory, listCategories, patchCategory } from "../api.ts";
 import { isWails } from "../lib/wails.ts";
 import { home, pickDirectory, pickFile } from "../native.ts";
 import { BrowsePicker } from "../components/BrowsePicker.tsx";
+import { CollectionToolbar, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
+
+type SortKey = "name" | "members";
 
 export default function Categories() {
+  const [params, setParams] = useSearchParams();
   const [categories, setCategories] = useState<CategorySummary[]>([]);
   const [name, setName] = useState("");
   const [kind, setKind] = useState<ItemType>("dir");
   const [slots, setSlots] = useState("");
   const [browsing, setBrowsing] = useState(false);
+  const [bulkKind, setBulkKind] = useState<ItemType>("dir");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const query = params.get("q") ?? "";
+  const kindFilter = params.get("kind") ?? "";
+  const sort = (params.get("sort") ?? "name") as SortKey;
+
+  const setParam = (key: string, value: string) => {
+    const next = new URLSearchParams(params);
+    if (value) next.set(key, value); else next.delete(key);
+    setParams(next);
+  };
 
   const insertSlotLine = (slotKind: "dir" | "file", picked: string) => {
     const line = `slot | ${slotKind} | ${picked}`;
@@ -32,13 +51,61 @@ export default function Categories() {
     if (slotKind === "dir") setBrowsing(true);
   };
 
-  const load = () => listCategories().then(({ categories }) => setCategories(categories)).catch(() => {});
+  const load = () => { setLoading(true); return listCategories().then(({ categories }) => setCategories(categories)).catch(error => setError((error as Error).message)).finally(() => setLoading(false)); };
   useEffect(() => { load(); }, []);
 
-  const submit = (event: React.FormEvent) => {
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return categories
+      .filter(category => {
+        if (needle && !category.name.toLowerCase().includes(needle)) return false;
+        if (kindFilter && category.kind !== kindFilter) return false;
+        return true;
+      })
+      .sort((a, b) => (sort === "members" ? b.member_count - a.member_count : a.name.localeCompare(b.name)));
+  }, [categories, query, kindFilter, sort]);
+
+  const selection = useSelection(visible.map(category => category.id));
+  const selectedIds = Array.from(selection.selected);
+
+  const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!name.trim()) return;
-    createCategory(name.trim(), kind, slots).then(() => { setName(""); setSlots(""); load(); }).catch(() => {});
+    setBusy(true);
+    setError("");
+    createCategory(name.trim(), kind, slots)
+      .then(() => { setName(""); setSlots(""); load(); })
+      .catch(error => setError((error as Error).message))
+      .finally(() => setBusy(false));
+  };
+
+  const changeSelectedKind = () => {
+    if (!selectedIds.length) return;
+    setBusy(true);
+    setError("");
+    Promise.allSettled(selectedIds.map(id => patchCategory(id, { kind: bulkKind })))
+      .then(results => {
+        const failed = results.filter(result => result.status === "rejected").length;
+        if (failed) setError(`${failed} categor${failed === 1 ? "y" : "ies"} failed to update.`);
+        selection.clear();
+        load();
+      })
+      .finally(() => setBusy(false));
+  };
+
+  const deleteSelected = () => {
+    if (!selectedIds.length) return;
+    if (!window.confirm(`Delete ${selectedIds.length} categor${selectedIds.length === 1 ? "y" : "ies"}? Items and disk files are preserved.`)) return;
+    setBusy(true);
+    setError("");
+    Promise.allSettled(selectedIds.map(deleteCategory))
+      .then(results => {
+        const failed = results.filter(result => result.status === "rejected").length;
+        if (failed) setError(`${failed} categor${failed === 1 ? "y" : "ies"} failed to delete.`);
+        selection.clear();
+        load();
+      })
+      .finally(() => setBusy(false));
   };
 
   return (
@@ -56,24 +123,57 @@ export default function Categories() {
           <button type="button" className="secondary" onClick={() => insertSlotPath("dir")}>Insert directory…</button>
           <button type="button" className="secondary" onClick={() => insertSlotPath("file")}>Insert file…</button>
         </div>
-        <button className="primary" type="submit">Create category</button>
+        <button className="primary" type="submit" disabled={busy}>Create category</button>
       </form>
       {browsing ? (
         <BrowsePicker kind="dir" onClose={() => setBrowsing(false)} onPick={path => { insertSlotLine("dir", path); setBrowsing(false); }} />
       ) : null}
-      <table className="data-table">
-        <thead><tr><th>Name</th><th>Kind</th><th>Members</th><th></th></tr></thead>
-        <tbody>
-          {categories.map(category => (
-            <tr key={category.id}>
-              <td><Link to={`/categories/${category.id}`}>{category.name}</Link></td>
-              <td>{category.kind}</td>
-              <td>{category.member_count}</td>
-              <td><button type="button" className="danger" onClick={() => deleteCategory(category.id).then(load)}>Delete</button></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <CollectionToolbar
+        query={query}
+        onQueryChange={value => setParam("q", value)}
+        sort={sort}
+        onSortChange={value => setParam("sort", value)}
+        sortOptions={[
+          { value: "name", label: "Name" },
+          { value: "members", label: "Member count" },
+        ]}
+      >
+        <label>Kind
+          <select value={kindFilter} onChange={event => setParam("kind", event.target.value)}>
+            <option value="">Any</option>
+            {ITEM_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+          </select>
+        </label>
+      </CollectionToolbar>
+      <SelectionBar count={selectedIds.length} total={visible.length} allSelected={selection.allSelected} onToggleAll={selection.toggleAll} onClear={selection.clear} busy={busy}>
+        <label>Set kind
+          <select value={bulkKind} onChange={event => setBulkKind(event.target.value as ItemType)} disabled={busy}>
+            {ITEM_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+          </select>
+        </label>
+        <button type="button" className="secondary" onClick={changeSelectedKind} disabled={busy || !selectedIds.length}>Apply</button>
+        <button type="button" className="danger" onClick={deleteSelected} disabled={busy || !selectedIds.length}>Delete records</button>
+      </SelectionBar>
+      {error ? <p className="error">{error}</p> : null}
+      {loading && !categories.length ? <div className="empty"><strong>Loading…</strong></div> : null}
+      {!loading && !categories.length ? <div className="empty"><strong>No categories yet.</strong></div> : null}
+      {categories.length && !visible.length ? <div className="empty"><strong>No matching categories.</strong><p>Adjust search or filters.</p></div> : null}
+      {visible.length ? (
+        <table className="data-table">
+          <thead><tr><th>Select</th><th>Name</th><th>Kind</th><th>Members</th><th></th></tr></thead>
+          <tbody>
+            {visible.map(category => (
+              <tr key={category.id}>
+                <td><input type="checkbox" checked={selection.selected.has(category.id)} onChange={() => selection.toggle(category.id)} aria-label={`Select ${category.name}`} /></td>
+                <td><Link to={`/categories/${category.id}`}>{category.name}</Link></td>
+                <td>{category.kind}</td>
+                <td>{category.member_count}</td>
+                <td><button type="button" className="danger" onClick={() => window.confirm(`Delete ${category.name}? Items and disk files are preserved.`) && deleteCategory(category.id).then(load).catch(error => setError((error as Error).message))}>Delete</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
     </div>
   );
 }

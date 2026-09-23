@@ -233,16 +233,19 @@ const prEvent = {
 
 ## Task, Reminder, and Completion
 
-A task is a to-do with zero or more reminders. New tasks default to `recurrence: "once"` and need no reminder. Daily tasks repeat every day.
+A task is a to-do. A reminder is a separately scheduled notification, optionally linked to a task. Both support `once` and `daily` recurrence and have separate completion histories.
 
 ```js
 const task = { id: 1, title: "Stretch", notes: "", recurrence: "daily", item_id: null, parent_id: null, active: 1, created_at: "…" };
-const reminder = { id: 1, task_id: 1, at: "08:30", days: "[1,3,5]" };  // daily: "HH:MM" local; days is a JSON array of weekdays, "[]" = every day
-// a "once" task's reminder instead reads "YYYY-MM-DDTHH:MM" local, e.g. "2026-09-22T08:30", and never sets days
+const reminder = { id: 1, title: "Call the dentist", notes: "", recurrence: "once", task_id: null, at: "2026-09-24T09:00", days: "[]", active: 1 };
+// Daily reminders use "HH:MM" local time and weekdays such as "[1,3,5]"; "[]" means every day.
 const completion = { id: 1, task_id: 1, on: "2026-09-22", at: "2026-09-22 08:41:00" };  // one row per (task, day)
+const reminderCompletion = { id: 1, reminder_id: 1, on: "2026-09-24", at: "2026-09-24 09:00:00" };
 ```
 
 `TaskInput.reminders` accepts either a plain `"HH:MM"`/`"YYYY-MM-DDTHH:MM"` string or `{ at, days? }`, where `days` is `number[]` (0 = Sunday … 6 = Saturday), validated to integers 0-6, de-duplicated and sorted. Once-tasks reject `days` with an error. Omitted or `[]` fires every day.
+
+`ReminderCreateInput` accepts `{ title, notes?, recurrence?, at, days?, task_id?, active? }`. Omitting `task_id` creates a standalone reminder with no task or Library item. Completing a reminder does not complete its linked task. Deleting a task detaches its reminders rather than deleting them. Existing task-owned reminders retain their IDs, schedules, weekdays, and completion history during migration.
 
 `parent_id` references another task, or is `null` for a top-level task. The API rejects missing parents and cycles. Completing a task does not complete its parent or children. Deleting a parent promotes its direct children to top-level tasks.
 
@@ -265,7 +268,7 @@ const view = {
 };
 ```
 
-`dueReminders(db, { now?, minutes = 60 })` returns `{ task: TaskView, reminder, due_at }` for every reminder within `minutes` of `now` that isn't already completed — a daily reminder's `due_at` is today's date plus its `"HH:MM"`; a once reminder's `due_at` is its own datetime. A daily reminder with a non-empty `days` is skipped unless today's local weekday (from `now`) is in the list. `todayTasks(db, today?)` returns every daily task that has no reminders or has at least one reminder firing on `today`'s weekday, plus any once task with a reminder dated today.
+`dueReminders(db, { now?, minutes = 60 })` returns `{ reminder: ReminderView, due_at }` for scheduled occurrences within the time window. It excludes completed reminders and reminders linked to completed or inactive tasks. Weekdays apply to each occurrence's local date. `todayReminders(db, today?)` returns active reminders scheduled for that date, including their completion state. Tasks without reminders are not included.
 
 ## Project view
 

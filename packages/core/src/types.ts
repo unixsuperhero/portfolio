@@ -33,6 +33,7 @@ export interface ItemView {
   description: string;
   url: string | null;
   source_path: string | null;
+  task_id: number | null;
   path: string | null;
   pinned: boolean;
   starred: boolean;
@@ -149,11 +150,17 @@ export interface Task {
 
 export interface Reminder {
   id: number;
-  task_id: number;
+  title: string;
+  notes: string;
+  recurrence: Recurrence;
+  /** Optional linked task. Standalone reminders have null. */
+  task_id: number | null;
   /** Daily: "HH:MM" local. Once: "YYYY-MM-DDTHH:MM" local. */
   at: string;
   /** JSON array of weekdays (0 = Sunday … 6 = Saturday); "[]" fires every day. Daily reminders only. */
   days: string;
+  active: 0 | 1;
+  created_at: string;
 }
 
 export interface Completion {
@@ -165,6 +172,16 @@ export interface Completion {
 
 /** A reminder's weekdays; 0 = Sunday … 6 = Saturday. Omitted or [] fires every day. Once-tasks cannot set days. */
 export type ReminderInput = string | { at: string; days?: number[] };
+
+export interface ReminderCreateInput {
+  title: string;
+  notes?: string;
+  recurrence?: Recurrence;
+  at: string;
+  days?: number[];
+  task_id?: number | null;
+  active?: boolean;
+}
 
 export interface TaskInput {
   title: string;
@@ -192,9 +209,23 @@ export interface TaskView {
   streak: number;
 }
 
+export interface ReminderView {
+  id: number;
+  title: string;
+  notes: string;
+  recurrence: Recurrence;
+  at: string;
+  days: number[];
+  task_id: number | null;
+  active: boolean;
+  created_at: string;
+  completed_today: boolean;
+  last_completed: string | null;
+  streak: number;
+}
+
 export interface DueReminder {
-  task: TaskView;
-  reminder: { id: number; at: string; days: number[] };
+  reminder: ReminderView;
   due_at: string;
 }
 

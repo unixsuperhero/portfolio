@@ -2,7 +2,7 @@ import type { ItemView } from "@portfolio/core";
 import { normalizeCard } from "@portfolio/core";
 
 const item = (id: number, type: ItemView["type"], title: string, tags: string[], extra: Partial<ItemView> = {}): ItemView => ({
-  id, type, title, description: "", url: type === "link" || type === "pr" ? `https://example.com/${id}` : null, source_path: null, path: null,
+  id, type, title, description: "", url: type === "link" || type === "pr" ? `https://example.com/${id}` : null, source_path: null, path: null, task_id: null,
   pinned: false, starred: false, created_at: `2026-09-${String(id).padStart(2, "0")} 10:00:00`, updated_at: `2026-09-2${id % 10} 10:00:00`, href: `/items/${id}`, tags, ...extra,
 });
 

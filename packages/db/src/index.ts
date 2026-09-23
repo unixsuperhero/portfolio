@@ -7,5 +7,6 @@ export * from "./settings.ts";
 export * from "./watched.ts";
 export * from "./projects.ts";
 export * from "./tasks.ts";
+export * from "./reminders.ts";
 export * from "./github.ts";
 export * from "./store.ts";

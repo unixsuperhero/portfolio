@@ -9,7 +9,8 @@ test("task hierarchy rejects cycles, preserves children on deletion, and shares 
     method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body),
   }));
   try {
-    const root = await (await request("/api/tasks", "POST", { title: "Release" })).json();
+    const reference = await (await request("/api/items", "POST", { type: "link", title: "Reference", url: "https://example.com" })).json();
+    const root = await (await request("/api/tasks", "POST", { title: "Release", item_id: reference.id })).json();
     const child = await (await request("/api/tasks", "POST", { title: "Checks", parent_id: root.id })).json();
     const leaf = await (await request("/api/tasks", "POST", { title: "Review", parent_id: child.id })).json();
     expect((await request(`/api/tasks/${root.id}`, "PATCH", { parent_id: leaf.id })).status).toBe(422);
@@ -19,6 +20,8 @@ test("task hierarchy rejects cycles, preserves children on deletion, and shares 
     const library = await (await request("/api/items?type=task")).json();
     expect(library.items.map((item: { title: string }) => item.title).sort()).toEqual(["Checks", "Release", "Review"]);
     const entry = library.items.find((item: { title: string }) => item.title === "Checks");
+    expect(entry.task_id).toBe(child.id);
+    expect(entry.id).not.toBe(child.id);
     expect((await request(`/api/items/${entry.id}`, "PATCH", { title: "Run checks", content: "Run the build", tags: ["release"] })).status).toBe(200);
     expect(await (await request(`/api/tasks/${child.id}`)).json()).toMatchObject({ title: "Run checks", notes: "Run the build", parent_id: root.id });
     await request(`/api/tasks/${child.id}`, "PATCH", { title: "Build checks" });

@@ -1,6 +1,5 @@
 import { useState } from "react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { MarkdownContent } from "../components/MarkdownContent.tsx";
 import { updateCard } from "../api.ts";
 
 export function NoteCard({ cardId, text, title, onSaved }: { cardId: number; text: string; title: string; onSaved: () => void }) {
@@ -33,7 +32,7 @@ export function NoteCard({ cardId, text, title, onSaved }: { cardId: number; tex
 
   return (
     <div>
-      <div className="note-render"><Markdown remarkPlugins={[remarkGfm]} skipHtml>{text}</Markdown></div>
+      <MarkdownContent text={text} />
       <button type="button" className="secondary" onClick={() => { setDraft(text); setError(""); setEditing(true); }}>Edit</button>
     </div>
   );

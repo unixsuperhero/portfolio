@@ -1,5 +1,5 @@
 import type {
-  Card, CardResult, Category, Completion, Detection, DueReminder, Item, ItemFilter, ItemType, ItemView,
+  Card, CardResult, Category, Completion, Detection, DueReminder, Item, ItemFilter, ItemType, ItemView, ReminderView,
   Portfolio, Pr, PrEvent, PrStatus, ProjectView, Recurrence, ResolvedSlot, Settings, Slot, TaskInput, TaskView, WatchedDirectory,
 } from "@portfolio/core";
 
@@ -159,7 +159,7 @@ export class PortfolioClient {
   completeTask(id: number, on?: string) { return this.request<TaskView>(`/api/tasks/${id}/complete`, { method: "POST", json: { on } }); }
   uncompleteTask(id: number, on?: string) { return this.request<TaskView>(`/api/tasks/${id}/uncomplete`, { method: "POST", json: { on } }); }
   dueReminders(minutes = 60) { return this.request<{ due: DueReminder[] }>("/api/reminders/due", { query: { minutes } }); }
-  todayTasks() { return this.request<{ tasks: TaskView[] }>("/api/reminders/today"); }
+  todayReminders() { return this.request<{ reminders: ReminderView[] }>("/api/reminders/today"); }
 
   prs() { return this.request<{ mine: Pr[]; review_requested: Pr[]; watched: Pr[]; status: PrStatus }>("/api/prs"); }
   refreshPrs() { return this.request<{ mine: Pr[]; review_requested: Pr[]; watched: Pr[]; status: PrStatus }>("/api/prs/refresh", { method: "POST" }); }

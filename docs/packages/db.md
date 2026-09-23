@@ -13,9 +13,9 @@ const store = openStore(":memory:");             // tests
 
 | Function | Notes |
 |----------|-------|
-| `openDatabase(path?, { schema, create, readonly, migrate, log })` | applies the schema; rebuilds older `items` tables for task, file, and directory types, with a backup at `<db>.before-tasks`; adds `tasks.parent_id` and Library entries for existing tasks; migrates `cards.kind`, `cards.config`, and `reminders.days` |
+| `openDatabase(path?, { schema, create, readonly, migrate, log })` | applies the schema; rebuilds older `items` tables for task, file, and directory types, with a backup at `<db>.before-tasks`; adds `tasks.parent_id` and Library entries for existing tasks; migrates card columns and task-owned reminders into independent reminder records while preserving schedules and completion history |
 | `defaultDatabasePath()` | `PORTFOLIO_DB`, else `<PORTFOLIO_HOME or ~/proj/portfolio>/portfolio.sqlite` |
-| `openStore(path?, options?)` | `{ db, items, tags, portfolios, categories, settings, watched, projects, tasks, close }` with every function pre-bound |
+| `openStore(path?, options?)` | `{ db, items, tags, portfolios, categories, settings, watched, projects, tasks, reminders, github, close }` with every function pre-bound |
 | `SCHEMA_PATH`, `readSchema()` | the packaged schema |
 
 ## Repos
@@ -46,7 +46,9 @@ const store = openStore(":memory:");             // tests
 
 `projects.ts`: `listProjectParents` (with counts), `addProjectParent`, `removeProjectParent`.
 
-`tasks.ts`: `listTasks(db, { all? })` (active only unless `all`), `getTask`, `createTask(db, TaskInput)`, `updateTask(db, id, patch)` (title, notes, recurrence, item_id, active, reminders), `deleteTask`, `setReminders(db, taskId, reminders)` (replaces a task's reminders; each entry is `"HH:MM"`/`"YYYY-MM-DDTHH:MM"` or `{ at, days? }`; validates the `at` format per recurrence and `days` as integers 0-6, de-duplicated and sorted; rejects `days` on once-tasks), `completeTask`/`uncompleteTask(db, id, on = today)`, `listCompletions`, `taskView(db, task, today?)` → `TaskView` with `completed_today`, `last_completed`, and a daily `streak` (consecutive days ending today or yesterday), `listTaskViews`, `dueReminders(db, { now?, minutes = 60 })` (excludes anything already completed, and a daily reminder whose non-empty `days` excludes `now`'s local weekday), `todayTasks(db, today?)` (daily tasks with no reminders or at least one reminder firing on `today`'s weekday, plus once tasks due today).
+`tasks.ts`: task CRUD, hierarchy, `setReminders(db, taskId, reminders)`, task completion, and `taskView`/`listTaskViews`. Task schedule inputs remain strings or `{ at, days? }`; they create linked reminder records using the task's title, notes, and recurrence.
+
+`reminders.ts`: `createReminder`, `getReminder`, `updateReminder`, `deleteReminder`, `listReminders`, `reminderView`, `listReminderViews`, `completeReminder`, `uncompleteReminder`, `dueReminders`, and `todayReminders`. A reminder owns its title, notes, recurrence, schedule, active state, and completion history. `task_id` is nullable. Completing a reminder does not complete a task; deleting a task detaches its reminders. Due selection suppresses reminders linked to completed or inactive tasks.
 
 ## Example
 
