@@ -6,19 +6,4 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as main$0 from "../../../../../portfolio-desktop/models.js";
-
-function configure() {
-    Object.freeze(Object.assign($Create.Events, {
-        "pty:data": $$createType0,
-        "pty:exit": $$createType1,
-    }));
-}
-
-// Private type creation functions
-const $$createType0 = main$0.PtyDataEvent.createFrom;
-const $$createType1 = main$0.PtyExitEvent.createFrom;
-
-configure();
+Object.freeze($Create.Events);

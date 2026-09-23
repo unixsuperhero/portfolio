@@ -2,14 +2,19 @@
   "name": "portfolio",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*", "apps/desktop/frontend"],
+  "workspaces": [
+    "packages/*",
+    "apps/desktop/frontend"
+  ],
   "scripts": {
     "start": "bun run app.js",
     "import": "bun run import.js",
     "test": "bun test",
     "test:packages": "bun test packages",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "ui:demo": "bun run --cwd packages/ui demo"
+    "ui:demo": "bun run --cwd packages/ui demo",
+    "app:make": "cd apps/desktop && wails3 package",
+    "app:run": "open apps/desktop/bin/desktop.app"
   },
   "devDependencies": {
     "@types/bun": "^1.2.0",
