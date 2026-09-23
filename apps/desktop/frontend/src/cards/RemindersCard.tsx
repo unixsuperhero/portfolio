@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ReminderView } from "../types.ts";
 import { completeReminder, getTodayReminders, listReminders, uncompleteReminder } from "../api.ts";
+import { AllDone, StreakBadge } from "../components/Completion.tsx";
 
 export function RemindersCard({ scope = "today" }: { scope?: "today" | "all" }) {
   const [reminders, setReminders] = useState<ReminderView[] | null>(null);
@@ -27,11 +28,12 @@ export function RemindersCard({ scope = "today" }: { scope?: "today" | "all" }) 
     <div>
       {reminders.map(reminder => (
         <label className="reminder-row" key={reminder.id}>
-          <input type="checkbox" checked={reminder.completed_today} onChange={() => toggle(reminder)} />
+          <input type="checkbox" className="done-check" checked={reminder.completed_today} onChange={() => toggle(reminder)} />
           <span>{reminder.title}</span>
-          {reminder.recurrence === "daily" && reminder.streak > 0 ? <span className="streak">🔥{reminder.streak}</span> : null}
+          <StreakBadge streak={reminder.streak} recurrence={reminder.recurrence} compact />
         </label>
       ))}
+      {reminders.every(reminder => reminder.completed_today) ? <AllDone /> : null}
     </div>
   );
 }

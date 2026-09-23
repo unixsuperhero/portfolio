@@ -4,6 +4,7 @@ import type { Recurrence, ReminderCreateInput, ReminderView, TaskView } from "..
 import { completeReminder, createReminder, deleteReminder, getTodayReminders, listReminders, listTasks, patchReminder, uncompleteReminder } from "../api.ts";
 import { CollectionToolbar, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
 import { MarkdownContent } from "../components/MarkdownContent.tsx";
+import { AllDone, StreakBadge } from "../components/Completion.tsx";
 import "../operational.css";
 
 type ReminderSort = "time" | "title";
@@ -217,12 +218,13 @@ export default function Reminders() {
       <h2>Today</h2>
       {today.length ? today.map(reminder => (
         <label className="reminder-row" key={reminder.id}>
-          <input type="checkbox" checked={reminder.completed_today} onChange={() => toggle(reminder)} />
+          <input type="checkbox" className="done-check" checked={reminder.completed_today} onChange={() => toggle(reminder)} />
           <span>{reminder.title}</span>
           {reminder.task_id !== null ? <span className="kind"><TaskLink tasks={tasks} id={reminder.task_id} /></span> : null}
-          {reminder.streak > 0 ? <span className="streak">🔥{reminder.streak}</span> : null}
+          <StreakBadge streak={reminder.streak} recurrence={reminder.recurrence} compact />
         </label>
       )) : <p style={{ color: "var(--text2)" }}>Nothing due today.</p>}
+      {today.length && today.every(reminder => reminder.completed_today) ? <AllDone /> : null}
       <h2 style={{ marginTop: "1.5rem" }}>Add reminder</h2>
       <form className="simple-form" onSubmit={event => { event.preventDefault(); submit(); }}>
         <ReminderForm draft={draft} tasks={tasks} submitLabel="Add reminder" onChange={setDraft} onSubmit={submit} />

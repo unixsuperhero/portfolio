@@ -6,6 +6,7 @@ import type { ItemView, TaskView } from "@portfolio/core";
 import { completeTask, createTask, deleteTask, listItems, listTasks, patchItem, patchTask, uncompleteTask } from "../api.ts";
 import { CollectionToolbar, ItemBulkActions, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
 import { MarkdownContent } from "../components/MarkdownContent.tsx";
+import { StreakBadge } from "../components/Completion.tsx";
 import "./Tasks.css";
 
 type Draft = { id: number | null; title: string; notes: string; parent_id: number | null; tags: string };
@@ -204,6 +205,7 @@ export default function Tasks({ taskId, onChange }: { taskId?: number; onChange?
         />
         <input
           type="checkbox"
+          className="done-check"
           aria-label={`${task.completed_today ? "Reopen" : "Complete"} ${task.title}`}
           checked={task.completed_today}
           disabled={busy}
@@ -216,6 +218,7 @@ export default function Tasks({ taskId, onChange }: { taskId?: number; onChange?
             <small>{recurrenceLabel(task)}</small>
             {!task.active ? <small>Inactive</small> : null}
             {task.last_completed ? <small>Last done {task.last_completed}</small> : null}
+            <StreakBadge streak={task.streak} recurrence={task.recurrence} />
           </div>
           <TagList tags={taskTags} onClick={name => setParam("tag", name)} />
         </div>

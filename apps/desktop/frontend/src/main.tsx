@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import "@portfolio/ui/tokens.css";
 import "@portfolio/ui/cards.css";
 import "./app.css";
+import "./complete.css";
 import App from "./App.tsx";
 // Load the Wails runtime eagerly: bindings, events, and ExecJS from Go depend on it.
 import "@wailsio/runtime";

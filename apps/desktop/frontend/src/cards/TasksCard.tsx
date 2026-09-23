@@ -4,6 +4,7 @@ import { TagList } from "@portfolio/ui";
 import type { ItemView, TaskView } from "@portfolio/core";
 import { completeTask, listItems, listTasks, uncompleteTask } from "../api.ts";
 import { MarkdownContent } from "../components/MarkdownContent.tsx";
+import { AllDone, StreakBadge } from "../components/Completion.tsx";
 import "../pages/Tasks.css";
 
 export function TasksCard() {
@@ -50,9 +51,10 @@ export function TasksCard() {
         return (
           <li key={task.id}>
             <div className="reminder-row tasks-card-row">
-              <input type="checkbox" aria-label={`${task.completed_today ? "Reopen" : "Complete"} ${task.title}`} checked={task.completed_today} disabled={pending !== null} onChange={() => void toggle(task)} />
+              <input type="checkbox" className="done-check" aria-label={`${task.completed_today ? "Reopen" : "Complete"} ${task.title}`} checked={task.completed_today} disabled={pending !== null} onChange={() => void toggle(task)} />
               <div className="task-copy">
                 <Link to={`/tasks/${task.id}`} className={task.completed_today ? "task-completed" : ""}>{task.title}</Link>
+                <StreakBadge streak={task.streak} recurrence={task.recurrence} compact />
                 {task.notes ? <MarkdownContent text={task.notes} /> : null}
                 <TagList tags={tags} hrefFor={name => `/tasks?tag=${encodeURIComponent(name)}`} />
               </div>
@@ -68,6 +70,7 @@ export function TasksCard() {
     <div>
       {error ? <p role="alert">{error}</p> : null}
       {tasks === null ? (!error ? <p>Loading tasks…</p> : null) : tasks.length ? rows(null) : <p>No tasks yet.</p>}
+      {tasks?.length && tasks.every(task => task.completed_today) ? <AllDone /> : null}
       <Link to="/tasks">Manage tasks</Link>
     </div>
   );

@@ -57,7 +57,7 @@ const project = { services: { runner: "bun", scripts: { dev: "…" } }, ports: [
 const pr = { state: "open", checks_summary: "success", watched: true, ignored_checks: ["codecov/*"] };
 ```
 
-The `tasks` card shows active tasks with nested subtasks and completion checkboxes. Each task links to its task page. Note cards support GitHub-flavored Markdown and a plain-text Markdown editor. Widget bodies and tile cards use the same horizontal padding as query rows.
+The `tasks` card shows active tasks with nested subtasks and completion checkboxes. Completion checkboxes on tasks and reminders draw a check and settle the title; a daily task or reminder with a streak of two or more days shows an `N-day streak` count that ticks up when it advances, and a list whose entries are all complete ends with an "All done today." line. Due-reminder toasts slide in and settle out on Done. Each task links to its task page. Note cards support GitHub-flavored Markdown and a plain-text Markdown editor. Widget bodies and tile cards use the same horizontal padding as query rows.
 
 Reminders are independent records with their own schedule and completion history. The Reminders form defaults to **No task**; selecting a task is optional. Creating a reminder does not create a task or a Library item. Completing a linked reminder does not complete its task. Existing task-linked reminders and their completion history migrate when the database opens.
 
