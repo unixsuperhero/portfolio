@@ -62,6 +62,43 @@ describe("createPrPoller.tick", () => {
     expect(logged[0]).toContain("HTTP 504");
   });
 
+  test("a per-list retry that still times out shrinks the page, then reports which list gave up", async () => {
+    const store = openStore(":memory:");
+    const calls: string[] = [];
+    const gh = {
+      graphql: async (query: string) => {
+        calls.push(query);
+        if (query.includes("review_requested: search") && query.includes("first: 5)")) {
+          return { review_requested: listsFixture.review_requested, rateLimit: listsFixture.rateLimit };
+        }
+        if (query.includes("mine: search") && !query.includes("review_requested")) return { mine: listsFixture.mine, rateLimit: listsFixture.rateLimit };
+        throw new Error("gh: HTTP 502");
+      },
+    };
+    const poller = createPrPoller({ db: store, gh, now: () => new Date("2026-09-22T14:05:00Z") });
+
+    await poller.tick();
+
+    // combined, mine@20, review_requested@20, @10, @5
+    expect(calls).toHaveLength(5);
+    expect(calls[3]).toContain("first: 10");
+    expect(calls[4]).toContain("first: 5");
+    expect(store.github.listPrs()).toHaveLength(2);
+    expect(poller.status().error).toBeNull();
+  });
+
+  test("a list that times out at every page size fails the directory with the list named", async () => {
+    const store = openStore(":memory:");
+    const calls: string[] = [];
+    const gh = { graphql: async (query: string) => { calls.push(query); throw new Error("gh: HTTP 502"); } };
+    const poller = createPrPoller({ db: store, gh, now: () => new Date("2026-09-22T14:05:00Z") });
+
+    await poller.tick();
+
+    expect(calls).toHaveLength(4); // combined, then mine at 20, 10, 5
+    expect(poller.status().error).toContain("mine list still times out at 5 per page: gh: HTTP 502");
+  });
+
   test("a non-timeout failure on the lists query is not retried", async () => {
     const store = openStore(":memory:");
     const calls: string[] = [];

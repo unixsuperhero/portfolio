@@ -39,8 +39,8 @@ const RATE_LIMIT_FLOOR = 200;
 const NO_WATCHED_MINUTES = 10;
 const REFRESH_MIN_GAP_MS = 30_000;
 const BASE_BACKOFF_MS = 60_000;
-/** Page size for the per-list retry after the combined query times out on GitHub's side. */
-const FALLBACK_LIST_PAGE = 20;
+/** Page sizes tried in turn, per list, after the combined query times out on GitHub's side. */
+const FALLBACK_LIST_PAGES = [20, 10, 5];
 
 /** GitHub's GraphQL backend gave up on the query: gh reports the bare gateway status, or GraphQL says timeout. */
 const isGatewayTimeout = (err: unknown): boolean => /HTTP 50[234]\b|timeout|timed out/i.test((err as Error).message ?? "");
@@ -54,7 +54,7 @@ export class PollTooSoonError extends Error {
 }
 
 /** One cycle's request(s), the diff, and the schedule around it. Never more than 2 GraphQL requests per directory per tick,
- * except that a lists query GitHub times out on is retried as two smaller ones. */
+ * except that a lists query GitHub times out on is retried per list with shrinking pages. */
 export function createPrPoller(options: PollerOptions) {
   const { db, gh } = options;
   const now = options.now ?? (() => new Date());
@@ -92,17 +92,31 @@ export function createPrPoller(options: PollerOptions) {
 
   const ghOptions = (dir: string | null) => (dir === null ? undefined : { cwd: dir });
 
-  /** The combined lists query, or, when GitHub times out on it, each list on its own with a smaller page. */
+  /** One list on its own, shrinking the page each time GitHub times out, until FALLBACK_LIST_PAGES runs out. */
+  async function fetchList(dir: string | null, list: ListName): Promise<Partial<ListsResponse>> {
+    let lastError: Error | null = null;
+    for (const first of FALLBACK_LIST_PAGES) {
+      try {
+        return (await gh.graphql(listQuery(list, first), ghOptions(dir))) as Partial<ListsResponse>;
+      } catch (err) {
+        if (!isGatewayTimeout(err)) throw err;
+        lastError = err as Error;
+        log(`${dir ?? "default dir"}: ${list} list of ${first} timed out (${lastError.message})`);
+      }
+    }
+    throw new Error(`${list} list still times out at ${FALLBACK_LIST_PAGES.at(-1)} per page: ${lastError!.message}`);
+  }
+
+  /** The combined lists query, or, when GitHub times out on it, each list on its own with ever smaller pages. */
   async function fetchLists(dir: string | null): Promise<ListsResponse> {
     try {
       return (await gh.graphql(listsQuery(), ghOptions(dir))) as ListsResponse;
     } catch (err) {
       if (!isGatewayTimeout(err)) throw err;
-      log(`${dir ?? "default dir"}: lists query timed out (${(err as Error).message}); retrying one list at a time, ${FALLBACK_LIST_PAGE} per list`);
+      log(`${dir ?? "default dir"}: lists query timed out (${(err as Error).message}); retrying one list at a time`);
     }
-    const one = async (list: ListName) => (await gh.graphql(listQuery(list, FALLBACK_LIST_PAGE), ghOptions(dir))) as Partial<ListsResponse>;
-    const mine = await one("mine");
-    const reviewRequested = await one("review_requested");
+    const mine = await fetchList(dir, "mine");
+    const reviewRequested = await fetchList(dir, "review_requested");
     return { mine: mine.mine!, review_requested: reviewRequested.review_requested!, rateLimit: reviewRequested.rateLimit! };
   }
 
