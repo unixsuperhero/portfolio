@@ -289,3 +289,8 @@ dialog.modal-panel::backdrop { background: rgba(0, 0, 0, .6); }
 .browse-row.selected { background: var(--surface2); color: var(--accent); }
 .browse-row.browse-parent { color: var(--text2); }
 .browse-footer { display: flex; justify-content: flex-end; gap: 0.5rem; }
+
+/* Shared add textarea (components/AddTextarea.tsx): a single line that grows with its content. */
+.add-textarea { width: 100%; min-height: 2.2rem; resize: none; overflow: hidden; line-height: 1.4; font: inherit; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: 0.45rem 0.6rem; }
+.confirm-dialog h2 { margin: 0 0 0.5rem; font-size: 1.1rem; }
+.confirm-dialog p { margin: 0 0 1rem; color: var(--text2); }
