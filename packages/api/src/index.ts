@@ -15,6 +15,7 @@ import {
   listPortfoliosRoute, moveCardRoute, patchPortfolioRoute, updateCardRoute,
 } from "./portfolios.ts";
 import { getPortsRoute, killPortRoute } from "./ports.ts";
+import { herdrRoute } from "./herdr.ts";
 import { listPrEventsRoute, listPrsRoute, markPrEventsSeenRoute, patchPrRoute, refreshPrsRoute, watchPrRoute } from "./prs.ts";
 import {
   addProjectParentRoute, getProjectRoute, listProjectParentsRoute, listProjectsRoute, removeProjectParentRoute,
@@ -80,6 +81,10 @@ const ROUTES: [string, string, (ctx: ReturnType<typeof createContext>, request: 
 
   ["GET", "/api/ports", getPortsRoute],
   ["POST", "/api/ports/kill", killPortRoute],
+  ["GET", "/api/herdr", herdrRoute],
+  ["GET", "/api/herdr/catalog", herdrRoute],
+  ["POST", "/api/herdr/command", herdrRoute],
+  ["POST", "/api/herdr/session", herdrRoute],
 
   ["GET", "/api/prs", listPrsRoute],
   ["POST", "/api/prs/refresh", refreshPrsRoute],

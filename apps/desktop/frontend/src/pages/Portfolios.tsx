@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { Link, useSearchParams } from "react-router";
 import type { PortfolioSummary } from "../types.ts";
 import { createPortfolio, deletePortfolio, listPortfolios, patchPortfolio, patchSettings } from "../api.ts";
-import { CollectionToolbar, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
+import { CollectionToolbar, SelectionBar, useSelection } from "@portfolio/ui/collections";
 import { AddTextarea } from "../components/AddTextarea.tsx";
 import { useConfirm } from "../components/ConfirmDialog.tsx";
 

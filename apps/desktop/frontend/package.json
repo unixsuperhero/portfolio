@@ -12,6 +12,7 @@
   "dependencies": {
     "@portfolio/client": "workspace:*",
     "@portfolio/core": "workspace:*",
+    "@portfolio/herdr": "workspace:*",
     "@portfolio/ports": "workspace:*",
     "@portfolio/ui": "workspace:*",
     "@wailsio/runtime": "latest",

@@ -7,7 +7,7 @@ import type { CardInput } from "../api.ts";
 import { createCard, deleteCard, moveCard, updateCard } from "../api.ts";
 import { DashboardCard } from "../cards/DashboardCard.tsx";
 import { CardKindEditor } from "../cards/CardKindEditor.tsx";
-import { CollectionToolbar, SelectionBar, useSelection } from "./CollectionTools.tsx";
+import { CollectionToolbar, SelectionBar, useSelection } from "@portfolio/ui/collections";
 import { useConfirm } from "./ConfirmDialog.tsx";
 
 export function PortfolioBoard({ portfolio, reload }: { portfolio: PortfolioView; reload: () => void }) {

@@ -20,4 +20,41 @@ import { toHtml } from "@portfolio/ui/server";
 toHtml(PortfolioCard, { card, items, total });   // static HTML string
 ```
 
+## Herdr console
+
+The same interactive console runs in Wails or a normal React web app. It has no
+desktop imports and uses the existing Portfolio HTTP transport:
+
+```tsx
+import { useSearchParams } from "react-router";
+import { PortfolioClient } from "@portfolio/client";
+import { createHerdrClient } from "@portfolio/herdr";
+import { HerdrPage } from "@portfolio/ui/herdr";
+import "@portfolio/ui/tokens.css";
+import "@portfolio/ui/herdr.css";
+
+const transport = new PortfolioClient("http://127.0.0.1:4388");
+const herdr = createHerdrClient((path, init) => transport.request(path, init));
+
+function HerdrRoute() {
+  const [params, setParams] = useSearchParams();
+  return <HerdrPage client={herdr} params={params}
+    onParamsChange={next => setParams(next, { replace: true })} />;
+}
+```
+
+The host owns routing; any router that can supply these props works. The client is
+created outside render so background refresh is not restarted on every keystroke.
+Include React Router's `useSearchParams` for the example above, or pass your router's
+equivalent. Run the Portfolio API on the same machine as Herdr; browsers cannot open
+Unix sockets. API access is restricted to local origins.
+
+`@portfolio/herdr/server` contains the Bun-only `HerdrService`. The package's default
+entry point contains only shared models, entity targeting, and the HTTP client factory;
+browser bundles never import `node:net`, process launching, or schema validation.
+
+`CollectionToolbar`, `SelectionBar`, and `useSelection` are exported from
+`@portfolio/ui/collections`. The selection hook supports both numeric record IDs and
+session-qualified string IDs.
+
 Tests: `packages/ui/test/ui.test.tsx` (react-dom/server). Back to the [index](../index.md).

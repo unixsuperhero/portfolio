@@ -5,7 +5,7 @@ import type { Pr, PrsResponse } from "../types.ts";
 import { getPrs, getSettings, patchPr, patchSettings, refreshPrs, watchPr } from "../api.ts";
 import { PrRow, confirmIgnorePr, confirmIgnoreRepo, dirLabel, ignoreRepo } from "../components/PrRow.tsx";
 import type { Confirm } from "../components/PrRow.tsx";
-import { CollectionToolbar, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
+import { CollectionToolbar, SelectionBar, useSelection } from "@portfolio/ui/collections";
 import { useConfirm } from "../components/ConfirmDialog.tsx";
 import "../operational.css";
 

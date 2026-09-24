@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router";
 import type { PortEntryWithProject } from "../types.ts";
 import { getPorts, killPort } from "../api.ts";
 import { openInApp } from "../native.ts";
-import { CollectionToolbar, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
+import { CollectionToolbar, SelectionBar, useSelection } from "@portfolio/ui/collections";
 import { useConfirm } from "../components/ConfirmDialog.tsx";
 import "../operational.css";
 

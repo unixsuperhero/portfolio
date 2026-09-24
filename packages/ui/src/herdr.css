@@ -1,0 +1,65 @@
+.herdr-page { color: var(--text); font-family: var(--sans); min-width: 0; }
+.herdr-page h1 { margin: 0; font-size: 1.7rem; }
+.herdr-page h2 { margin: 0 0 .7rem; font-size: 1.15rem; }
+.herdr-page p { color: var(--text2); margin: .45rem 0 1rem; }
+.herdr-header, .herdr-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .7rem; }
+.herdr-header { justify-content: space-between; }
+.herdr-page label { display: flex; flex-direction: column; gap: .35rem; font-size: .82rem; color: var(--text2); min-width: 0; }
+.herdr-page input:not([type="checkbox"]), .herdr-page select, .herdr-page textarea { box-sizing: border-box; width: 100%; min-width: 0; padding: .55rem .65rem; color: var(--text); background: var(--surface); border: 1px solid var(--border2); border-radius: 5px; font: inherit; }
+.herdr-page input::placeholder, .herdr-page textarea::placeholder { color: var(--text2); opacity: .8; }
+.herdr-page input, .herdr-page textarea { caret-color: var(--accent); }
+.herdr-page textarea { resize: vertical; }
+.herdr-page button { padding: .5rem .75rem; border: 1px solid var(--border2); border-radius: 5px; background: var(--surface2); color: var(--text); cursor: pointer; font: inherit; }
+.herdr-page button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent2); }
+.herdr-page button:disabled, .herdr-page input:disabled, .herdr-page select:disabled, .herdr-page textarea:disabled { opacity: .55; cursor: not-allowed; }
+.herdr-page :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.herdr-page ::selection { background: var(--accent); color: var(--bg); }
+.herdr-page details { margin: .8rem 0; }
+.herdr-page summary { cursor: pointer; color: var(--text2); font-size: .85rem; padding: .3rem 0; }
+.herdr-page details[open] > summary { margin-bottom: .65rem; }
+.herdr-page .collection-toolbar { display: flex; flex-wrap: wrap; gap: .65rem; margin: 1rem 0 .6rem; align-items: flex-end; }
+.herdr-page .collection-toolbar > label { flex: 1 1 8rem; max-width: 15rem; }
+.herdr-page .collection-toolbar > .collection-search { flex: 2 1 13rem; max-width: none; }
+.herdr-page .selection-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; padding: .65rem 0; font-size: .85rem; border-bottom: 1px solid var(--border); }
+.herdr-page .selection-toggle, .herdr-page .herdr-header label, .herdr-page .herdr-include, .herdr-page .herdr-json-toggle { flex-direction: row; align-items: center; gap: .45rem; }
+.herdr-page .selection-actions { border: 0; padding: 0; margin: 0; }
+.herdr-page .herdr-freshness { font-size: .8rem; font-variant-numeric: tabular-nums; }
+.herdr-workbench { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(19rem, 1fr); gap: 1.7rem; margin-top: 1.2rem; align-items: start; }
+.herdr-entities, .herdr-controls { min-width: 0; }
+.herdr-table-scroll { max-height: 32rem; overflow: auto; scrollbar-color: var(--border2) var(--surface); }
+.herdr-page table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+.herdr-page th { position: sticky; top: 0; background: var(--bg); text-align: left; font-weight: 500; color: var(--text2); z-index: 1; }
+.herdr-page th, .herdr-page td { padding: .7rem .5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+.herdr-page td small { display: block; margin-top: .25rem; font-size: .76rem; color: var(--text2); overflow-wrap: anywhere; }
+.herdr-page td { overflow-wrap: anywhere; }
+.herdr-page tr[aria-selected="true"] { background: var(--surface2); }
+.herdr-page .herdr-entity-link { border: 0; background: none; padding: 0; color: var(--accent); text-align: left; text-decoration: underline; text-underline-offset: .2em; }
+.herdr-status { font-size: .76rem; }
+.herdr-status-blocked, .herdr-status-unavailable { color: var(--danger); }
+.herdr-status-working { color: var(--gold); }
+.herdr-status-running, .herdr-status-idle, .herdr-status-done { color: var(--accent); }
+.herdr-controls { border-inline-start: 1px solid var(--border); padding-inline-start: 1.5rem; }
+.herdr-controls > label { margin: .8rem 0; }
+.herdr-controls fieldset { margin: 1.2rem 0 0; padding: 0; border: 0; min-width: 0; }
+.herdr-controls legend { font-family: var(--mono); font-size: .9rem; padding: 0; }
+.herdr-controls fieldset > p { font-size: .8rem; }
+.herdr-parameter { margin: 1rem 0; }
+.herdr-field-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: .4rem; }
+.herdr-parameter small { color: var(--text2); font-size: .76rem; }
+.herdr-page pre { max-height: 28rem; overflow: auto; padding: 1rem; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 5px; font: .78rem/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; scrollbar-color: var(--border2) var(--surface); }
+.herdr-inspector, .herdr-output { margin-top: 1.6rem; }
+.herdr-page .herdr-error { color: var(--danger); }
+.herdr-empty { padding: 2rem 0; }
+.herdr-confirm { color: var(--text); background: var(--bg); border: 1px solid var(--border2); border-radius: var(--radius); padding: 1.5rem; width: min(40rem, calc(100vw - 4rem)); max-height: 85vh; }
+.herdr-confirm::backdrop { background: rgb(0 0 0 / .65); }
+.herdr-confirm .danger { color: var(--danger); }
+.herdr-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@media (max-width: 1100px) {
+  .herdr-workbench { grid-template-columns: minmax(0, 1fr); }
+  .herdr-controls { border-inline-start: 0; border-top: 1px solid var(--border); padding: 1.4rem 0 0; }
+}
+@media (max-width: 600px) {
+  .herdr-page .collection-toolbar > label { flex-basis: 40%; max-width: none; }
+  .herdr-header { align-items: flex-start; }
+  .herdr-page th, .herdr-page td { padding: .6rem .3rem; }
+}

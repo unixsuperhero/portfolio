@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router";
 import type { PortEntryWithProject, ProjectView } from "../types.ts";
 import { getPorts, getProject, killPort } from "../api.ts";
-import { CollectionToolbar, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
+import { CollectionToolbar, SelectionBar, useSelection } from "@portfolio/ui/collections";
 import { useConfirm } from "../components/ConfirmDialog.tsx";
 import { copyText, openInApp, openPath, reveal } from "../native.ts";
 import { openTerminal } from "../terminal/store.ts";

@@ -1,0 +1,8 @@
+{
+  "name": "@portfolio/herdr",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts", "./server": "./src/server.ts" },
+  "scripts": { "test": "bun test" },
+  "dependencies": { "ajv": "^8.17.1" }
+}

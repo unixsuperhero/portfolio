@@ -8,7 +8,7 @@ import { createCategory, deleteCategory, listCategories, patchCategory } from ".
 import { isWails } from "../lib/wails.ts";
 import { home, pickDirectory, pickFile } from "../native.ts";
 import { BrowsePicker } from "../components/BrowsePicker.tsx";
-import { CollectionToolbar, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
+import { CollectionToolbar, SelectionBar, useSelection } from "@portfolio/ui/collections";
 import { AddTextarea } from "../components/AddTextarea.tsx";
 import { useConfirm } from "../components/ConfirmDialog.tsx";
 import "../forms.css";

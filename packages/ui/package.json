@@ -9,7 +9,10 @@
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
     "./tokens.css": "./src/tokens.css",
-    "./cards.css": "./src/cards.css"
+    "./cards.css": "./src/cards.css",
+    "./collections": "./src/components/collections.tsx",
+    "./herdr": "./src/components/herdr.tsx",
+    "./herdr.css": "./src/herdr.css"
   },
   "scripts": {
     "test": "bun test",
@@ -17,6 +20,6 @@
     "build": "bun build src/index.ts --outdir dist --external react --external react-dom --external react/jsx-runtime && cp src/*.css dist/"
   },
   "peerDependencies": { "react": ">=18", "react-dom": ">=18" },
-  "dependencies": { "@portfolio/core": "workspace:*" },
+  "dependencies": { "@portfolio/core": "workspace:*", "@portfolio/herdr": "workspace:*" },
   "devDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0", "@types/react": "^19.0.0", "@types/react-dom": "^19.0.0" }
 }

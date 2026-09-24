@@ -37,6 +37,31 @@ pages; every route below returns JSON unless stated.
 all methods, `content-type` header) so a Vite dev page and the wails:// origin can call it.
 Errors: `{ error: string }` with 4xx/5xx. Bodies are JSON (`content-type: application/json`).
 
+### Herdr
+
+The `/herdr` desktop route mounts the browser-safe `HerdrPage` from `@portfolio/ui/herdr`.
+It receives a client and URL query state; it imports no Wails APIs. The same component
+works in the browser with the same backend. `@portfolio/herdr` owns local session
+discovery, socket framing, installed API schema validation, and capability discovery.
+
+```text
+GET  /api/herdr                           → { sessions, updated_at }
+GET  /api/herdr/catalog                   → { protocol, operations }
+POST /api/herdr/command                   → { result, events? }
+     { session, method, params, capture_ms? }
+POST /api/herdr/session                   → { result }
+     { name, action: "start" | "stop" | "delete" }
+```
+
+Every session includes its discovery metadata, complete snapshot, and an independent
+error when unavailable. Commands resolve session names through local discovery, never
+accept socket paths from HTTP callers, and validate parameters against the installed
+Herdr schema. The catalog includes every socket method; complex values remain editable
+as JSON. `events.subscribe` captures events for an explicit bounded interval.
+Session deletion and mutating commands require an in-app confirmation. Refreshes do not
+replace the page or reset selection, filters, scroll, focus, or draft controls.
+These routes reject non-local browser origins and cross-site requests.
+
 ```text
 GET    /health                                  → { ok: true, items: number }
 

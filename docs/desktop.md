@@ -69,6 +69,55 @@ Single and bulk reminder deletion use an in-app confirmation dialog. Cancel or E
 See [data-model.md](data-model.md) for the full shapes and
 [packages/api.md](packages/api.md), [packages/github.md](packages/github.md) for the routes.
 
+## Herdr
+
+`Herdr` in the sidebar and command palette opens `/herdr`. It discovers local default
+and named sessions, including stopped sessions, and shows live workspaces, tabs,
+panes, agents, layouts, process metadata, and complete snapshots. Search, sorting,
+attribute filters, selected entity, and selected control live in the URL.
+
+Select an entity to inspect all its fields and prefill the most specific control target.
+The control catalog comes from `herdr api schema --json` rather than a handwritten
+subset: the installed 0.8.2/protocol 20 release exposes 91 operations. It includes
+agent prompts/keys/start, pane input/output/layout, workspace/tab lifecycle,
+worktrees, plugins, integrations, notifications, and server controls. Scalar
+parameters have form controls; structured parameters and explicit `null` values
+use JSON. Full schemas are available beside the form.
+
+Every state-changing control shows the exact session and parameters for confirmation.
+Session Start launches `herdr --session NAME server` without opening a TUI and leaves
+that session running after Portfolio exits. Stop terminates that session's processes;
+Delete removes a stopped named session's saved state. The default session cannot be
+deleted. Verification and bulk commands resolve session-qualified IDs so `w1:p1` in
+two sessions never means the same target.
+
+Live refresh runs every five seconds while the page is visible, without remounting
+forms or clearing drafts, selection, or focus. It can be paused. The event subscription
+control captures five seconds of events rather than opening an indefinite stream.
+Requests are bounded to 1 MiB in, 16 MiB out, and 90 seconds; cancellation stops waiting,
+not an already accepted Herdr operation. Refresh before retrying a timed-out mutation.
+The raw binary `pane.graphics.stream` transport is not a JSON operation; graphics
+controls use Herdr's schema-defined set/clear/info operations.
+
+`HERDR_BIN` overrides the executable. Discovery checks PATH, then `~/.local/bin/herdr`
+for apps launched from Finder without a shell PATH.
+Restart the API after updating Herdr to reload its capability schema. Missing binaries,
+stopped sessions, and individual session failures are reported explicitly.
+The API binds to loopback and Herdr routes reject non-local origins and cross-site
+requests; this is a local control surface, not an authenticated remote-control server.
+
+Reuse requires no Wails adapter: `@portfolio/ui/herdr` accepts a browser-safe client,
+`URLSearchParams`, and an `onParamsChange` callback. See the
+[shared UI example](packages/ui.md#herdr-console). The legacy HTML server is unchanged.
+Generic collection controls now live in `@portfolio/ui/collections`; desktop's
+`CollectionTools.tsx` retains only its item-specific bulk actions.
+
+Verified paths: native WebKit discovery and JSON commands through the Go proxy;
+browser session startup, confirmation/cancellation, workspace rename, and
+draft/focus/cursor preservation across refresh; real socket workspace/tab creation,
+pane split/input/output, and event capture. Package tests cover session-qualified
+targets and HTTP origin/body boundaries.
+
 ## Testing the real app from a script
 
 Build with the `mcp` tag and the app exposes the Wails MCP tools (page eval, DOM

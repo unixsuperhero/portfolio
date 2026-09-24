@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import type { Recurrence, ReminderCreateInput, ReminderView, TaskView } from "../types.ts";
 import { completeReminder, createReminder, deleteReminder, getTodayReminders, listReminders, listTasks, patchReminder, uncompleteReminder } from "../api.ts";
-import { CollectionToolbar, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
+import { CollectionToolbar, SelectionBar, useSelection } from "@portfolio/ui/collections";
 import { MarkdownContent } from "../components/MarkdownContent.tsx";
 import { AllDone, StreakBadge } from "../components/Completion.tsx";
 import { AddTextarea } from "../components/AddTextarea.tsx";

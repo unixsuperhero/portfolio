@@ -66,6 +66,7 @@ const api = createApi(store, {
 const IDLE_TIMEOUT_SECONDS = 120;
 
 const server = Bun.serve({
+  hostname: "127.0.0.1",
   port,
   idleTimeout: IDLE_TIMEOUT_SECONDS,
   async fetch(request) {

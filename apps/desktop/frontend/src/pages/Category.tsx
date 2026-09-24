@@ -4,7 +4,8 @@ import { ItemRow } from "@portfolio/ui";
 import { ITEM_TYPES } from "@portfolio/core";
 import type { Category as CategoryType, ItemView } from "@portfolio/core";
 import { getCategory, toggleItem } from "../api.ts";
-import { CollectionToolbar, ItemBulkActions, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
+import { CollectionToolbar, SelectionBar, useSelection } from "@portfolio/ui/collections";
+import { ItemBulkActions } from "../components/CollectionTools.tsx";
 import "../forms.css";
 
 type SortKey = "title" | "created" | "updated" | "type";

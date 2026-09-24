@@ -41,6 +41,28 @@ Design rules that kept this small:
 - **One shape for the outside world.** `ItemView` is what the API returns, what the client types, and what the components take.
 - **Tools are thin.** A `pf-*` file declares Hiiro commands; handlers call Ruby helpers and print.
 
+Herdr is a separate local-control boundary:
+
+```text
+desktop route ──► @portfolio/ui/herdr ──► injected HerdrClient
+                                             │
+                                       PortfolioClient.request
+                                             │ HTTP
+                                      @portfolio/api/herdr
+                                             │
+                                    @portfolio/herdr/server
+                                             │ Unix socket / fixed CLI argv
+                                  running named Herdr sessions
+```
+
+The entity-first view retains full snapshots and uses the installed JSON Schema for
+control forms. This combines the navigability of curated entity views with complete
+schema-defined capability coverage; a manually maintained method-per-button layer
+would drift as Herdr changes. Browser code knows session names and opaque entity IDs,
+not how to discover or connect sockets. Server code owns validation, bounded transport,
+session discovery, and persistent headless startup. The desktop adapter supplies only
+HTTP transport and URL state; the web host mounts the same component and styles.
+
 ## How app.js maps onto the packages
 
 Every function in `app.js` now has a home. This is the map to use when the next server is written.

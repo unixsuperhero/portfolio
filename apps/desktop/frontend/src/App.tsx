@@ -27,6 +27,7 @@ import Category from "./pages/Category.tsx";
 import Projects from "./pages/Projects.tsx";
 import Project from "./pages/Project.tsx";
 import Ports from "./pages/Ports.tsx";
+import Herdr from "./pages/Herdr.tsx";
 import Reminders from "./pages/Reminders.tsx";
 import Tasks from "./pages/Tasks.tsx";
 import PullRequests from "./pages/PullRequests.tsx";
@@ -39,6 +40,7 @@ const NAV_ITEMS = [
   { to: "/categories", label: "Categories" },
   { to: "/projects", label: "Projects" },
   { to: "/ports", label: "Ports" },
+  { to: "/herdr", label: "Herdr" },
   { to: "/tasks", label: "Tasks" },
   { to: "/reminders", label: "Reminders" },
   { to: "/prs", label: "PRs" },
@@ -347,6 +349,7 @@ const router = createHashRouter([
       { path: "/projects", element: <Projects /> },
       { path: "/projects/:id", element: <Project /> },
       { path: "/ports", element: <Ports /> },
+      { path: "/herdr", element: <Herdr /> },
       { path: "/tasks", element: <Tasks /> },
       { path: "/tasks/:taskId", element: <Tasks /> },
       { path: "/reminders", element: <Reminders /> },

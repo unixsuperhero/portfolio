@@ -4,7 +4,8 @@ import { Link, useSearchParams } from "react-router";
 import type { ProjectParentSummary, ProjectView } from "../types.ts";
 import { addProjectParent, listProjectParents, listProjects, removeProjectParent, scanProjects } from "../api.ts";
 import { PathField } from "../components/PathField.tsx";
-import { CollectionToolbar, ItemBulkActions, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
+import { CollectionToolbar, SelectionBar, useSelection } from "@portfolio/ui/collections";
+import { ItemBulkActions } from "../components/CollectionTools.tsx";
 import { useConfirm } from "../components/ConfirmDialog.tsx";
 
 type SortKey = "title" | "path" | "updated" | "ports" | "scripts";

@@ -13,6 +13,7 @@
     "@portfolio/render": "workspace:*",
     "@portfolio/watch": "workspace:*",
     "@portfolio/ports": "workspace:*",
-    "@portfolio/github": "workspace:*"
+    "@portfolio/github": "workspace:*",
+    "@portfolio/herdr": "workspace:*"
   }
 }
