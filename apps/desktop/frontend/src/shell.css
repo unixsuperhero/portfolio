@@ -120,3 +120,44 @@
 .command-palette-empty {
   padding: 0.8rem 0.65rem;
 }
+
+.add-modal {
+  width: min(32rem, 90vw);
+}
+
+.add-modal h2 {
+  margin: 0 0 0.6rem;
+  font-size: 1.1rem;
+}
+
+.add-modal-detection {
+  margin: 0.4rem 0 0.6rem;
+  color: var(--text2);
+  font-size: 0.82rem;
+  min-height: 1.1rem;
+}
+
+.add-modal-kind {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  color: var(--text2);
+  font-size: 0.85rem;
+}
+
+.add-modal-kind select {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 0.45rem 0.65rem;
+  font: inherit;
+}
+:root[data-theme="light"] .add-modal-kind select { background: var(--surface); }
+
+.add-modal .page-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
