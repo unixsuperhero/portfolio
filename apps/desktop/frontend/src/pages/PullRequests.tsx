@@ -3,11 +3,11 @@ import { useSearchParams } from "react-router";
 import { PortfolioApiError } from "@portfolio/client";
 import type { Pr, PrsResponse } from "../types.ts";
 import { getPrs, patchPr, refreshPrs, watchPr } from "../api.ts";
-import { PrRow, dirLabel } from "../components/PrRow.tsx";
+import { PrRow, dirLabel, ignoreRepo } from "../components/PrRow.tsx";
 import { CollectionToolbar, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
 import "../operational.css";
 
-const EMPTY: PrsResponse = { mine: [], review_requested: [], watched: [], status: { last_poll_at: null, next_poll_at: null, rate: null, polling: false, error: null, gh_ok: true, login: null } };
+const EMPTY: PrsResponse = { mine: [], review_requested: [], watched: [], ignored: [], status: { last_poll_at: null, next_poll_at: null, rate: null, polling: false, error: null, gh_ok: true, login: null } };
 
 const SORT_OPTIONS = [
   { value: "updated", label: "Updated" },
@@ -100,6 +100,7 @@ export default function PullRequests() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
   const [ignoredText, setIgnoredText] = useState("");
+  const [showIgnored, setShowIgnored] = useState(false);
   const query = params.get("q") ?? "";
   const stateFilter = params.get("state") ?? "";
   const checksFilter = params.get("checks") ?? "";
@@ -222,6 +223,8 @@ export default function PullRequests() {
       >
         <button type="button" className="secondary" onClick={() => runBulk("Watch", pr => watchPr(pr.url, true))} disabled={!selection.selected.size || bulkBusy}>Watch</button>
         <button type="button" className="secondary" onClick={() => runBulk("Unwatch", pr => watchPr(pr.url, false))} disabled={!selection.selected.size || bulkBusy}>Unwatch</button>
+        <button type="button" className="secondary" onClick={() => runBulk("Ignore", pr => patchPr(pr.id, { ignored: true }))} disabled={!selection.selected.size || bulkBusy}>Ignore</button>
+        <button type="button" className="secondary" onClick={() => runBulk("Ignore repos", pr => ignoreRepo(pr))} disabled={!selection.selected.size || bulkBusy}>Ignore repos</button>
         <label className="bulk-inline-field">Ignored checks
           <textarea value={ignoredText} onChange={event => setIgnoredText(event.target.value)} rows={2} placeholder="one glob per line" />
         </label>
@@ -234,6 +237,23 @@ export default function PullRequests() {
         <PrListCard title="Review requested" prs={lists.review_requested} total={data.review_requested.length} selected={selection.selected} onToggle={selection.toggle} onChanged={load} />
         <PrListCard title="Watched" prs={lists.watched} total={data.watched.length} selected={selection.selected} onToggle={selection.toggle} onChanged={load} />
       </div>
+
+      {data.ignored.length ? (
+        <section className="rail-section portfolio-card pr-ignored">
+          <header>
+            <h2>Ignored</h2>
+            <div className="rail-heading-actions">
+              <span>{data.ignored.length}</span>
+              <button type="button" className="secondary" onClick={() => setShowIgnored(value => !value)}>{showIgnored ? "Hide" : "Show"}</button>
+            </div>
+          </header>
+          {showIgnored ? (
+            <div className="pr-list">
+              {data.ignored.map(pr => <PrRow key={pr.id} pr={pr} onChanged={load} repoIgnored={!pr.ignored} />)}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
     </div>
   );
 }

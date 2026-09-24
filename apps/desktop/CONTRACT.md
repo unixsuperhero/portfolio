@@ -316,6 +316,7 @@ const pr = {
   checks: [{ name: "ci/test", status: "success" | "failure" | "pending" | "skipped" | "cancelled" | "neutral", url: "…", ignored: false }],
   checks_summary: "success" | "failure" | "pending" | "none",   // over NON-ignored checks only
   watched: true, ignored_checks: ["codecov/patch"],             // per PR; settings.github_ignored_checks is global (glob patterns like "codecov/*")
+  ignored: false,                         // hidden from every list and never raises events; polling never changes it
   lists: ["mine", "review_requested"],    // which search lists it currently appears in ([] for watched-only)
   item_id: 42 | null,                     // the library `pr` item, created when watched
   source_dir: "/Users/me/work/carrot" | null, // the settings.github_dirs entry gh ran from; null = the API's own cwd
@@ -326,9 +327,12 @@ const prStatus = { last_poll_at, next_poll_at, rate: { remaining, reset_at } | n
 ```
 
 Schema: `github_prs` (id, url UNIQUE, owner, repo, number, title, author, is_draft, state, review_decision, updated_at,
-comments, checks JSON, lists JSON, watched 0/1, ignored_checks JSON, item_id nullable FK, fetched_at) and
+comments, checks JSON, lists JSON, watched 0/1, ignored_checks JSON, ignored 0/1, item_id nullable FK, fetched_at) and
 `github_pr_events` (id, pr_id FK cascade, kind, message, at, seen 0/1). Settings keys: `github_ignored_checks` (JSON array),
-`github_poll_minutes` (default 2), `github_dirs` (JSON array of absolute paths, default `[]`).
+`github_ignored_repos` (JSON array of `owner/repo` globs like `acme/*`, default `[]`), `github_poll_minutes` (default 2),
+`github_dirs` (JSON array of absolute paths, default `[]`). A PR is *hidden* when its own `ignored` is set or its
+`owner/repo` matches a `github_ignored_repos` glob: hidden PRs stay stored and polled with the lists, but are left out of
+`mine`/`review_requested`/`watched`, raise no events, and are not sent in the watched batch.
 
 Polling (in `packages/api/src/server.ts`, started only when `gh auth status` succeeds):
 - `gh` runs from each `github_dirs` entry in turn (cwd only; gh resolves the host and credentials from that directory's git
@@ -346,23 +350,26 @@ Polling (in `packages/api/src/server.ts`, started only when `gh auth status` suc
 
 Routes:
 ```text
-GET    /api/prs                        → { mine: Pr[], review_requested: Pr[], watched: Pr[], status: PrStatus }
+GET    /api/prs                        → { mine: Pr[], review_requested: Pr[], watched: Pr[], ignored: Pr[], status: PrStatus }   (ignored = every hidden PR; pr.ignored false there means the repo is ignored)
 POST   /api/prs/refresh                → same as GET after a forced poll (429 { error } when called within 30s)
 POST   /api/prs/watch { url, watched }  → Pr        (creates the github_prs row from a URL if unknown, trying each github_dirs entry until one returns it; creates/links a library `pr` item when watched)
-PATCH  /api/prs/:id { ignored_checks }  → Pr
+PATCH  /api/prs/:id { ignored_checks?, ignored? }  → Pr   (each key applied only when present)
 GET    /api/prs/events?since=<id>      → { events: PrEvent[] }   (unseen and newer than since)
 POST   /api/prs/events/seen { ids }    → { ok }
-GET/PATCH /api/settings                 gain github_ignored_checks: string[], github_poll_minutes: number, and github_dirs: string[] (absolute paths; 422 otherwise)
+GET/PATCH /api/settings                 gain github_ignored_checks: string[], github_ignored_repos: string[], github_poll_minutes: number, and github_dirs: string[] (absolute paths; 422 otherwise)
 ```
 
 Frontend: sidebar entry "PRs" → `/prs` page with three portfolio-style cards (same `DashboardCard` chrome as the portfolio page):
 "Mine", "Review requested", "Watched". A PR row: state badge, `owner/repo#n`, title, review decision, checks pill
 (✓ / ✗ / ● with counts, hover lists checks; ignored ones shown struck through), comment count, "Watch"/"Unwatch" toggle,
-"Ignore checks…" opens a small editor (per-PR list + link to global list in Settings). Links carry `data-url` so the
+"Ignore"/"Unignore" (PATCH `{ ignored }`), "Ignore repo" (appends `owner/repo` to `github_ignored_repos`), and
+"Ignore checks…" opens a small editor (per-PR list + link to global list in Settings). Below the three cards, a collapsed
+"Ignored" card lists every hidden PR with Unignore, or a "Repo ignored in Settings" note when the repo is what hides it.
+The selection bar's bulk actions include Ignore and Ignore repos. Links carry `data-url` so the
 context menu and in-app browser work. `prs` card kind: `config: { list: "mine" | "review_requested" | "watched" }` renders the
 same rows inside a portfolio. Notifications: the existing 60s reminder poll gains `GET /api/prs/events` (own state only):
 each new event → in-app toast + `native.notify` + a short WebAudio ping (`src/lib/sound.ts`, no audio asset), then
-`POST /api/prs/events/seen`. Settings page: global ignored checks (one per line), poll minutes, and the PR check directories
+`POST /api/prs/events/seen`. Settings page: global ignored checks (one per line), ignored repos (one `owner/repo` glob per line), poll minutes, and the PR check directories
 (add with the directory picker, remove per row). PRs page: rows show the directory's basename as a chip (full path on hover);
 the toolbar filters by directory, sorts by it, and the search matches it.
 

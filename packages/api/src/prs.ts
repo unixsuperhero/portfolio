@@ -7,11 +7,13 @@ const IDLE_STATUS: PrStatus = { last_poll_at: null, next_poll_at: null, rate: nu
 const PULL_URL = /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/;
 
 function prsView(ctx: Ctx) {
-  if (!ctx.prPoller) return { mine: [], review_requested: [], watched: [], status: IDLE_STATUS };
+  if (!ctx.prPoller) return { mine: [], review_requested: [], watched: [], ignored: [], status: IDLE_STATUS };
   return {
-    mine: ctx.store.github.listPrs({ list: "mine" }),
-    review_requested: ctx.store.github.listPrs({ list: "review_requested" }),
-    watched: ctx.store.github.listPrs({ watched: true }),
+    mine: ctx.store.github.listPrs({ list: "mine", hidden: false }),
+    review_requested: ctx.store.github.listPrs({ list: "review_requested", hidden: false }),
+    watched: ctx.store.github.listPrs({ watched: true, hidden: false }),
+    // Hidden by their own flag (pr.ignored) or by settings.github_ignored_repos, so they can be un-ignored.
+    ignored: ctx.store.github.listPrs({ hidden: true }),
     status: ctx.prPoller.status(),
   };
 }
@@ -56,8 +58,9 @@ export async function patchPrRoute(ctx: Ctx, request: Request, params: Record<st
   const id = Number(params.id);
   if (!ctx.store.github.getPr(id)) return notFound();
   const body = await readJson(request);
-  const checks = Array.isArray(body.ignored_checks) ? body.ignored_checks.map(String) : [];
-  return json(ctx.store.github.setIgnoredChecks(id, checks));
+  if ("ignored_checks" in body) ctx.store.github.setIgnoredChecks(id, Array.isArray(body.ignored_checks) ? body.ignored_checks.map(String) : []);
+  if ("ignored" in body) ctx.store.github.setIgnored(id, Boolean(body.ignored));
+  return json(ctx.store.github.getPr(id));
 }
 
 export async function listPrEventsRoute(ctx: Ctx, request: Request): Promise<Response> {

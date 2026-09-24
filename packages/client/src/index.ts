@@ -161,10 +161,11 @@ export class PortfolioClient {
   dueReminders(minutes = 60) { return this.request<{ due: DueReminder[] }>("/api/reminders/due", { query: { minutes } }); }
   todayReminders() { return this.request<{ reminders: ReminderView[] }>("/api/reminders/today"); }
 
-  prs() { return this.request<{ mine: Pr[]; review_requested: Pr[]; watched: Pr[]; status: PrStatus }>("/api/prs"); }
-  refreshPrs() { return this.request<{ mine: Pr[]; review_requested: Pr[]; watched: Pr[]; status: PrStatus }>("/api/prs/refresh", { method: "POST" }); }
+  prs() { return this.request<{ mine: Pr[]; review_requested: Pr[]; watched: Pr[]; ignored: Pr[]; status: PrStatus }>("/api/prs"); }
+  refreshPrs() { return this.request<{ mine: Pr[]; review_requested: Pr[]; watched: Pr[]; ignored: Pr[]; status: PrStatus }>("/api/prs/refresh", { method: "POST" }); }
   watchPr(url: string, watched: boolean) { return this.request<Pr>("/api/prs/watch", { method: "POST", json: { url, watched } }); }
   setPrIgnoredChecks(id: number, checks: string[]) { return this.request<Pr>(`/api/prs/${id}`, { method: "PATCH", json: { ignored_checks: checks } }); }
+  setPrIgnored(id: number, ignored: boolean) { return this.request<Pr>(`/api/prs/${id}`, { method: "PATCH", json: { ignored } }); }
   prEvents(since = 0) { return this.request<{ events: PrEvent[] }>("/api/prs/events", { query: { since } }); }
   markPrEventsSeen(ids: number[]) { return this.request<{ ok: true }>("/api/prs/events/seen", { method: "POST", json: { ids } }); }
 

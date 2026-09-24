@@ -1,8 +1,8 @@
 import type { Pr, PrStatus } from "@portfolio/core";
 import type { PrEventDraft } from "@portfolio/db";
-import { applyIgnored, checksSummary, diffPr } from "./diff.ts";
+import { applyIgnored, checksSummary, diffPr, isIgnored } from "./diff.ts";
 import { parsePrNode, watchedNodes } from "./parse.ts";
-import type { ListsResponse, PrNode, WatchedResponse } from "./parse.ts";
+import type { ListsResponse, PrDraft, PrNode, WatchedResponse } from "./parse.ts";
 import { listQuery, listsQuery, watchedQuery } from "./query.ts";
 import type { ListName, PrRef } from "./query.ts";
 
@@ -10,12 +10,13 @@ import type { ListName, PrRef } from "./query.ts";
 export interface PollerDb {
   github: {
     findPrByUrl(url: string): Pr | null;
-    upsertPr(input: Omit<Pr, "id">): number;
-    listPrs(filter?: { watched?: boolean }): Pr[];
+    upsertPr(input: PrDraft): number;
+    listPrs(filter?: { watched?: boolean; hidden?: boolean }): Pr[];
     insertEvents(events: PrEventDraft[]): void;
   };
   settings: {
     getGithubIgnoredChecks(): string[];
+    getGithubIgnoredRepos(): string[];
     getGithubPollMinutes(): number;
     getGithubDirs(): string[];
   };
@@ -78,7 +79,7 @@ export function createPrPoller(options: PollerOptions) {
     return { owner: pr.owner, repo: pr.repo, number: pr.number };
   }
 
-  function finalize(parsed: Omit<Pr, "id">, globalIgnored: string[]): Omit<Pr, "id"> {
+  function finalize(parsed: PrDraft, globalIgnored: string[]): PrDraft {
     const patterns = [...globalIgnored, ...parsed.ignored_checks];
     const checks = applyIgnored(parsed.checks, patterns);
     return { ...parsed, checks, checks_summary: checksSummary(checks, patterns) };
@@ -120,12 +121,15 @@ export function createPrPoller(options: PollerOptions) {
     return { mine: mine.mine!, review_requested: reviewRequested.review_requested!, rateLimit: reviewRequested.rateLimit! };
   }
 
+  /** A hidden PR (its own flag, or an ignored repo) is still stored, but never raises events. */
+  const isHidden = (pr: Pr, ignoredRepos: string[]): boolean => pr.ignored || isIgnored(`${pr.owner}/${pr.repo}`, ignoredRepos);
+
   async function processNode(node: PrNode, lists: string[], globalIgnored: string[], fetchedAt: string, events: PrEventDraft[], dir: string | null): Promise<void> {
     const previous = db.github.findPrByUrl(node.url);
     const parsed = finalize(parsePrNode(node, { ignored_checks: previous?.ignored_checks ?? [], watched: previous?.watched ?? false, item_id: previous?.item_id ?? null, lists, source_dir: dir }, fetchedAt), globalIgnored);
     const id = db.github.upsertPr(parsed);
-    const next: Pr = { ...parsed, id };
-    events.push(...diffPr(previous, next, globalIgnored, fetchedAt));
+    const next: Pr = { ...parsed, id, ignored: previous?.ignored ?? false };
+    if (!isHidden(next, db.settings.getGithubIgnoredRepos())) events.push(...diffPr(previous, next, globalIgnored, fetchedAt));
   }
 
   async function tick(): Promise<void> {
@@ -173,8 +177,8 @@ export function createPrPoller(options: PollerOptions) {
       if (!rate || failures.length === dirs.length) throw new Error(failures.join("; "));
 
       if ((rate as ListsResponse["rateLimit"]).remaining >= RATE_LIMIT_FLOOR) {
-        // Watched PRs outside the lists, batched by the directory they were fetched from.
-        const watched = db.github.listPrs({ watched: true }).filter(pr => !seenUrls.has(pr.url));
+        // Watched PRs outside the lists (hidden ones excluded), batched by the directory they were fetched from.
+        const watched = db.github.listPrs({ watched: true, hidden: false }).filter(pr => !seenUrls.has(pr.url));
         const groups = new Map<string | null, Pr[]>();
         for (const pr of watched) groups.set(pr.source_dir, [...(groups.get(pr.source_dir) ?? []), pr]);
         for (const [dir, prs] of groups) {
@@ -205,7 +209,7 @@ export function createPrPoller(options: PollerOptions) {
   }
 
   function cadenceMs(): number {
-    const hasWatched = db.github.listPrs({ watched: true }).length > 0;
+    const hasWatched = db.github.listPrs({ watched: true, hidden: false }).length > 0;
     const minutes = hasWatched ? db.settings.getGithubPollMinutes() : NO_WATCHED_MINUTES;
     return minutes * 60_000;
   }
@@ -271,8 +275,8 @@ export function createPrPoller(options: PollerOptions) {
       const previous = db.github.findPrByUrl(node.url);
       const parsed = finalize(parsePrNode(node, { ignored_checks: previous?.ignored_checks ?? [], watched: previous?.watched ?? false, item_id: previous?.item_id ?? null, lists: previous?.lists ?? [], source_dir: previous?.source_dir ?? foundIn }, fetchedAt), globalIgnored);
       const id = db.github.upsertPr(parsed);
-      const next: Pr = { ...parsed, id };
-      db.github.insertEvents(diffPr(previous, next, globalIgnored, fetchedAt));
+      const next: Pr = { ...parsed, id, ignored: previous?.ignored ?? false };
+      if (!isHidden(next, db.settings.getGithubIgnoredRepos())) db.github.insertEvents(diffPr(previous, next, globalIgnored, fetchedAt));
       return next;
     },
   };

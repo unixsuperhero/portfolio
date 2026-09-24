@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Pr } from "@portfolio/core";
-import { getGithubIgnoredChecks, getGithubPollMinutes, insertEvents, listUnseenEvents, listPrs, markEventsSeen, openDatabase, setGithubIgnoredChecks, setGithubPollMinutes, setIgnoredChecks, setWatched, upsertPr } from "../src/index.ts";
+import { getGithubIgnoredChecks, getGithubIgnoredRepos, getGithubPollMinutes, insertEvents, isPrHidden, listUnseenEvents, listPrs, markEventsSeen, openDatabase, setGithubIgnoredChecks, setGithubIgnoredRepos, setGithubPollMinutes, setIgnored, setIgnoredChecks, setWatched, upsertPr } from "../src/index.ts";
 
 const fresh = () => openDatabase(":memory:");
 
@@ -24,6 +24,42 @@ describe("github repo", () => {
     expect(listPrs(db, { list: "mine" }).map(p => p.id)).toEqual([id]);
     expect(listPrs(db, { list: "review_requested" }).map(p => p.id)).toEqual([other]);
     expect(listPrs(db, { watched: true })).toEqual([]);
+  });
+
+  test("setIgnored hides a PR from listPrs({ hidden: false }) and survives a later upsert", () => {
+    const db = fresh();
+    const id = newPr(db);
+    expect(listPrs(db)[0].ignored).toBe(false);
+
+    expect(setIgnored(db, id, true).ignored).toBe(true);
+    expect(listPrs(db, { hidden: false })).toEqual([]);
+    expect(listPrs(db, { hidden: true }).map(p => p.id)).toEqual([id]);
+    expect(listPrs(db, { list: "mine", hidden: false })).toEqual([]);
+
+    newPr(db, { title: "Polled again" }); // polling re-upserts the row without touching ignored
+    expect(listPrs(db, { hidden: true })[0].title).toBe("Polled again");
+
+    expect(setIgnored(db, id, false).ignored).toBe(false);
+    expect(listPrs(db, { hidden: false }).map(p => p.id)).toEqual([id]);
+    expect(() => setIgnored(db, 999, true)).toThrow("PR not found");
+  });
+
+  test("github_ignored_repos hides every PR whose owner/repo matches a glob, case-insensitively", () => {
+    const db = fresh();
+    const app = newPr(db);
+    const other = newPr(db, { url: "https://github.com/acme/other/pull/3", repo: "other", number: 3 });
+    const elsewhere = newPr(db, { url: "https://github.com/beta/app/pull/4", owner: "beta", number: 4 });
+    expect(getGithubIgnoredRepos(db)).toEqual([]);
+
+    setGithubIgnoredRepos(db, [" ACME/app ", "", "acme/app"]);
+    expect(getGithubIgnoredRepos(db)).toEqual(["ACME/app", "acme/app"]);
+    expect(listPrs(db, { hidden: true }).map(p => p.id)).toEqual([app]);
+    expect(listPrs(db, { hidden: false }).map(p => p.id).sort()).toEqual([other, elsewhere].sort());
+
+    setGithubIgnoredRepos(db, ["acme/*"]);
+    expect(listPrs(db, { hidden: false }).map(p => p.id)).toEqual([elsewhere]);
+    expect(isPrHidden({ owner: "beta", repo: "app", ignored: false }, ["acme/*"])).toBe(false);
+    expect(isPrHidden({ owner: "beta", repo: "app", ignored: true }, [])).toBe(true);
   });
 
   test("setWatched creates the library pr item once and links it; a second watch reuses it", () => {

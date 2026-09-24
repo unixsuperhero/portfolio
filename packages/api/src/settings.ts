@@ -11,6 +11,7 @@ export function settingsView(ctx: Ctx): Settings {
     watched_directories: ctx.store.watched.listWatchedDirectories().map(d => ({ id: d.id, path: d.path, recursive: Boolean(d.recursive) })),
     project_parents: ctx.store.projects.listProjectParents(),
     github_ignored_checks: ctx.store.settings.getGithubIgnoredChecks(),
+    github_ignored_repos: ctx.store.settings.getGithubIgnoredRepos(),
     github_poll_minutes: ctx.store.settings.getGithubPollMinutes(),
     github_dirs: ctx.store.settings.getGithubDirs(),
   };
@@ -25,6 +26,7 @@ export async function patchSettingsRoute(ctx: Ctx, request: Request): Promise<Re
   if ("home_portfolio_id" in body) ctx.store.settings.setHomePortfolioId(body.home_portfolio_id === null ? null : Number(body.home_portfolio_id));
   if ("pastry_enabled" in body) ctx.store.settings.setFlag("pastry_enabled", Boolean(body.pastry_enabled));
   if ("github_ignored_checks" in body) ctx.store.settings.setGithubIgnoredChecks(Array.isArray(body.github_ignored_checks) ? body.github_ignored_checks.map(String) : []);
+  if ("github_ignored_repos" in body) ctx.store.settings.setGithubIgnoredRepos(Array.isArray(body.github_ignored_repos) ? body.github_ignored_repos.map(String) : []);
   if ("github_poll_minutes" in body) ctx.store.settings.setGithubPollMinutes(Number(body.github_poll_minutes));
   if ("github_dirs" in body) {
     const dirs = Array.isArray(body.github_dirs) ? body.github_dirs.map(String).map(dir => dir.trim()).filter(Boolean) : [];

@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { ChecksSummary, Pr, PrCheck, PrEvent, PrList, ReviewDecision } from "@portfolio/core";
 import { upsertItem } from "./items.ts";
+import { getGithubIgnoredRepos } from "./settings.ts";
 
 interface PrRow {
   id: number;
@@ -19,6 +20,7 @@ interface PrRow {
   lists: string;
   watched: 0 | 1;
   ignored_checks: string;
+  ignored: 0 | 1;
   item_id: number | null;
   source_dir: string | null;
   fetched_at: string;
@@ -41,6 +43,7 @@ const rowToPr = (row: PrRow): Pr => ({
   checks_summary: checksSummaryFor(JSON.parse(row.checks)),
   watched: Boolean(row.watched),
   ignored_checks: JSON.parse(row.ignored_checks),
+  ignored: Boolean(row.ignored),
   lists: JSON.parse(row.lists),
   item_id: row.item_id,
   source_dir: row.source_dir ?? null,
@@ -69,21 +72,32 @@ export const findPrByUrl = (db: Database, url: string): Pr | null => {
 export interface PrListFilter {
   list?: PrList;
   watched?: boolean;
+  /** true: only PRs hidden by their own `ignored` flag or an ignored repo; false: only visible ones. */
+  hidden?: boolean;
   /** Narrow to PRs fetched from this github_dirs entry (null: the API's own cwd). */
   dir?: string | null;
 }
 
-/** Every PR, optionally narrowed to a search list (member of `lists`) or to watched-only. */
+/** Whether a PR is hidden: its own `ignored` flag, or its owner/repo matches one of settings.github_ignored_repos. */
+export const isPrHidden = (pr: Pick<Pr, "owner" | "repo" | "ignored">, ignoredRepos: string[]): boolean =>
+  pr.ignored || ignoredRepos.some(pattern => matchesGlob(`${pr.owner}/${pr.repo}`, pattern));
+
+/** Every PR, optionally narrowed to a search list (member of `lists`), to watched-only, or by hidden-ness. */
 export function listPrs(db: Database, filter: PrListFilter = {}): Pr[] {
   const rows = db.query<PrRow, []>("SELECT * FROM github_prs ORDER BY datetime(updated_at) DESC").all();
   let prs = rows.map(rowToPr);
+  if (filter.hidden !== undefined) {
+    const repos = getGithubIgnoredRepos(db);
+    prs = prs.filter(pr => isPrHidden(pr, repos) === filter.hidden);
+  }
   if (filter.watched) prs = prs.filter(pr => pr.watched);
   if (filter.list) prs = filter.list === "watched" ? prs.filter(pr => pr.watched) : prs.filter(pr => pr.lists.includes(filter.list!));
   if (filter.dir !== undefined) prs = prs.filter(pr => pr.source_dir === filter.dir);
   return prs;
 }
 
-export type PrUpsertInput = Omit<Pr, "id">;
+/** `ignored` is excluded: polling must never clear a flag the user set, so only setIgnored touches it. */
+export type PrUpsertInput = Omit<Pr, "id" | "ignored">;
 
 /** Inserts, or updates the row for `input.url`. Returns the id either way. */
 export function upsertPr(db: Database, input: PrUpsertInput): number {
@@ -126,6 +140,13 @@ export function setIgnoredChecks(db: Database, id: number, patterns: string[]): 
   if (!pr) throw new Error("PR not found");
   const checks = pr.checks.map(check => ({ ...check, ignored: patterns.some(pattern => matchesGlob(check.name, pattern)) }));
   db.query("UPDATE github_prs SET ignored_checks = ?, checks = ? WHERE id = ?").run(JSON.stringify(patterns), JSON.stringify(checks), id);
+  return getPr(db, id)!;
+}
+
+/** Hides or shows one PR. Watch state and the library item are untouched. */
+export function setIgnored(db: Database, id: number, ignored: boolean): Pr {
+  if (!getPr(db, id)) throw new Error("PR not found");
+  db.query("UPDATE github_prs SET ignored = ? WHERE id = ?").run(Number(ignored), id);
   return getPr(db, id)!;
 }
 

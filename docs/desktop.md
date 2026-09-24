@@ -54,7 +54,7 @@ const settings = { home_portfolio_id: 3 };                      // GET /api/home
 const task = { recurrence: "daily" | "once", reminders: [{ at: "08:30" }], completed_today: true, streak: 4 };
 const reminder = { title: "Call the dentist", recurrence: "once", at: "2026-09-24T09:00", task_id: null };
 const project = { services: { runner: "bun", scripts: { dev: "…" } }, ports: [/* listeners in this dir */] };
-const pr = { state: "open", checks_summary: "success", watched: true, ignored_checks: ["codecov/*"], source_dir: "/Users/me/work/carrot" };
+const pr = { state: "open", checks_summary: "success", watched: true, ignored: false, ignored_checks: ["codecov/*"], source_dir: "/Users/me/work/carrot" };
 const settings = { github_dirs: ["/Users/me/work/carrot", "/Users/me/proj"] };   // gh runs from each; empty = the API's own cwd
 ```
 

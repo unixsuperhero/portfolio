@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { PortfolioApiError } from "@portfolio/client";
 import type { Pr, PrReviewDecision } from "../types.ts";
-import { patchPr, watchPr } from "../api.ts";
+import { getSettings, patchPr, patchSettings, watchPr } from "../api.ts";
 import { PrChecks } from "./PrChecks.tsx";
 
 export const dirLabel = (dir: string) => dir.replace(/\/+$/, "").split("/").pop() || dir;
@@ -14,14 +14,29 @@ function reviewLabel(decision: PrReviewDecision): string {
   return "";
 }
 
+/** Appends owner/repo to settings.github_ignored_repos. */
+export const ignoreRepo = (pr: Pick<Pr, "owner" | "repo">) =>
+  getSettings().then(settings => patchSettings({ github_ignored_repos: [...(settings.github_ignored_repos ?? []), `${pr.owner}/${pr.repo}`] }));
+
 /** One PR: state badge, owner/repo#n link, title, review decision, checks pill, comment count,
- * Watch/Unwatch toggle, and an inline "Ignore checks…" editor (PATCH /api/prs/:id). */
-export function PrRow({ pr, onChanged }: { pr: Pr; onChanged: () => void }) {
+ * Watch/Unwatch and Ignore/Unignore toggles, "Ignore repo", and an inline "Ignore checks…" editor (PATCH /api/prs/:id).
+ * `repoIgnored` marks a PR hidden by settings.github_ignored_repos rather than its own flag. */
+export function PrRow({ pr, onChanged, repoIgnored = false }: { pr: Pr; onChanged: () => void; repoIgnored?: boolean }) {
   const [editing, setEditing] = useState(false);
   const [ignoredText, setIgnoredText] = useState(pr.ignored_checks.join("\n"));
   const [saving, setSaving] = useState(false);
   const [watching, setWatching] = useState(false);
+  const [hiding, setHiding] = useState(false);
   const [error, setError] = useState("");
+
+  const run = (label: string, action: () => Promise<unknown>) => {
+    setHiding(true);
+    setError("");
+    action()
+      .then(onChanged)
+      .catch(err => setError(err instanceof PortfolioApiError ? err.message : `Could not ${label}.`))
+      .finally(() => setHiding(false));
+  };
 
   useEffect(() => { setIgnoredText(pr.ignored_checks.join("\n")); }, [pr.id, pr.ignored_checks]);
 
@@ -56,6 +71,14 @@ export function PrRow({ pr, onChanged }: { pr: Pr; onChanged: () => void }) {
         <PrChecks pr={pr} />
         <span className="pr-comments" title="Comments">💬 {pr.comments}</span>
         <button type="button" className="secondary" onClick={toggleWatch} disabled={watching}>{pr.watched ? "Unwatch" : "Watch"}</button>
+        {repoIgnored ? (
+          <span className="pr-ignore-hint">Repo ignored in <Link to="/settings">Settings</Link></span>
+        ) : (
+          <>
+            <button type="button" className="secondary" onClick={() => run(pr.ignored ? "unignore" : "ignore", () => patchPr(pr.id, { ignored: !pr.ignored }))} disabled={hiding}>{pr.ignored ? "Unignore" : "Ignore"}</button>
+            {pr.ignored ? null : <button type="button" className="secondary" onClick={() => run("ignore repo", () => ignoreRepo(pr))} disabled={hiding} title={`Hide every PR in ${pr.owner}/${pr.repo}`}>Ignore repo</button>}
+          </>
+        )}
         <button type="button" className="secondary" onClick={() => setEditing(value => !value)}>Ignore checks…</button>
       </div>
       {error ? <p className="pr-status pr-status-error">{error}</p> : null}

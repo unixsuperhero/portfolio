@@ -16,6 +16,7 @@ export default function Settings() {
   const [newWatchDir, setNewWatchDir] = useState("");
   const [newParentDir, setNewParentDir] = useState("");
   const [ignoredChecksText, setIgnoredChecksText] = useState("");
+  const [ignoredReposText, setIgnoredReposText] = useState("");
   const [pollMinutes, setPollMinutes] = useState("2");
   const [savingGithub, setSavingGithub] = useState(false);
   const [newGithubDir, setNewGithubDir] = useState("");
@@ -25,6 +26,7 @@ export default function Settings() {
   const load = () => getSettings().then(loaded => {
     setSettings(loaded);
     setIgnoredChecksText((loaded.github_ignored_checks ?? []).join("\n"));
+    setIgnoredReposText((loaded.github_ignored_repos ?? []).join("\n"));
     setPollMinutes(String(loaded.github_poll_minutes ?? 2));
   }).catch(() => {});
   useEffect(() => { load(); }, []);
@@ -63,9 +65,10 @@ export default function Settings() {
   const saveGithub = (event: React.FormEvent) => {
     event.preventDefault();
     const github_ignored_checks = ignoredChecksText.split("\n").map(line => line.trim()).filter(Boolean);
+    const github_ignored_repos = ignoredReposText.split("\n").map(line => line.trim()).filter(Boolean);
     const minutes = Number(pollMinutes);
     setSavingGithub(true);
-    patchSettings({ github_ignored_checks, github_poll_minutes: Number.isFinite(minutes) && minutes > 0 ? minutes : 2 })
+    patchSettings({ github_ignored_checks, github_ignored_repos, github_poll_minutes: Number.isFinite(minutes) && minutes > 0 ? minutes : 2 })
       .then(load)
       .catch(() => {})
       .finally(() => setSavingGithub(false));
@@ -117,6 +120,9 @@ export default function Settings() {
         <form className="form-panel" onSubmit={saveGithub}>
           <label>Ignored checks (one glob per line, e.g. codecov/*)
             <textarea value={ignoredChecksText} onChange={event => setIgnoredChecksText(event.target.value)} rows={4} />
+          </label>
+          <label>Ignored repos (one owner/repo glob per line, e.g. acme/*). Their PRs are hidden and never notify.
+            <textarea value={ignoredReposText} onChange={event => setIgnoredReposText(event.target.value)} rows={4} />
           </label>
           <label>Poll every (minutes)<input type="number" min={1} value={pollMinutes} onChange={event => setPollMinutes(event.target.value)} /></label>
           <div className="form-actions">

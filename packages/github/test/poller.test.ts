@@ -37,6 +37,44 @@ describe("createPrPoller.tick", () => {
     expect(status.error).toBeNull();
   });
 
+  /** Tick once to seed every PR, then store each as closed so the next tick's open state would raise an event for any visible one. */
+  async function seedThenChange(store: ReturnType<typeof openStore>) {
+    const calls: string[] = [];
+    const gh = { calls, graphql: async (query: string) => { calls.push(query); return query.includes("search(") ? listsFixture : watchedFixture; } };
+    const poller = createPrPoller({ db: store, gh, now: () => new Date("2026-09-22T14:05:00Z") });
+    await poller.tick();
+    for (const pr of store.github.listPrs()) store.github.upsertPr({ ...pr, state: "closed" });
+    return { gh, poller };
+  }
+
+  test("a PR ignored by its own flag raises no events and, if watched, is not re-polled", async () => {
+    const store = openStore(":memory:");
+    const hiddenWatched = seedWatched(store, { url: "https://github.com/acme/app/pull/41", number: 41 });
+    store.github.setIgnored(hiddenWatched, true);
+    const { gh, poller } = await seedThenChange(store);
+    const [ignored, visible] = store.github.listPrs({ list: "mine" }).concat(store.github.listPrs({ list: "review_requested" }));
+    store.github.setIgnored(ignored.id, true);
+
+    await poller.tick();
+
+    const events = store.github.listUnseenEvents();
+    expect(events.some(event => event.pr_id === visible.id)).toBe(true);
+    expect(events.filter(event => event.pr_id === ignored.id || event.pr_id === hiddenWatched)).toEqual([]);
+    expect(gh.calls.some(call => call.includes("pullRequest(number: 41)"))).toBe(false);
+  });
+
+  test("an ignored repo silences events for every PR in it", async () => {
+    const store = openStore(":memory:");
+    const { poller } = await seedThenChange(store);
+    store.settings.setGithubIgnoredRepos(["acme/*"]);
+
+    await poller.tick();
+
+    expect(store.github.listPrs({ hidden: false })).toEqual([]);
+    expect(store.github.listUnseenEvents()).toEqual([]);
+    expect(store.github.listPrs({ hidden: true }).length).toBeGreaterThan(0); // still stored, so un-ignoring restores them
+  });
+
   test("a lists query GitHub times out on is retried one list at a time", async () => {
     const store = openStore(":memory:");
     const calls: string[] = [];

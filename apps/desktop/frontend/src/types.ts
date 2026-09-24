@@ -113,6 +113,8 @@ export interface Pr {
   checks_summary: PrChecksSummary;
   watched: boolean;
   ignored_checks: string[];
+  /** Hidden from every list by the user; a PR can also be hidden because its repo is in github_ignored_repos. */
+  ignored: boolean;
   lists: PrList[];
   item_id: number | null;
   /** The settings.github_dirs entry gh ran from; null for the API's own cwd. */
@@ -143,9 +145,11 @@ export interface PrsResponse {
   mine: Pr[];
   review_requested: Pr[];
   watched: Pr[];
+  /** Hidden PRs: pr.ignored, or (when pr.ignored is false) the repo is in github_ignored_repos. */
+  ignored: Pr[];
   status: PrStatus;
 }
 
 /** Settings gains github_ignored_checks / github_poll_minutes; kept optional here since
  * @portfolio/core's Settings type may not have caught up yet. */
-export type SettingsView = Settings & { github_ignored_checks?: string[]; github_poll_minutes?: number; github_dirs?: string[] };
+export type SettingsView = Settings & { github_ignored_checks?: string[]; github_ignored_repos?: string[]; github_poll_minutes?: number; github_dirs?: string[] };

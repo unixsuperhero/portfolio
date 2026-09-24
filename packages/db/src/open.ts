@@ -45,11 +45,12 @@ export function migrateItemKinds(db: Database, path: string, schema: string, log
   return true;
 }
 
-/** Adds source_dir to an older github_prs table. A table that does not exist yet is left for `schema` to create with it already. */
+/** Adds source_dir and ignored to an older github_prs table. A table that does not exist yet is left for `schema` to create with it already. */
 export function migrateGithubPrColumns(db: Database): void {
   const columns = db.query<{ name: string }, []>("PRAGMA table_info(github_prs)").all().map(column => column.name);
   if (!columns.length) return;
   if (!columns.includes("source_dir")) db.exec("ALTER TABLE github_prs ADD COLUMN source_dir TEXT");
+  if (!columns.includes("ignored")) db.exec("ALTER TABLE github_prs ADD COLUMN ignored INTEGER NOT NULL DEFAULT 0 CHECK (ignored IN (0, 1))");
 }
 
 /** Adds the kind and config columns to an older cards table. A table that does not exist yet is left for `schema` to create with them already. */

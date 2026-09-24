@@ -108,7 +108,7 @@ export const deleteCategory = (id: number) => api.request<{ ok: true }>(`/api/ca
 
 export const getSettings = () => api.request<import("./types.ts").SettingsView>("/api/settings");
 
-export const patchSettings = (patch: { home_portfolio_id?: number | null; pastry_enabled?: boolean; github_ignored_checks?: string[]; github_poll_minutes?: number; github_dirs?: string[] }) =>
+export const patchSettings = (patch: { home_portfolio_id?: number | null; pastry_enabled?: boolean; github_ignored_checks?: string[]; github_ignored_repos?: string[]; github_poll_minutes?: number; github_dirs?: string[] }) =>
   api.request<import("./types.ts").SettingsView>("/api/settings", { method: "PATCH", json: patch });
 
 export const getHome = () => api.request<{ portfolio: PortfolioView | null }>("/api/home");
@@ -208,7 +208,7 @@ export const refreshPrs = () => api.request<import("./types.ts").PrsResponse>("/
 export const watchPr = (url: string, watched: boolean) =>
   api.request<import("./types.ts").Pr>("/api/prs/watch", { method: "POST", json: { url, watched } });
 
-export const patchPr = (id: number, patch: { ignored_checks: string[] }) =>
+export const patchPr = (id: number, patch: { ignored_checks?: string[]; ignored?: boolean }) =>
   api.request<import("./types.ts").Pr>(`/api/prs/${id}`, { method: "PATCH", json: patch });
 
 export const getPrEvents = (since: number) =>

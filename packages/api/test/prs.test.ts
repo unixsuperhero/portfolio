@@ -36,7 +36,7 @@ describe("prs", () => {
     const store = openStore(":memory:");
     const api = createApi(store, {});
     const res = await get(api, "/api/prs");
-    expect(await res.json()).toEqual({ mine: [], review_requested: [], watched: [], status: { last_poll_at: null, next_poll_at: null, rate: null, polling: false, error: null, gh_ok: false, login: null } });
+    expect(await res.json()).toEqual({ mine: [], review_requested: [], watched: [], ignored: [], status: { last_poll_at: null, next_poll_at: null, rate: null, polling: false, error: null, gh_ok: false, login: null } });
   });
 
   test("GET /api/prs with a poller reflects the store and poller status", async () => {
@@ -95,6 +95,47 @@ describe("prs", () => {
     expect(pr.ignored_checks).toEqual(["codecov/*"]);
     expect(pr.checks[0].ignored).toBe(true);
     expect((await send(api, "PATCH", "/api/prs/999", { ignored_checks: [] })).status).toBe(404);
+  });
+
+  test("PATCH /api/prs/:id { ignored } moves a PR between the lists and the ignored list, keeping ignored_checks", async () => {
+    const store = openStore(":memory:");
+    const poller = fakePoller(store);
+    const api = createApi(store, { prPoller: poller });
+    const pr = await poller!.fetchOne({ owner: "acme", repo: "app", number: 12 });
+    store.github.setIgnoredChecks(pr.id, ["codecov/*"]);
+    await send(api, "PATCH", `/api/prs/${pr.id}`, { ignored_checks: ["codecov/*"] });
+    store.github.setWatched(pr.id, true);
+
+    let res = await send(api, "PATCH", `/api/prs/${pr.id}`, { ignored: true });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ id: pr.id, ignored: true, ignored_checks: ["codecov/*"], watched: true });
+    let view = await (await get(api, "/api/prs")).json();
+    expect(view.watched).toEqual([]);
+    expect(view.ignored.map((p: { id: number }) => p.id)).toEqual([pr.id]);
+
+    res = await send(api, "PATCH", `/api/prs/${pr.id}`, { ignored: false });
+    expect((await res.json()).ignored).toBe(false);
+    view = await (await get(api, "/api/prs")).json();
+    expect(view.watched.map((p: { id: number }) => p.id)).toEqual([pr.id]);
+    expect(view.ignored).toEqual([]);
+  });
+
+  test("settings github_ignored_repos hides a whole repo from the lists; the ignored list still shows its PRs", async () => {
+    const store = openStore(":memory:");
+    const poller = fakePoller(store);
+    const api = createApi(store, { prPoller: poller });
+    const app = await poller!.fetchOne({ owner: "acme", repo: "app", number: 1 });
+    const other = await poller!.fetchOne({ owner: "acme", repo: "other", number: 2 });
+    for (const pr of [app, other]) store.github.setWatched(pr.id, true);
+
+    let res = await send(api, "PATCH", "/api/settings", { github_ignored_repos: ["acme/app"] });
+    expect((await res.json()).github_ignored_repos).toEqual(["acme/app"]);
+    const view = await (await get(api, "/api/prs")).json();
+    expect(view.watched.map((p: { id: number }) => p.id)).toEqual([other.id]);
+    expect(view.ignored.map((p: { id: number; ignored: boolean }) => [p.id, p.ignored])).toEqual([[app.id, false]]);
+
+    res = await get(api, "/api/settings");
+    expect((await res.json()).github_ignored_repos).toEqual(["acme/app"]);
   });
 
   test("events: list unseen since an id, then mark seen", async () => {

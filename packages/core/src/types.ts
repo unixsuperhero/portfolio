@@ -254,6 +254,8 @@ export interface Settings {
   watched_directories: { id: number; path: string; recursive: boolean }[];
   project_parents: { id: number; path: string; count: number }[];
   github_ignored_checks: string[];
+  /** owner/repo globs (e.g. "acme/*") whose PRs are hidden from every list and raise no events. */
+  github_ignored_repos: string[];
   github_poll_minutes: number;
   /** Directories gh runs from when polling, in order. Empty means the API's own cwd. */
   github_dirs: string[];
@@ -294,6 +296,8 @@ export interface Pr {
   watched: boolean;
   /** Per-PR ignored check name patterns; settings.github_ignored_checks is global. */
   ignored_checks: string[];
+  /** Hidden from every list and raises no events. Set by PATCH /api/prs/:id { ignored }; never touched by polling. */
+  ignored: boolean;
   /** Which search lists this PR currently appears in ([] for watched-only). */
   lists: string[];
   /** The library `pr` item, created when watched. */
