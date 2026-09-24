@@ -139,3 +139,6 @@
   font: inherit;
 }
 :root[data-theme="light"] .settings-field select { background: var(--surface); }
+
+.settings-choices { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; color: var(--text2); font-size: .9rem; }
+.settings-choices .form-checkbox { padding-bottom: 0; align-self: auto; }

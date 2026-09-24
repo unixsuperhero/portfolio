@@ -78,17 +78,19 @@ export default function Settings() {
       <section className="settings-section">
         <h2>Homepage</h2>
         <p className="settings-section-description">The portfolio shown when the app opens.</p>
-        <select value={settings.home_portfolio_id ?? ""} onChange={event => setHome(event.target.value)}>
-          <option value="">None</option>
-          {portfolios.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
+        <label className="settings-field">Portfolio
+          <select value={settings.home_portfolio_id ?? ""} onChange={event => setHome(event.target.value)}>
+            <option value="">None</option>
+            {portfolios.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </label>
       </section>
 
       <section className="settings-section">
         <h2>External links</h2>
-        <div className="field-row">
-          <label><input type="radio" name="links" checked={linksOpenIn === "in-app"} onChange={() => changeLinks("in-app")} /> Open in in-app browser</label>
-          <label><input type="radio" name="links" checked={linksOpenIn === "system"} onChange={() => changeLinks("system")} /> Open in system browser</label>
+        <div className="settings-choices">
+          <label className="form-checkbox"><input type="radio" name="links" checked={linksOpenIn === "in-app"} onChange={() => changeLinks("in-app")} /> Open in in-app browser</label>
+          <label className="form-checkbox"><input type="radio" name="links" checked={linksOpenIn === "system"} onChange={() => changeLinks("system")} /> Open in system browser</label>
         </div>
       </section>
 
