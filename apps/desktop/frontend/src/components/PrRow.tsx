@@ -4,6 +4,17 @@ import { PortfolioApiError } from "@portfolio/client";
 import type { Pr, PrReviewDecision } from "../types.ts";
 import { getSettings, patchPr, patchSettings, watchPr } from "../api.ts";
 import { PrChecks } from "./PrChecks.tsx";
+import type { ConfirmOptions } from "./ConfirmDialog.tsx";
+
+export type Confirm = (options: ConfirmOptions) => Promise<boolean>;
+
+export const prLabel = (pr: Pick<Pr, "owner" | "repo" | "number">) => `${pr.owner}/${pr.repo}#${pr.number}`;
+
+export const confirmIgnorePr = (confirm: Confirm, pr: Pick<Pr, "owner" | "repo" | "number">) =>
+  confirm({ title: `Ignore ${prLabel(pr)}?`, body: "It leaves every list and stops notifying. Restore it from the Ignored section on the PRs page.", confirmLabel: "Ignore" });
+
+export const confirmIgnoreRepo = (confirm: Confirm, repos: string[]) =>
+  confirm({ title: repos.length === 1 ? `Ignore every PR in ${repos[0]}?` : `Ignore every PR in ${repos.length} repos?`, body: `${repos.join(", ")}. Their PRs leave every list and stop notifying. Restore a repo from the Ignored section on the PRs page or in Settings.`, confirmLabel: repos.length === 1 ? "Ignore repo" : "Ignore repos" });
 
 export const dirLabel = (dir: string) => dir.replace(/\/+$/, "").split("/").pop() || dir;
 
@@ -20,8 +31,9 @@ export const ignoreRepo = (pr: Pick<Pr, "owner" | "repo">) =>
 
 /** One PR: state badge, owner/repo#n link, title, review decision, checks pill, comment count,
  * Watch/Unwatch and Ignore/Unignore toggles, "Ignore repo", and an inline "Ignore checks…" editor (PATCH /api/prs/:id).
+ * Ignoring asks through `confirm` (useConfirm from the page that renders the rows).
  * `repoIgnored` marks a PR hidden by settings.github_ignored_repos rather than its own flag. */
-export function PrRow({ pr, onChanged, repoIgnored = false }: { pr: Pr; onChanged: () => void; repoIgnored?: boolean }) {
+export function PrRow({ pr, onChanged, confirm, repoIgnored = false }: { pr: Pr; onChanged: () => void; confirm: Confirm; repoIgnored?: boolean }) {
   const [editing, setEditing] = useState(false);
   const [ignoredText, setIgnoredText] = useState(pr.ignored_checks.join("\n"));
   const [saving, setSaving] = useState(false);
@@ -72,11 +84,11 @@ export function PrRow({ pr, onChanged, repoIgnored = false }: { pr: Pr; onChange
         <span className="pr-comments" title="Comments">💬 {pr.comments}</span>
         <button type="button" className="secondary" onClick={toggleWatch} disabled={watching}>{pr.watched ? "Unwatch" : "Watch"}</button>
         {repoIgnored ? (
-          <span className="pr-ignore-hint">Repo ignored in <Link to="/settings">Settings</Link></span>
+          <span className="pr-ignore-hint">Repo ignored</span>
         ) : (
           <>
-            <button type="button" className="secondary" onClick={() => run(pr.ignored ? "unignore" : "ignore", () => patchPr(pr.id, { ignored: !pr.ignored }))} disabled={hiding}>{pr.ignored ? "Unignore" : "Ignore"}</button>
-            {pr.ignored ? null : <button type="button" className="secondary" onClick={() => run("ignore repo", () => ignoreRepo(pr))} disabled={hiding} title={`Hide every PR in ${pr.owner}/${pr.repo}`}>Ignore repo</button>}
+            <button type="button" className="secondary" onClick={async () => { if (pr.ignored || await confirmIgnorePr(confirm, pr)) run(pr.ignored ? "unignore" : "ignore", () => patchPr(pr.id, { ignored: !pr.ignored })); }} disabled={hiding}>{pr.ignored ? "Unignore" : "Ignore"}</button>
+            {pr.ignored ? null : <button type="button" className="secondary" onClick={async () => { if (await confirmIgnoreRepo(confirm, [`${pr.owner}/${pr.repo}`])) run("ignore repo", () => ignoreRepo(pr)); }} disabled={hiding} title={`Hide every PR in ${pr.owner}/${pr.repo}`}>Ignore repo</button>}
           </>
         )}
         <button type="button" className="secondary" onClick={() => setEditing(value => !value)}>Ignore checks…</button>

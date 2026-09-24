@@ -26,7 +26,8 @@ async function browserService() {
 export async function openInApp(url: string): Promise<void> {
   if (inWails()) {
     const service = await browserService();
-    const impl = (service as any)?.BrowserService ?? (service as any)?.default;
+    // The generated module exports Open/List/Close directly (no namespace, no default), like nativeservice.ts.
+    const impl = (service as any)?.BrowserService ?? (service as any)?.default ?? service;
     if (impl?.Open) {
       await impl.Open(url);
       return;

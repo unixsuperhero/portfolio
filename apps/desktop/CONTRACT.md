@@ -363,9 +363,11 @@ Frontend: sidebar entry "PRs" → `/prs` page with three portfolio-style cards (
 "Mine", "Review requested", "Watched". A PR row: state badge, `owner/repo#n`, title, review decision, checks pill
 (✓ / ✗ / ● with counts, hover lists checks; ignored ones shown struck through), comment count, "Watch"/"Unwatch" toggle,
 "Ignore"/"Unignore" (PATCH `{ ignored }`), "Ignore repo" (appends `owner/repo` to `github_ignored_repos`), and
-"Ignore checks…" opens a small editor (per-PR list + link to global list in Settings). Below the three cards, a collapsed
-"Ignored" card lists every hidden PR with Unignore, or a "Repo ignored in Settings" note when the repo is what hides it.
-The selection bar's bulk actions include Ignore and Ignore repos. Links carry `data-url` so the
+"Ignore checks…" opens a small editor (per-PR list + link to global list in Settings). Every Ignore / Ignore repo action
+(row and bulk) first asks through the in-app confirm dialog (`useConfirm`; window.confirm never shows in the webview).
+Below the three cards, an "Ignored" card summarises `N PRs · M repos` with a Review toggle that lists each ignored repo
+with "Unignore repo" (removes it from `github_ignored_repos`) and each hidden PR with Unignore, or a "Repo ignored" note
+when the repo is what hides it. The selection bar's bulk actions include Ignore and Ignore repos. Links carry `data-url` so the
 context menu and in-app browser work. `prs` card kind: `config: { list: "mine" | "review_requested" | "watched" }` renders the
 same rows inside a portfolio. Notifications: the existing 60s reminder poll gains `GET /api/prs/events` (own state only):
 each new event → in-app toast + `native.notify` + a short WebAudio ping (`src/lib/sound.ts`, no audio asset), then

@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { PortfolioApiError } from "@portfolio/client";
 import type { Pr, PrsResponse } from "../types.ts";
-import { getPrs, patchPr, refreshPrs, watchPr } from "../api.ts";
-import { PrRow, dirLabel, ignoreRepo } from "../components/PrRow.tsx";
+import { getPrs, getSettings, patchPr, patchSettings, refreshPrs, watchPr } from "../api.ts";
+import { PrRow, confirmIgnorePr, confirmIgnoreRepo, dirLabel, ignoreRepo } from "../components/PrRow.tsx";
+import type { Confirm } from "../components/PrRow.tsx";
 import { CollectionToolbar, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
+import { useConfirm } from "../components/ConfirmDialog.tsx";
 import "../operational.css";
 
 const EMPTY: PrsResponse = { mine: [], review_requested: [], watched: [], ignored: [], status: { last_poll_at: null, next_poll_at: null, rate: null, polling: false, error: null, gh_ok: true, login: null } };
@@ -61,6 +63,7 @@ function PrListCard({
   selected,
   onToggle,
   onChanged,
+  confirm,
 }: {
   title: string;
   prs: Pr[];
@@ -68,6 +71,7 @@ function PrListCard({
   selected: ReadonlySet<number>;
   onToggle: (id: number) => void;
   onChanged: () => void;
+  confirm: Confirm;
 }) {
   return (
     <section className="rail-section portfolio-card">
@@ -80,7 +84,7 @@ function PrListCard({
           {prs.map(pr => (
             <div className={`selectable-pr-row${selected.has(pr.id) ? " is-selected" : ""}`} key={pr.id}>
               <input type="checkbox" checked={selected.has(pr.id)} onChange={() => onToggle(pr.id)} aria-label={`Select ${pr.owner}/${pr.repo}#${pr.number}`} />
-              <PrRow pr={pr} onChanged={onChanged} />
+              <PrRow pr={pr} onChanged={onChanged} confirm={confirm} />
             </div>
           ))}
         </div>
@@ -101,6 +105,8 @@ export default function PullRequests() {
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
   const [ignoredText, setIgnoredText] = useState("");
   const [showIgnored, setShowIgnored] = useState(false);
+  const [ignoredRepos, setIgnoredRepos] = useState<string[]>([]);
+  const { confirm, dialog } = useConfirm();
   const query = params.get("q") ?? "";
   const stateFilter = params.get("state") ?? "";
   const checksFilter = params.get("checks") ?? "";
@@ -111,7 +117,9 @@ export default function PullRequests() {
     getPrs()
       .then(result => { setData(result); setOffline(false); })
       .catch(() => setOffline(true));
+    getSettings().then(settings => setIgnoredRepos(settings.github_ignored_repos ?? [])).catch(() => {});
   };
+  const unignoreRepo = (repo: string) => patchSettings({ github_ignored_repos: ignoredRepos.filter(entry => entry !== repo) }).then(load).catch(() => {});
   useEffect(load, []);
 
   const refresh = () => {
@@ -153,6 +161,18 @@ export default function PullRequests() {
 
   const ignoredChecks = ignoredText.split("\n").map(line => line.trim()).filter(Boolean);
   const status = data.status;
+  const selectedRepos = Array.from(new Set(selectedPrs.map(pr => `${pr.owner}/${pr.repo}`)));
+  const bulkIgnore = async () => {
+    if (!selectedPrs.length) return;
+    const ok = selectedPrs.length === 1
+      ? await confirmIgnorePr(confirm, selectedPrs[0])
+      : await confirm({ title: `Ignore ${selectedPrs.length} selected pull requests?`, body: "They leave every list and stop notifying. Restore them from the Ignored section.", confirmLabel: "Ignore" });
+    if (ok) runBulk("Ignore", pr => patchPr(pr.id, { ignored: true }));
+  };
+  const bulkIgnoreRepos = async () => {
+    if (!selectedRepos.length) return;
+    if (await confirmIgnoreRepo(confirm, selectedRepos)) runBulk("Ignore repos", pr => ignoreRepo(pr));
+  };
 
   return (
     <div>
@@ -223,8 +243,8 @@ export default function PullRequests() {
       >
         <button type="button" className="secondary" onClick={() => runBulk("Watch", pr => watchPr(pr.url, true))} disabled={!selection.selected.size || bulkBusy}>Watch</button>
         <button type="button" className="secondary" onClick={() => runBulk("Unwatch", pr => watchPr(pr.url, false))} disabled={!selection.selected.size || bulkBusy}>Unwatch</button>
-        <button type="button" className="secondary" onClick={() => runBulk("Ignore", pr => patchPr(pr.id, { ignored: true }))} disabled={!selection.selected.size || bulkBusy}>Ignore</button>
-        <button type="button" className="secondary" onClick={() => runBulk("Ignore repos", pr => ignoreRepo(pr))} disabled={!selection.selected.size || bulkBusy}>Ignore repos</button>
+        <button type="button" className="secondary" onClick={() => void bulkIgnore()} disabled={!selection.selected.size || bulkBusy}>Ignore</button>
+        <button type="button" className="secondary" onClick={() => void bulkIgnoreRepos()} disabled={!selection.selected.size || bulkBusy}>Ignore repos</button>
         <label className="bulk-inline-field">Ignored checks
           <textarea value={ignoredText} onChange={event => setIgnoredText(event.target.value)} rows={2} placeholder="one glob per line" />
         </label>
@@ -233,27 +253,37 @@ export default function PullRequests() {
       {bulkMessage ? <p className={bulkMessage.includes("failed") ? "operational-error" : "operational-status"}>{bulkMessage}</p> : null}
 
       <div className="portfolio-grid">
-        <PrListCard title="Mine" prs={lists.mine} total={data.mine.length} selected={selection.selected} onToggle={selection.toggle} onChanged={load} />
-        <PrListCard title="Review requested" prs={lists.review_requested} total={data.review_requested.length} selected={selection.selected} onToggle={selection.toggle} onChanged={load} />
-        <PrListCard title="Watched" prs={lists.watched} total={data.watched.length} selected={selection.selected} onToggle={selection.toggle} onChanged={load} />
+        <PrListCard title="Mine" prs={lists.mine} total={data.mine.length} selected={selection.selected} onToggle={selection.toggle} onChanged={load} confirm={confirm} />
+        <PrListCard title="Review requested" prs={lists.review_requested} total={data.review_requested.length} selected={selection.selected} onToggle={selection.toggle} onChanged={load} confirm={confirm} />
+        <PrListCard title="Watched" prs={lists.watched} total={data.watched.length} selected={selection.selected} onToggle={selection.toggle} onChanged={load} confirm={confirm} />
       </div>
 
-      {data.ignored.length ? (
+      {data.ignored.length || ignoredRepos.length ? (
         <section className="rail-section portfolio-card pr-ignored">
           <header>
             <h2>Ignored</h2>
             <div className="rail-heading-actions">
-              <span>{data.ignored.length}</span>
-              <button type="button" className="secondary" onClick={() => setShowIgnored(value => !value)}>{showIgnored ? "Hide" : "Show"}</button>
+              <span>{data.ignored.length} PR{data.ignored.length === 1 ? "" : "s"} · {ignoredRepos.length} repo{ignoredRepos.length === 1 ? "" : "s"}</span>
+              <button type="button" className="secondary" onClick={() => setShowIgnored(value => !value)}>{showIgnored ? "Hide" : "Review"}</button>
             </div>
           </header>
           {showIgnored ? (
             <div className="pr-list">
-              {data.ignored.map(pr => <PrRow key={pr.id} pr={pr} onChanged={load} repoIgnored={!pr.ignored} />)}
+              {ignoredRepos.map(repo => (
+                <div className="pr-row" key={repo}>
+                  <div className="pr-row-main">
+                    <span className="kind">REPO</span>
+                    <span className="pr-title">{repo}</span>
+                    <button type="button" className="secondary" onClick={() => void unignoreRepo(repo)}>Unignore repo</button>
+                  </div>
+                </div>
+              ))}
+              {data.ignored.map(pr => <PrRow key={pr.id} pr={pr} onChanged={load} confirm={confirm} repoIgnored={!pr.ignored} />)}
             </div>
           ) : null}
         </section>
       ) : null}
+      {dialog}
     </div>
   );
 }

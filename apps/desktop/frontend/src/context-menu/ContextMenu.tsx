@@ -93,7 +93,7 @@ export function ContextMenuProvider() {
       if (!anchor || !/^https?:\/\//.test(anchor.href) || anchor.origin === window.location.origin) return;
       event.preventDefault();
       if (getLinksOpenIn() === "system") void openSystem(anchor.href);
-      else void openInApp(anchor.href);
+      else void openInApp(anchor.href).catch(err => { console.error("in-app browser failed, opening in the system browser", err); return openSystem(anchor.href); });
     };
 
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
