@@ -1,85 +1,88 @@
-#!/usr/bin/env bun
-// pf-docs — import Markdown/HTML files as tracked documents, following local links with -r (an mdoc in TypeScript).
-//   pf-docs add -r docs/index.md            → direct to the database
-//   pf-docs push -r docs/index.md           → through the running server (POST /api/documents), like mdoc
-//   pf-docs links docs/index.md             → what a file links to
-import { resolve } from "node:path";
-import { cli, flag, json, option, openDefault, table, CliError } from "@portfolio/cli-kit";
-import { client, openDefaultStore, itemUrl } from "@portfolio/cli";
-import { documentTitle, isHtmlPath, isMarkdownPath, abbreviatePath } from "@portfolio/core";
-import { crawlMarkdown, renderMarkdown } from "@portfolio/render";
+#!/usr/bin/env ruby
+# frozen_string_literal: true
 
-const IMPORT_OPTS = { recursive: flag("r", "also import local Markdown linked from the roots"), title: option("t", "title for the first root"), desc: option("d", "description for the first root"), toc: flag(undefined, "include a table of contents (default)", { default: true }), open: flag("o", "open the roots afterwards"), json: flag("j", "print JSON") };
+require_relative '../lib/pf'
+require_relative '../lib/pf/documents'
 
-cli("pf-docs", c => {
-  c.cmd(["add", "import"], { desc: "import files into the database directly", args: ["FILE..."], opts: IMPORT_OPTS }, async ({ args, opts, out }) => {
-    if (!args.length) throw new CliError("at least one file is required");
-    const store = openDefaultStore();
-    const crawl = crawlMarkdown(args, { recursive: opts.recursive });
-    const ids = new Map<string, number>();
-    const contents = new Map<string, string>();
-    for (const path of crawl.files) contents.set(path, await Bun.file(path).text());
-    store.db.transaction(() => {
-      for (const path of crawl.files) {
-        const content = contents.get(path)!;
-        const isRoot = path === crawl.roots[0];
-        const title = isRoot && opts.title ? opts.title : documentTitle(content, path);
-        const html = isHtmlPath(path);
-        ids.set(path, store.items.upsertItem({ type: "document", title, description: isRoot ? opts.desc ?? "" : "", content: html ? "" : content, rendered_html: html ? content : "", source_path: path, toc: opts.toc }));
-      }
-      for (const path of crawl.files) {
-        if (!isMarkdownPath(path)) continue;
-        const item = store.items.getItem(ids.get(path)!)!;
-        store.items.setRenderedHtml(item.id, renderMarkdown(contents.get(path)!, { title: item.title, toc: opts.toc, sourcePath: path, resolveId: target => ids.get(target) ?? store.items.findItemBySource(target)?.id }));
-      }
-    })();
-    const roots = crawl.roots.map(path => store.items.getItem(ids.get(path)!)!);
-    if (opts.json) out(json({ imported: crawl.files.length, roots: roots.map(item => store.items.viewItem(item)) }));
-    else { out(`imported ${crawl.files.length} files`); for (const item of roots) out(`saved ${itemUrl(item)}  ${abbreviatePath(item.source_path!)}`); }
-    if (opts.open) roots.forEach(item => openDefault(itemUrl(item)));
-  });
+module PfDocs
+  module_function
 
-  c.cmd("push", { desc: "import through the running server, like mdoc", args: ["FILE..."], opts: IMPORT_OPTS }, async ({ args, opts, out }) => {
-    if (!args.length) throw new CliError("at least one file is required");
-    const crawl = crawlMarkdown(args, { recursive: opts.recursive });
-    const documents = [];
-    for (const path of crawl.files) documents.push({ sourcePath: path, content: await Bun.file(path).text() });
-    const api = client();
-    const result = await api.createDocuments(documents, { roots: crawl.roots, title: opts.title ?? undefined, description: opts.desc ?? undefined, toc: opts.toc });
-    if (opts.json) out(json(result));
-    for (const item of result.items) { const url = api.absolute(item.href); if (!opts.json) out(`saved ${url}`); if (opts.open) openDefault(url); }
-  });
+  IMPORT_OPTS = %i[recursive title desc toc no_toc open json].freeze
 
-  c.cmd("links", { desc: "local Markdown files a file links to, transitively", args: ["FILE"], opts: { json: flag("j", "print JSON") } }, ({ args, opts, out }) => {
-    if (!args[0]) throw new CliError("file required");
-    const crawl = crawlMarkdown([args[0]], { recursive: true });
-    if (opts.json) return out(json({ files: crawl.files, edges: Object.fromEntries(crawl.edges) }));
-    for (const [from, to] of crawl.edges) { out(abbreviatePath(from)); to.forEach(target => out(`  → ${abbreviatePath(target)}`)); }
-  });
+  def define_import_options(h)
+    h.add_flag :recursive, short: 'r', desc: 'also import local Markdown linked from the roots'
+    h.add_option :title, short: 't', desc: 'title for the first root'
+    h.add_option :desc, short: 'd', desc: 'description for the first root'
+    h.add_flag :toc, desc: 'include a table of contents (default)'
+    h.add_flag :no_toc, long: 'no-toc', desc: 'omit the table of contents'
+    h.add_flag :open, short: 'o', desc: 'open the roots afterwards'
+    h.add_flag :json, short: 'j', desc: 'print JSON'
+  end
 
-  c.cmd("tracked", { desc: "documents with a tracked source file, and whether the file still exists", opts: { json: flag("j", "print JSON"), missing: flag("m", "only those whose source is gone") } }, async ({ opts, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    const rows = [];
-    for (const item of store.items.listItems({ type: "document" })) {
-      if (!item.source_path) continue;
-      const exists = await Bun.file(item.source_path).exists();
-      if (opts.missing && exists) continue;
-      rows.push({ id: item.id, title: item.title, source: abbreviatePath(item.source_path), exists: exists ? "yes" : "MISSING" });
-    }
-    out(opts.json ? json(rows) : table(rows));
-  });
+  def print_add_result(result, opts)
+    if opts.json?
+      puts Pf.json('imported' => result['imported'], 'roots' => result['roots'])
+    else
+      puts "imported #{result['imported']} files"
+      Array(result['roots']).each { |item| puts "saved #{Pf.item_url(item)}  #{Pf.abbreviate_path(item['source_path'])}" }
+    end
+    Array(result['roots']).each { |item| Pf.open_default(Pf.item_url(item)) } if opts.open?
+  end
 
-  c.cmd("rerender", { desc: "re-render the HTML of Markdown documents from their stored content (or --from-disk)", args: ["ID..."], opts: { disk: flag(undefined, "re-read the tracked source file first"), all: flag("a", "every Markdown-backed document") } }, async ({ args, opts, out }) => {
-    const store = openDefaultStore();
-    const items = opts.all ? store.items.listItems().filter(item => item.content) : args.map(id => store.items.getItem(Number(id))).filter((item): item is NonNullable<typeof item> => Boolean(item));
-    let count = 0;
-    for (const item of items) {
-      let content = item.content;
-      if (opts.disk && item.source_path && await Bun.file(item.source_path).exists()) { content = await Bun.file(item.source_path).text(); store.items.updateItem(item.id, { content }); }
-      if (!content) continue;
-      store.items.setRenderedHtml(item.id, renderMarkdown(content, { title: item.title, toc: Boolean(item.toc), sourcePath: item.source_path, resolveId: path => store.items.findItemBySource(path)?.id }));
-      count++;
-    }
-    out(`re-rendered ${count} documents`);
-  });
-}, { desc: "import and maintain tracked documents" }).run();
+
+  def print_push_result(result, opts)
+    if opts.json?
+      puts Pf.json(result)
+    else
+      Array(result['items']).each { |item| puts "saved #{Pf.client.absolute(item['href'])}" }
+    end
+    Array(result['items']).each { |item| Pf.open_default(Pf.client.absolute(item['href'])) } if opts.open?
+  end
+end
+
+Pf.run do
+  PfDocs.define_import_options(self)
+
+  add_cmd 'add', 'import', opts: PfDocs::IMPORT_OPTS do
+    PfDocs.print_add_result(Pf::Documents.import_files(opts.args, opts), opts)
+  end
+
+  add_cmd 'push', opts: PfDocs::IMPORT_OPTS do
+    PfDocs.print_push_result(Pf::Documents.push_files(opts.args, opts), opts)
+  end
+
+  add_cmd 'links', opts: %i[json] do
+    raise Pf::Error, 'file required' unless opts.args[0]
+
+    crawl = Pf::Crawl.crawl_markdown([opts.args[0]], recursive: true)
+    if opts.json?
+      puts Pf.json({ 'files' => crawl['files'], 'edges' => crawl['edges'] })
+    else
+      crawl['edges'].each do |from, to|
+        puts Pf.abbreviate_path(from)
+        to.each { |target| puts "  → #{Pf.abbreviate_path(target)}" }
+      end
+    end
+  end
+
+  add_flag :missing, short: 'm', desc: 'only those whose source is gone'
+  add_cmd 'tracked', opts: %i[json missing] do
+    store = Pf.store
+    rows = []
+    store.list_items('type' => 'document').each do |item|
+      source = item['source_path']
+      next unless source
+      exists = File.exist?(source)
+      next if opts.missing? && exists
+
+      rows << { 'id' => item['id'], 'title' => item['title'], 'source' => Pf.abbreviate_path(source), 'exists' => exists ? 'yes' : 'MISSING' }
+    end
+    puts(opts.json? ? Pf.json(rows) : Pf.table(rows))
+  end
+
+  add_flag :disk, desc: 're-read the tracked source file first'
+  add_flag :all, short: 'a', desc: 'every Markdown-backed document'
+  add_cmd 'rerender', opts: %i[disk all] do
+    puts "re-rendered #{Pf::Documents.rerender(opts.args, opts)} documents"
+  end
+end

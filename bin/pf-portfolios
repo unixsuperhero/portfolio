@@ -1,66 +1,96 @@
-#!/usr/bin/env bun
-// pf-portfolios — pages of cards. Each card is a saved query; see pf-cards.
-import { cli, flag, json, numberArg, table, openDefault, CliError, pickOne } from "@portfolio/cli-kit";
-import { openDefaultStore } from "@portfolio/cli";
-import { describeCard } from "@portfolio/core";
-import { defaultServer } from "@portfolio/client";
-import type { Store } from "@portfolio/db";
+#!/usr/bin/env ruby
+# pf-portfolios — pages of cards. Each card is a saved query; see pf-cards.
+require_relative "../lib/pf"
+require_relative "../lib/pf/cards"
 
-function resolvePortfolio(store: Store, word: string | undefined) {
-  if (word && /^\d+$/.test(word)) { const found = store.portfolios.getPortfolio(Number(word)); if (found) return found; }
-  if (word) { const found = store.portfolios.findPortfolio(word); if (found) return found; }
-  const all = store.portfolios.listPortfolios().filter(p => !word || p.name.toLowerCase().includes(word.toLowerCase()));
-  if (!all.length) throw new CliError(word ? `no portfolio matching ${word}` : "no portfolios yet");
-  const picked = pickOne(all, p => `${p.name} [#${p.id}]`);
-  if (!picked) throw new CliError("nothing chosen");
-  return picked;
-}
+module PfPortfolios
+  module_function
 
-cli("pf-portfolios", c => {
-  c.cmd(["ls", "list"], { desc: "every portfolio with its card count", opts: { json: flag("j", "print JSON") } }, ({ opts, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    const rows = store.portfolios.listPortfolios();
-    out(opts.json ? json(rows) : table(rows.map(p => ({ id: p.id, name: p.name, cards: p.card_count, description: p.description }))));
-  });
+  def resolve(store, word)
+    if word&.match?(/^\d+$/)
+      found = store.get_portfolio(word.to_i)
+      return found if found
+    end
+    if word
+      found = store.find_portfolio(word)
+      return found if found
+    end
+    all = store.list_portfolios.select { |portfolio| !word || portfolio["name"].downcase.include?(word.downcase) }
+    raise Pf::Error, (word ? "no portfolio matching #{word}" : "no portfolios yet") if all.empty?
+    picked = Pf.pick_one(all) { |portfolio| "#{portfolio["name"]} [##{portfolio["id"]}]" }
+    raise Pf::Error, "nothing chosen" unless picked
+    picked
+  end
 
-  c.cmd("show", { desc: "a portfolio with its cards and their matching items", args: ["NAME|ID"], opts: { json: flag("j", "print JSON, the same payload as /api/portfolios/:id") } }, ({ args, opts, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    const portfolio = resolvePortfolio(store, args[0]);
-    const view = store.portfolios.portfolioView(portfolio);
-    if (opts.json) return out(json(view));
-    out(`${view.name} [#${view.id}]${view.description ? ` — ${view.description}` : ""}`);
-    for (const card of view.cards) {
-      out();
-      out(`## ${card.title} [card #${card.id}]  ${describeCard(card)}  (${card.items.length}${card.total > card.items.length ? ` of ${card.total}` : ""})`);
-      for (const item of card.items) out(`   ${item.title} [${item.type} #${item.id}]`);
-      if (!card.items.length) out("   (nothing matches yet)");
-    }
-  });
+  def portfolio_view(store, portfolio)
+    view = portfolio.dup
+    view["cards"] = store.portfolio_cards(portfolio["id"]).map do |card|
+      if card["kind"] == "query" || !card.key?("kind")
+        card.merge(store.card_items(card))
+      else
+        card.merge("items" => [], "total" => 0)
+      end
+    end
+    view
+  end
+end
 
-  c.cmd(["new", "add", "create"], { desc: "create a portfolio", args: ["NAME", "DESCRIPTION..."] }, ({ args, out }) => {
-    const store = openDefaultStore();
-    const [name, ...rest] = args;
-    if (!name) throw new CliError("name required");
-    out(`created portfolio #${store.portfolios.createPortfolio(name, rest.join(" "))}`);
-  });
+Pf.run do |hiiro|
+  hiiro.add_flag :json, short: "j", desc: "print JSON"
+  hiiro.add_option :description, short: "d", desc: "new description"
 
-  c.cmd("rename", { desc: "rename a portfolio or change its description", args: ["NAME|ID", "NEW_NAME"], opts: { description: { kind: "option", short: "d", desc: "new description" } } }, ({ args, opts, out }) => {
-    const store = openDefaultStore();
-    const portfolio = resolvePortfolio(store, args[0]);
-    store.portfolios.updatePortfolio(portfolio.id, { name: args[1], description: opts.description ?? undefined });
-    out(`updated #${portfolio.id}`);
-  });
+  hiiro.add_cmd :ls, :list, opts: [:json] do
+    rows = Pf.store.list_portfolios
+    puts opts.json? ? Pf.json(rows) : Pf.table(rows.map { |p| { id: p["id"], name: p["name"], cards: p["card_count"], description: p["description"] } })
+  end
 
-  c.cmd(["rm", "remove", "delete"], { desc: "delete a portfolio and its cards; items are kept", args: ["NAME|ID"] }, ({ args, out }) => {
-    const store = openDefaultStore();
-    const portfolio = resolvePortfolio(store, args[0]);
-    store.portfolios.deletePortfolio(portfolio.id);
-    out(`deleted ${portfolio.name}`);
-  });
+  hiiro.add_cmd :show, args: ["NAME|ID"], opts: [:json] do
+    store = Pf.store
+    portfolio = PfPortfolios.resolve(store, opts.args[0])
+    view = PfPortfolios.portfolio_view(store, portfolio)
+    if opts.json?
+      puts Pf.json(view)
+      next
+    end
 
-  c.cmd("open", { desc: "open the portfolio page in the browser", args: ["NAME|ID"] }, ({ args }) => {
-    const store = openDefaultStore({ readonly: true });
-    const portfolio = resolvePortfolio(store, args[0]);
-    return openDefault(`${process.env.PORTFOLIO_SERVER ?? defaultServer()}/portfolios/${portfolio.id}`);
-  });
-}, { desc: "portfolios: pages of query cards" }).run();
+    puts "#{view["name"]} [##{view["id"]}]#{view["description"].to_s.empty? ? "" : " — #{view["description"]}"}"
+    view["cards"].each do |card|
+      items = card["items"] || []
+      total = card["total"].to_i
+      suffix = total > items.length ? " of #{total}" : ""
+      puts
+      puts "## #{card["title"]} [card ##{card["id"]}]  #{Pf::Cards.describe(card)}  (#{items.length}#{suffix})"
+      items.each { |item| puts "   #{item["title"]} [#{item["type"]} ##{item["id"]}]" }
+      puts "   (nothing matches yet)" if items.empty?
+    end
+  end
+
+  hiiro.add_cmd :new, :add, :create, args: ["NAME", "DESCRIPTION..."] do
+    name, *rest = opts.args
+    raise Pf::Error, "name required" if name.to_s.empty?
+    store = Pf.writable_store
+    puts "created portfolio ##{store.create_portfolio(name, rest.join(" "))}"
+  ensure
+    store&.close
+  end
+
+  hiiro.add_cmd :rename, args: ["NAME|ID", "NEW_NAME"], opts: [:description] do
+    store = Pf.writable_store
+    portfolio = PfPortfolios.resolve(store, opts.args[0])
+    store.update_portfolio(portfolio["id"], { name: opts.args[1], description: opts.description }.compact)
+    puts "updated ##{portfolio["id"]}"
+  end
+
+  hiiro.add_cmd :rm, :remove, :delete, args: ["NAME|ID"] do
+    store = Pf.writable_store
+    portfolio = PfPortfolios.resolve(store, opts.args[0])
+    store.delete_portfolio(portfolio["id"])
+    puts "deleted #{portfolio["name"]}"
+  end
+
+  hiiro.add_cmd :open, args: ["NAME|ID"] do
+    store = Pf.store
+    portfolio = PfPortfolios.resolve(store, opts.args[0])
+    Pf.open_default("#{Pf.server_url}/portfolios/#{portfolio["id"]}")
+  end
+end

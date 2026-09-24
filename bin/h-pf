@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # h-pf — hiiro entry point for the Portfolio toolbox. Everything is forwarded to bin/pf:
 #   h-pf items ls yt   ==  pf items ls yt
-require 'hiiro'
+require_relative '../lib/pf'
 
 PF = File.join(__dir__, 'pf')
 

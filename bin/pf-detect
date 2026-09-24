@@ -1,16 +1,26 @@
-#!/usr/bin/env bun
-// pf-detect — say what a pasted thing is: url → link/pr, path → dir/document/file, text → note.
-import { cli, flag, json, readStdin } from "@portfolio/cli-kit";
-import { detect } from "@portfolio/core";
+#!/usr/bin/env ruby
+# frozen_string_literal: true
 
-cli("pf-detect", c => {
-  c.default({ desc: "detect the type of the argument text, or stdin when empty", args: ["TEXT..."], opts: { json: flag("j", "print JSON (default when not a TTY)"), type: flag("t", "print only the type") } }, async ({ args, opts, out }) => {
-    const raw = args.length ? args.join(" ") : await readStdin();
-    const detected = await detect(raw);
-    if (opts.type) return out(detected.type);
-    if (opts.json || !process.stdout.isTTY) return out(json(detected));
-    out(`${detected.type.toUpperCase()}  ${detected.title}`);
-    if (detected.url) out(`url:    ${detected.url}`);
-    if (detected.path) out(`path:   ${detected.path}${detected.exists ? "" : "  (does not exist yet)"}`);
-  });
-}, { desc: "type detection for the quick-add box", externalBins: false }).run();
+require_relative '../lib/pf'
+require_relative '../lib/pf/detect'
+
+Pf.run do
+  add_flag :json, short: 'j', desc: 'print JSON (default when not a TTY)'
+  add_flag :type, short: 't', desc: 'print only the type'
+
+  add_default do
+    opts = options.select(%i[json type]).parse(all_args)
+    next puts(opts.help_text) if opts.help?
+    raw = opts.args.any? ? opts.args.join(' ') : Pf.read_stdin
+    detected = Pf::Detect.detect(raw)
+    if opts.type?
+      puts detected['type']
+    elsif opts.json? || !STDOUT.tty?
+      puts Pf.json(detected)
+    else
+      puts "#{detected['type'].upcase}  #{detected['title']}"
+      puts "url:    #{detected['url']}" if detected['url']
+      puts "path:   #{detected['path']}#{detected['exists'] ? '' : '  (does not exist yet)'}" if detected['path']
+    end
+  end
+end

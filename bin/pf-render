@@ -1,34 +1,51 @@
-#!/usr/bin/env bun
-// pf-render — Markdown → HTML with the Portfolio document template, no database involved.
-//   pf-render README.md > out.html
-//   pf-render README.md -o out.html --open
-//   echo '# hi' | pf-render - --fragment
-import { basename, extname, resolve } from "node:path";
-import { cli, flag, option, openDefault, readStdin, CliError } from "@portfolio/cli-kit";
-import { documentTitle } from "@portfolio/core";
-import { DEFAULT_TEMPLATE, pandocAvailable, pandocBin, renderFragment, renderMarkdown } from "@portfolio/render";
+#!/usr/bin/env ruby
+# frozen_string_literal: true
 
-cli("pf-render", c => {
-  c.default({ desc: "render a Markdown file (or stdin with -) to HTML", args: ["FILE"], opts: {
-    title: option("t", "document title (default: first heading or file name)"),
-    out: option("o", "write to this file instead of stdout"),
-    toc: flag(undefined, "table of contents (default)", { default: true }),
-    fragment: flag("f", "HTML fragment only, no template"),
-    template: option(undefined, "pandoc template path"),
-    open: flag(undefined, "open the written file"),
-  } }, async ({ args, opts, out }) => {
-    if (!pandocAvailable()) throw new CliError(`pandoc not found (looked for ${pandocBin()}); brew install pandoc`);
-    const source = args[0];
-    if (!source) throw new CliError("file required, or - for stdin");
-    const markdown = source === "-" ? await readStdin() : await Bun.file(source).text();
-    const path = source === "-" ? "stdin.md" : resolve(source);
-    const title = opts.title ?? documentTitle(markdown, path);
-    const html = opts.fragment ? renderFragment(markdown) : renderMarkdown(markdown, { title, toc: opts.toc, template: opts.template ?? undefined });
-    if (!opts.out) return out(html);
-    await Bun.write(opts.out, html);
-    out(`wrote ${opts.out}`);
-    if (opts.open) openDefault(opts.out);
-  });
-  c.cmd("template", { desc: "print the path of the default document template" }, ({ out }) => { out(DEFAULT_TEMPLATE); });
-  c.cmd("check", { desc: "report the pandoc binary in use" }, ({ out }) => { out(`${pandocBin()}  ${pandocAvailable() ? "ok" : "MISSING"}`); return pandocAvailable(); });
-}, { desc: "Markdown to HTML with the document template", externalBins: false }).run();
+require_relative '../lib/pf'
+require_relative '../lib/pf/detect'
+require_relative '../lib/pf/render'
+
+Pf.run do
+  add_option :title, short: 't', desc: 'document title (default: first heading or file name)'
+  add_option :out, short: 'o', desc: 'write to this file instead of stdout'
+  add_flag :toc, desc: 'table of contents (default)'
+  add_flag :no_toc, long: 'no-toc', desc: 'omit the table of contents'
+  add_flag :fragment, short: 'f', desc: 'HTML fragment only, no template'
+  add_option :template, desc: 'pandoc template path'
+  add_flag :open, desc: 'open the written file'
+
+  add_default do
+    opts = options.select(%i[title out toc no_toc fragment template open]).parse(all_args)
+    next puts(opts.help_text) if opts.help?
+    raise Pf::Error, "pandoc not found (looked for #{Pf::Render.pandoc_bin}); brew install pandoc" unless Pf::Render.pandoc_available?
+
+    source = opts.args[0]
+    raise Pf::Error, 'file required, or - for stdin' unless source
+
+    markdown = source == '-' ? Pf.read_stdin : File.read(source, encoding: 'UTF-8')
+    path = source == '-' ? 'stdin.md' : File.expand_path(source)
+    title = opts.title || Pf::Detect.document_title(markdown, path)
+    html = if opts.fragment?
+             Pf::Render.render_fragment(markdown)
+           else
+             Pf::Render.render_markdown(markdown, title: title, toc: !opts.no_toc?, template: opts.template)
+           end
+    unless opts.out
+      print html, "\n"
+      next
+    end
+    File.write(opts.out, html)
+    puts "wrote #{opts.out}"
+    Pf.open_default(opts.out) if opts.open?
+  end
+
+  add_cmd 'template' do
+    puts Pf::Render::DEFAULT_TEMPLATE
+  end
+
+  add_cmd 'check' do
+    ok = Pf::Render.pandoc_available?
+    puts "#{Pf::Render.pandoc_bin}  #{ok ? 'ok' : 'MISSING'}"
+    ok
+  end
+end

@@ -1,113 +1,171 @@
-#!/usr/bin/env bun
-// pf-items — list, search, inspect, flag, tag, open, and remove items straight from the database.
-import { cli, flag, json, numberArg, openDefault, editFiles, copyToClipboard, confirm, table } from "@portfolio/cli-kit";
-import { LIST_OPTS, findItems, itemUrl, label, openDefaultStore, pickItem, printItems } from "@portfolio/cli";
-import { abbreviatePath, parseTags } from "@portfolio/core";
-import { unlink } from "node:fs/promises";
+#!/usr/bin/env ruby
+# pf-items — list, search, inspect, flag, tag, open, and remove items straight from the database.
+require_relative '../lib/pf'
 
-cli("pf-items", c => {
-  c.cmd(["ls", "list", "search"], { desc: "list items; words search title and description", args: ["QUERY..."], opts: LIST_OPTS }, ({ args, opts, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    printItems(store, findItems(store, args, opts), opts, out);
-  });
+Pf.run do |h|
+  Pf.add_list_options(h)
+  h.add_flag(:all, short: 'a', desc: 'open every match')
+  h.add_flag(:copy, desc: 'copy the first path to the clipboard')
+  h.add_flag(:files, desc: 'also delete the tracked source file')
+  h.add_flag(:yes, short: 'y', desc: 'do not ask')
 
-  c.cmd("recent", { desc: "the newest N items (default 10)", args: ["N"], opts: LIST_OPTS }, ({ args, opts, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    const n = args[0] && /^\d+$/.test(args[0]) ? Number(args.shift()) : 10;
-    printItems(store, findItems(store, args, { ...opts, limit: n }), opts, out);
-  });
+  list_opts = Pf::LIST_OPTIONS
 
-  c.cmd("count", { desc: "item counts by type" }, ({ out }) => {
-    const store = openDefaultStore({ readonly: true });
-    const counts = store.items.countByType();
-    out(table([...Object.entries(counts).map(([type, count]) => ({ type, count })), { type: "total", count: store.items.countItems() }]));
-  });
+  h.add_cmd(:ls, :list, :search, args: ['QUERY...'], opts: list_opts) do
+    store = Pf.store
+    Pf.print_items(store, Pf.find_items(store, opts.args, opts), opts)
+  ensure
+    store&.close
+  end
 
-  c.cmd(["show", "get"], { desc: "one item as JSON, with tags and resolved slots", args: ["ID|QUERY..."], opts: LIST_OPTS }, ({ args, opts, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    const item = pickItem(store, args, opts);
-    if (!item) return false;
-    out(json({ ...store.items.viewItem(item), content: item.content, slots: store.categories.memberSlots(item), category_id: item.category_id }));
-  });
+  h.add_cmd(:recent, args: ['N'], opts: list_opts) do
+    store = Pf.store
+    args = opts.args.dup
+    n = args[0]&.match?(/^\d+$/) ? args.shift.to_i : 10
+    Pf.print_items(store, Pf.find_items(store, args, opts.to_h.merge(limit: n)), opts)
+  ensure
+    store&.close
+  end
 
-  c.cmd("cat", { desc: "print an item's Markdown (or tracked source)", args: ["ID|QUERY..."], opts: LIST_OPTS }, ({ args, opts, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    const item = pickItem(store, args, opts);
-    if (!item) return false;
-    out(item.content || (item.source_path ?? item.url ?? item.path ?? ""));
-  });
+  h.add_cmd(:count) do
+    store = Pf.store
+    counts = store.query('SELECT type, COUNT(*) AS count FROM items GROUP BY type').to_h { |row| [row['type'], row['count']] }
+    rows = Pf::ITEM_TYPES.map { |type| { 'type' => type, 'count' => counts.fetch(type, 0) } }
+    puts Pf.table(rows + [{ 'type' => 'total', 'count' => counts.values.sum }])
+  ensure
+    store&.close
+  end
 
-  c.cmd("open", { desc: "open the item in the browser (links and PRs go to their URL)", args: ["ID|QUERY..."], opts: { ...LIST_OPTS, all: flag("a", "open every match") } }, ({ args, opts }) => {
-    const store = openDefaultStore({ readonly: true });
-    const items = opts.all ? findItems(store, args, opts) : [pickItem(store, args, opts)].filter(Boolean);
-    for (const item of items) openDefault(itemUrl(item!));
-  });
+  h.add_cmd(:show, :get, args: ['ID|QUERY...'], opts: list_opts) do
+    store = Pf.store
+    item = Pf.pick_item(store, opts.args, opts)
+    next false unless item
+    puts Pf.json(store.view_item(item).merge('content' => item['content'], 'slots' => store.member_slots(item), 'category_id' => item['category_id']))
+  ensure
+    store&.close
+  end
 
-  c.cmd(["vim", "edit"], { desc: "edit the tracked source files of matching items", args: ["QUERY..."], opts: LIST_OPTS }, ({ args, opts, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    const paths = findItems(store, args, opts).map(item => item.source_path ?? item.path).filter((path): path is string => Boolean(path));
-    if (!paths.length) return out("No matching local sources."), false;
-    return editFiles(paths);
-  });
+  h.add_cmd(:cat, args: ['ID|QUERY...'], opts: list_opts) do
+    store = Pf.store
+    item = Pf.pick_item(store, opts.args, opts)
+    next false unless item
+    puts(item['content'].empty? ? (item['source_path'] || item['url'] || item['path'] || '') : item['content'])
+  ensure
+    store&.close
+  end
 
-  c.cmd("path", { desc: "print the path of file/dir items and tracked sources", args: ["QUERY..."], opts: { ...LIST_OPTS, copy: flag(undefined, "copy the first path to the clipboard") } }, ({ args, opts, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    const paths = findItems(store, args, opts).map(item => item.path ?? item.source_path).filter((path): path is string => Boolean(path));
-    paths.forEach(path => out(opts.full ? path : abbreviatePath(path)));
-    if (opts.copy && paths[0]) copyToClipboard(paths[0]);
-  });
+  h.add_cmd(:open, args: ['ID|QUERY...'], opts: list_opts + [:all]) do
+    store = Pf.store
+    items = opts.all? ? Pf.find_items(store, opts.args, opts) : [Pf.pick_item(store, opts.args, opts)].compact
+    items.each { |item| Pf.open_default(Pf.item_url(item)) }
+  ensure
+    store&.close
+  end
 
-  for (const [name, field, value, desc] of [["pin", "pinned", true, "pin"], ["unpin", "pinned", false, "unpin"], ["star", "starred", true, "star"], ["unstar", "starred", false, "unstar"]] as const) {
-    c.cmd(name, { desc: `${desc} items by id`, args: ["ID..."] }, ({ args, out }) => {
-      const store = openDefaultStore();
-      const ids = args.map(id => numberArg(id));
-      store.items.setItemFlag(ids, field, value);
-      out(`${desc}: ${ids.join(", ")}`);
-    });
-  }
+  h.add_cmd(:vim, :edit, args: ['QUERY...'], opts: list_opts) do
+    store = Pf.store
+    paths = Pf.find_items(store, opts.args, opts).filter_map { |item| item['source_path'] || item['path'] }
+    if paths.empty?
+      puts 'No matching local sources.'
+      next false
+    end
+    Pf.edit_files(paths)
+  ensure
+    store&.close
+  end
 
-  c.cmd("toggle", { desc: "toggle pinned or starred on one item", args: ["ID", "pinned|starred"] }, ({ args, out }) => {
-    const store = openDefaultStore();
-    const field = args[1] === "starred" ? "starred" : args[1] === "pinned" ? "pinned" : null;
-    if (!field) return out("field must be pinned or starred"), false;
-    return store.items.toggleItemField(numberArg(args[0]), field) ? 0 : (out("no such item"), 1);
-  });
+  h.add_cmd(:path, args: ['QUERY...'], opts: list_opts + [:copy]) do
+    store = Pf.store
+    paths = Pf.find_items(store, opts.args, opts).filter_map { |item| item['path'] || item['source_path'] }
+    paths.each { |path| puts(opts.full? ? path : Pf.abbreviate_path(path)) }
+    Pf.copy_to_clipboard(paths[0]) if opts.copy? && paths[0]
+  ensure
+    store&.close
+  end
 
-  c.cmd("tag", { desc: "add comma-separated tags to an item", args: ["ID", "TAGS"] }, ({ args, out }) => {
-    const store = openDefaultStore();
-    const id = numberArg(args[0]);
-    store.tags.setTags(id, parseTags(args.slice(1).join(",")));
-    out(`#${id}: ${store.tags.tagNamesFor(id).join(", ")}`);
-  });
+  [%w[pin pinned true pin], %w[unpin pinned false unpin], %w[star starred true star], %w[unstar starred false unstar]].each do |name, field, raw_value, desc|
+    h.add_cmd(name.to_sym, args: ['ID...']) do
+      store = Pf.writable_store
+      ids = opts.args.map { |id| Pf.number_arg(id) }
+      store.set_item_flag(ids, field, raw_value == 'true')
+      puts "#{desc}: #{ids.join(', ')}"
+    ensure
+      store&.close
+    end
+  end
 
-  c.cmd("untag", { desc: "remove comma-separated tags from an item", args: ["ID", "TAGS"] }, ({ args, out }) => {
-    const store = openDefaultStore();
-    const id = numberArg(args[0]);
-    store.tags.removeTags(id, parseTags(args.slice(1).join(",")));
-    out(`#${id}: ${store.tags.tagNamesFor(id).join(", ") || "(no tags)"}`);
-  });
+  h.add_cmd(:toggle, args: ['ID', 'pinned|starred']) do
+    id = Pf.number_arg(opts.args[0])
+    field = opts.args[1] == 'starred' ? 'starred' : opts.args[1] == 'pinned' ? 'pinned' : nil
+    unless field
+      puts 'field must be pinned or starred'
+      next false
+    end
+    store = Pf.writable_store
+    puts 'no such item' unless store.toggle_item_field(id, field)
+  ensure
+    store&.close
+  end
 
-  c.cmd("set", { desc: "set title, description, url, or type on an item", args: ["ID", "FIELD", "VALUE..."] }, ({ args, out }) => {
-    const store = openDefaultStore();
-    const [id, field, ...rest] = args;
-    const allowed = ["title", "description", "url", "type", "content"] as const;
-    if (!allowed.includes(field as typeof allowed[number])) return out(`field must be one of ${allowed.join(", ")}`), false;
-    if (!store.items.updateItem(numberArg(id), { [field]: rest.join(" ") })) return out("no such item"), false;
-    out(`#${id} ${field} updated`);
-  });
+  h.add_cmd(:tag, args: ['ID', 'TAGS']) do
+    id = Pf.number_arg(opts.args[0])
+    store = Pf.writable_store
+    store.set_tags(id, Pf.parse_tags(opts.args[1..].join(',')))
+    puts "##{id}: #{store.tag_names_for(id).join(', ')}"
+  ensure
+    store&.close
+  end
 
-  c.cmd(["rm", "remove", "delete"], { desc: "remove items from the database (never deletes source files unless --files)", args: ["ID|QUERY..."], opts: { ...LIST_OPTS, files: flag(undefined, "also delete the tracked source file"), yes: flag("y", "do not ask") } }, async ({ args, opts, out }) => {
-    const store = openDefaultStore();
-    const item = pickItem(store, args, opts);
-    if (!item) return false;
-    if (!confirm(`Remove ${label(item)}${opts.files && item.source_path ? ` and delete ${item.source_path}` : ""}?`, opts.yes || undefined)) return out("cancelled"), 1;
-    if (opts.files && item.source_path) await unlink(item.source_path).catch(error => { if (error.code !== "ENOENT") throw error; });
-    store.items.deleteItems([item.id]);
-    out(`removed ${label(item)}`);
-  });
+  h.add_cmd(:untag, args: ['ID', 'TAGS']) do
+    id = Pf.number_arg(opts.args[0])
+    store = Pf.writable_store
+    store.remove_tags(id, Pf.parse_tags(opts.args[1..].join(',')))
+    tags = store.tag_names_for(id).join(', ')
+    puts "##{id}: #{tags.empty? ? '(no tags)' : tags}"
+  ensure
+    store&.close
+  end
 
-  c.cmd("export", { desc: "dump matching items as JSON lines, one item per line, with content", args: ["QUERY..."], opts: LIST_OPTS }, ({ args, opts, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    for (const item of findItems(store, args, opts)) out(JSON.stringify({ ...store.items.viewItem(item), content: item.content, category_id: item.category_id }));
-  });
-}, { desc: "items in the Portfolio database" }).run();
+  h.add_cmd(:set, args: ['ID', 'FIELD', 'VALUE...']) do
+    id, field, *rest = opts.args
+    allowed = %w[title description url type content]
+    unless allowed.include?(field)
+      puts "field must be one of #{allowed.join(', ')}"
+      next false
+    end
+    id = Pf.number_arg(id)
+    store = Pf.writable_store
+    unless store.update_item(id, { field => rest.join(' ') })
+      puts 'no such item'
+      next false
+    end
+    puts "##{id} #{field} updated"
+  ensure
+    store&.close
+  end
+
+  h.add_cmd(:rm, :remove, :delete, args: ['ID|QUERY...'], opts: list_opts + [:files, :yes]) do
+    store = Pf.writable_store
+    item = Pf.pick_item(store, opts.args, opts)
+    next false unless item
+    delete_source = opts.files? && item['source_path']
+    unless Pf.confirm("Remove #{Pf.label(item)}#{delete_source ? " and delete #{item['source_path']}" : ''}?", assume: (opts.yes? ? true : nil))
+      puts 'cancelled'
+      next 1
+    end
+    FileUtils.rm_f(item['source_path']) if delete_source
+    store.delete_items([item['id']])
+    puts "removed #{Pf.label(item)}"
+  ensure
+    store&.close
+  end
+
+  h.add_cmd(:export, args: ['QUERY...'], opts: list_opts) do
+    store = Pf.store
+    Pf.find_items(store, opts.args, opts).each do |item|
+      puts JSON.generate(store.view_item(item).merge('content' => item['content'], 'category_id' => item['category_id']))
+    end
+  ensure
+    store&.close
+  end
+end

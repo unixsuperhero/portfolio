@@ -2,6 +2,15 @@
 
 Portfolio command line tools.
 
+`pf`, `h-pf`, and all 14 `pf-*` commands use Ruby and the hiiro gem.
+Install their dependencies with `bundle install` at the repository root.
+Pandoc is required for Markdown rendering and imports. Bun is needed only for
+the existing server and for optional comparisons against the former CLI.
+
+Data commands keep their original direct SQLite behavior and work without a
+running server. `pf-docs push` and the HTTP commands in `pf-server` still use
+the existing server. The TypeScript backend and its API remain unchanged.
+
 ## Synopsis
 
 ```bash
@@ -75,6 +84,6 @@ pf tools
 | `PORTFOLIO_HOME` | project root (default: the parent of `bin/`) |
 | `PORTFOLIO_SERVER` | server URL for commands that open pages or call the API (default `HDOCS_SERVER` or `http://127.0.0.1:4387`) |
 | `PF_PICKER` | fuzzy picker binary (default `sk`, then `fzf`) |
-| `PF_DEBUG` | print stack traces on errors |
+| `PF_DEBUG` | legacy Bun setting; Hiiro includes backtraces for unexpected errors without it |
 
-See also: [the pf toolbox](pf.md) · [cli-kit, the framework these are built on](../packages/cli-kit.md) · [back to the index](../index.md)
+See also: [Ruby CLI helpers](../packages/cli.md) · [back to the index](../index.md)

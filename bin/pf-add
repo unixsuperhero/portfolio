@@ -1,60 +1,76 @@
-#!/usr/bin/env bun
-// pf-add — the quick-add box from the command line, writing straight to the database.
-//   pf-add https://github.com/x/y/pull/12 -g review
-//   pf-add ~/proj/thing                    → dir item
-//   pf-add ~/notes/plan.md                 → imported document (like mdoc)
-//   echo '# Note' | pf-add - -g ideas       → note
-import { basename } from "node:path";
-import { cli, flag, json, option, readStdin, CliError } from "@portfolio/cli-kit";
-import { openDefaultStore, itemUrl } from "@portfolio/cli";
-import { detect, documentTitle, isHtmlPath, isItemType, parseTags } from "@portfolio/core";
-import { renderMarkdown } from "@portfolio/render";
-import { openDefault } from "@portfolio/cli-kit";
+#!/usr/bin/env ruby
+# frozen_string_literal: true
 
-cli("pf-add", c => {
-  c.default({ desc: "add whatever the text is; - reads stdin", args: ["TEXT..."], opts: {
-    type: option("t", "override the detected type"),
-    tags: option("g", "comma-separated tags"),
-    title: option(undefined, "override the title"),
-    category: option("c", "category name for file/dir items"),
-    open: flag("o", "open the new item afterwards"),
-    json: flag("j", "print the created item as JSON"),
-  } }, async ({ args, opts, out }) => {
-    const raw = args.length === 1 && args[0] === "-" || !args.length ? await readStdin() : args.join(" ");
-    if (!raw.trim()) throw new CliError("nothing to add");
-    const store = openDefaultStore();
-    const detected = await detect(raw);
-    const type = opts.type ?? detected.type;
-    if (!isItemType(type)) throw new CliError(`invalid type ${type}`);
-    const title = opts.title ?? detected.title;
-    const base = { title, description: "", content: "", rendered_html: "", url: null as string | null, source_path: null as string | null, toc: 1 as const };
-    let id: number;
-    if (type === "link" || type === "pr") {
-      if (detected.shape !== "url") throw new CliError(`a ${type} needs a URL`);
-      id = store.items.upsertItem({ ...base, type, url: detected.url });
-    } else if (type === "file" || type === "dir") {
-      if (detected.shape !== "path") throw new CliError(`a ${type} needs an absolute path`);
-      if (store.items.findItemByPath(detected.path!)) throw new CliError("another item already tracks that path");
-      const category = opts.category ? store.categories.findCategory(opts.category) : null;
-      if (opts.category && !category) throw new CliError(`no category named ${opts.category}`);
-      if (category && category.kind !== type) throw new CliError(`category ${category.name} holds ${category.kind} items`);
-      id = store.items.upsertItem({ ...base, type });
-      store.items.setPathAndCategory(id, detected.path!, category?.id ?? null);
-    } else if (type === "document" && detected.shape === "path") {
-      if (!detected.exists) throw new CliError("that file does not exist yet");
-      const content = await Bun.file(detected.path!).text();
-      const html = isHtmlPath(detected.path!);
-      const docTitle = opts.title ?? documentTitle(content, detected.path!);
-      id = store.items.upsertItem({ ...base, type: "document", title: docTitle, content: html ? "" : content, rendered_html: html ? content : "", source_path: detected.path });
-      if (!html) store.items.setRenderedHtml(id, renderMarkdown(content, { title: docTitle, sourcePath: detected.path, resolveId: path => store.items.findItemBySource(path)?.id }));
-      if (html && !store.items.findItemByPath(detected.path!)) { const fileId = store.items.upsertItem({ type: "file", title: basename(detected.path!) }); store.items.setPathAndCategory(fileId, detected.path!, null); }
-    } else {
-      if (detected.shape !== "text") throw new CliError(`a ${type} needs some text`);
-      id = store.items.upsertItem({ ...base, type, content: detected.content, rendered_html: renderMarkdown(detected.content!, { title }) });
-    }
-    store.tags.setTags(id, parseTags(opts.tags));
-    const item = store.items.getItem(id)!;
-    out(opts.json ? json(store.items.viewItem(item)) : `added ${item.title} [${item.type} #${item.id}]  ${itemUrl(item)}`);
-    if (opts.open) openDefault(itemUrl(item));
-  });
-}, { desc: "quick add: paste a URL, a path, or text", externalBins: false }).run();
+require_relative '../lib/pf'
+require_relative '../lib/pf/detect'
+require_relative '../lib/pf/render'
+
+
+Pf.run do
+  add_option :type, short: 't', desc: 'override the detected type'
+  add_option :tags, short: 'g', desc: 'comma-separated tags'
+  add_option :title, desc: 'override the title'
+  add_option :category, short: 'c', desc: 'category name for file/dir items'
+  add_flag :open, short: 'o', desc: 'open the new item afterwards'
+  add_flag :json, short: 'j', desc: 'print the created item as JSON'
+
+  add_default do
+    opts = options.select(%i[type tags title category open json]).parse(all_args)
+    next puts(opts.help_text) if opts.help?
+    raw = ((opts.args.length == 1 && opts.args[0] == '-') || opts.args.empty?) ? Pf.read_stdin : opts.args.join(' ')
+    raise Pf::Error, 'nothing to add' if raw.strip.empty?
+
+    detected = Pf::Detect.detect(raw)
+    type = opts.type || detected['type']
+    raise Pf::Error, "invalid type #{type}" unless Pf::ITEM_TYPES.include?(type)
+
+    if %w[link pr].include?(type) && detected['shape'] != 'url'
+      raise Pf::Error, "a #{type} needs a URL"
+    elsif %w[file dir].include?(type) && detected['shape'] != 'path'
+      raise Pf::Error, "a #{type} needs an absolute path"
+    elsif type == 'document' && detected['shape'] == 'path' && !detected['exists']
+      raise Pf::Error, 'that file does not exist yet'
+    elsif !%w[link pr file dir document].include?(type) && detected['shape'] != 'text'
+      raise Pf::Error, "a #{type} needs some text"
+    end
+
+    store = Pf.writable_store
+    base = { 'title' => opts.title || detected['title'], 'description' => '', 'content' => '', 'rendered_html' => '', 'url' => nil, 'source_path' => nil, 'toc' => 1 }
+    id = nil
+    if %w[link pr].include?(type)
+      id = store.upsert_item(base.merge('type' => type, 'url' => detected['url']))
+    elsif %w[file dir].include?(type)
+      raise Pf::Error, 'another item already tracks that path' if store.find_item_by_path(detected['path'])
+
+      category = opts.category ? store.find_category(opts.category) : nil
+      raise Pf::Error, "no category named #{opts.category}" if opts.category && !category
+      raise Pf::Error, "category #{category['name']} holds #{category['kind']} items" if category && category['kind'] != type
+
+      id = store.upsert_item(base.merge('type' => type))
+      store.set_path_and_category(id, detected['path'], category&.fetch('id'))
+    elsif type == 'document' && detected['shape'] == 'path'
+      content = File.read(detected['path'], encoding: 'UTF-8')
+      html = Pf::Detect.html_path?(detected['path'])
+      title = opts.title || Pf::Detect.document_title(content, detected['path'])
+      id = store.upsert_item(base.merge('type' => 'document', 'title' => title, 'content' => html ? '' : content, 'rendered_html' => html ? content : '', 'source_path' => detected['path']))
+      unless html
+        store.set_rendered_html(id, Pf::Render.render_markdown(content, title: title, source_path: detected['path'], resolve_id: ->(path) { store.find_item_by_source(path)&.fetch('id') }))
+      end
+      if html && !store.find_item_by_path(detected['path'])
+        file_id = store.upsert_item('type' => 'file', 'title' => File.basename(detected['path']))
+        store.set_path_and_category(file_id, detected['path'], nil)
+      end
+    else
+      id = store.upsert_item(base.merge('type' => type, 'content' => detected['content'], 'rendered_html' => Pf::Render.render_markdown(detected['content'], title: base['title'])))
+    end
+    store.set_tags(id, Pf.parse_tags(opts.tags))
+    item = store.get_item(id)
+    href = Pf.item_url(item)
+    if opts.json?
+      puts Pf.json(store.view_item(item))
+    else
+      puts "added #{Pf.label(item)}  #{href}"
+    end
+    Pf.open_default(href) if opts.open?
+  end
+end

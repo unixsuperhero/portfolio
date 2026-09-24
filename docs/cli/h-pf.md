@@ -13,7 +13,7 @@ h pf <tool> <subcommand> [args]     # once bin/ is on PATH, hiiro finds h-pf its
 
 ```ruby
 #!/usr/bin/env ruby
-require 'hiiro'
+require_relative '../lib/pf'
 
 PF = File.join(__dir__, 'pf')
 

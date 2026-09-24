@@ -1,67 +1,79 @@
-#!/usr/bin/env bun
-// pf-watch — watched directories: pull .md/.markdown/.html files into the library and keep them in sync.
-import { resolve } from "node:path";
-import { stat } from "node:fs/promises";
-import { cli, flag, json, numberArg, table, CliError } from "@portfolio/cli-kit";
-import { openDefaultStore } from "@portfolio/cli";
-import { abbreviatePath, expandPath } from "@portfolio/core";
-import { renderMarkdown } from "@portfolio/render";
-import { DirectoryWatcher, reconcile, scanDirectory } from "@portfolio/watch";
+#!/usr/bin/env ruby
+# frozen_string_literal: true
 
-const render: Parameters<typeof reconcile>[1] = (markdown, options) => renderMarkdown(markdown, options);
-const absoluteDir = async (value: string | undefined) => {
-  if (!value) throw new CliError("directory required");
-  const path = resolve(expandPath(value));
-  if (!(await stat(path).catch(() => null))?.isDirectory()) throw new CliError(`${path} is not a directory`);
-  return path;
-};
+require_relative "../lib/pf"
+require_relative "../lib/pf/watch"
 
-cli("pf-watch", c => {
-  c.cmd(["ls", "list"], { desc: "watched directories and how many documents each claims", opts: { json: flag("j", "print JSON") } }, ({ opts, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    const rows = store.watched.listWatchedDirectories().map(dir => ({ id: dir.id, path: abbreviatePath(dir.path), recursive: dir.recursive ? "yes" : "no", documents: store.watched.claimedItemIds(dir.id).length }));
-    out(opts.json ? json(rows) : table(rows));
-  });
+Pf.run do
+  add_flag :json, short: "j", desc: "print JSON"
+  add_flag :recursive, short: "r", desc: "include subdirectories"
 
-  c.cmd("add", { desc: "watch a directory and sync it now", args: ["DIR"], opts: { recursive: flag("r", "include subdirectories") } }, async ({ args, opts, out }) => {
-    const store = openDefaultStore();
-    const id = store.watched.addWatchedDirectory(await absoluteDir(args[0]), opts.recursive);
-    const result = await reconcile(store.db, render);
-    out(`watching #${id}: ${result.states.get(id)?.count ?? 0} documents${result.states.get(id)?.error ? ` (error: ${result.states.get(id)!.error})` : ""}`);
-  });
+  add_cmd :ls, :list, opts: [:json] do
+    store = Pf.store
+    rows = store.list_watched_directories.map do |dir|
+      { "id" => dir["id"], "path" => Pf.abbreviate_path(dir["path"]), "recursive" => Pf::Watch.truthy?(dir["recursive"]) ? "yes" : "no", "documents" => store.claimed_item_ids(dir["id"]).length }
+    end
+    puts(opts.json? ? Pf.json(rows) : Pf.table(rows))
+  ensure
+    store&.close
+  end
 
-  c.cmd("set", { desc: "turn subdirectories on or off for a watch, then sync", args: ["ID", "recursive|flat"] }, async ({ args, out }) => {
-    const store = openDefaultStore();
-    const recursive = args[1] === "recursive";
-    if (!recursive && args[1] !== "flat") throw new CliError("second argument must be recursive or flat");
-    if (!store.watched.setWatchedRecursive(numberArg(args[0]), recursive)) throw new CliError("no such watch");
-    const result = await reconcile(store.db, render);
-    out(`synced; removed ${result.removed} uncovered documents`);
-  });
+  add_cmd :add, args: ["DIR"], opts: [:recursive] do
+    path = Pf::Watch.absolute_dir(opts.args[0])
+    result = Pf::Watch.add(path, recursive: opts.recursive?)
+    id = result["id"]
+    state = (result["states"] || []).find { |candidate| candidate["id"] == id } || {}
+    count = state["count"] || 0
+    suffix = state["error"] ? " (error: #{state["error"]})" : ""
+    puts "watching ##{id}: #{count} documents#{suffix}"
+  end
 
-  c.cmd(["rm", "remove"], { desc: "stop watching; documents no other watch covers are removed (files stay on disk)", args: ["ID"] }, ({ args, out }) => {
-    const store = openDefaultStore();
-    out(`removed ${store.watched.removeWatchedDirectory(numberArg(args[0]))} documents`);
-  });
+  add_cmd :set, args: ["ID", "recursive|flat"] do
+    recursive = opts.args[1] == "recursive"
+    raise Pf::Error, "second argument must be recursive or flat" unless recursive || opts.args[1] == "flat"
+    result = Pf::Watch.set(Pf.number_arg(opts.args[0]), recursive: recursive)
+    puts "synced; removed #{result.fetch("removed", 0)} uncovered documents"
+  end
 
-  c.cmd("sync", { desc: "scan every watched directory once" }, async ({ out }) => {
-    const store = openDefaultStore();
-    const result = await reconcile(store.db, render);
-    for (const [id, state] of result.states) out(`#${id}: ${state.error ? `error ${state.error}` : `${state.count} documents`}`);
-    out(`removed ${result.removed}`);
-  });
+  add_cmd :rm, :remove, args: ["ID"] do
+    result = Pf::Watch.remove(Pf.number_arg(opts.args[0]))
+    puts "removed #{result.fetch("removed", 0)} documents"
+  end
 
-  c.cmd("scan", { desc: "list the documents a directory would import, without touching the database", args: ["DIR"], opts: { recursive: flag("r", "include subdirectories"), json: flag("j", "print JSON") } }, async ({ args, opts, out }) => {
-    const documents = await scanDirectory(await absoluteDir(args[0]), opts.recursive);
-    const rows = [...documents.values()].map(doc => ({ title: doc.title, kind: doc.html ? "html" : "md", path: abbreviatePath(doc.sourcePath) }));
-    out(opts.json ? json(rows) : table(rows));
-  });
+  add_cmd :sync do
+    Pf::Watch.sync_lines(Pf::Watch.sync).each { |line| puts line }
+  end
 
-  c.cmd("run", { desc: "stay running and re-sync on file changes (what the server does in-process)" }, async ({ out }) => {
-    const store = openDefaultStore();
-    const watcher = new DirectoryWatcher(store.db, render, { onError: error => out(`error: ${(error as Error).message}`) });
-    await watcher.reload();
-    out(`watching ${watcher.states.size} directories; ctrl-c to stop`);
-    await new Promise(() => {});
-  });
-}, { desc: "watched directories" }).run();
+  add_cmd :scan, args: ["DIR"], opts: [:recursive, :json] do
+    rows = Pf::Watch.scan_rows(Pf::Watch.absolute_dir(opts.args[0]), recursive: opts.recursive?)
+    puts(opts.json? ? Pf.json(rows) : Pf.table(rows))
+  end
+
+  add_cmd :run do
+    $stdout.sync = true
+    interval = (ENV["PF_WATCH_POLL_SECONDS"] || "2").to_f
+    interval = 2.0 if interval <= 0
+    store = Pf.store
+    dirs = store.list_watched_directories
+    signatures = dirs.to_h { |dir| [dir["id"], Pf::Watch.signature(dir)] }
+    Pf::Watch.sync_lines(Pf::Watch.sync).each { |line| puts line }
+    puts "watching #{dirs.length} directories; ctrl-c to stop"
+    loop do
+      sleep interval
+      store.close if store
+      store = Pf.store
+      dirs = store.list_watched_directories
+      changed = false
+      dirs.each do |dir|
+        sig = Pf::Watch.signature(dir)
+        changed ||= signatures[dir["id"]] != sig
+        signatures[dir["id"]] = sig
+      end
+      signatures.keys.each { |id| signatures.delete(id) unless dirs.any? { |dir| dir["id"] == id } }
+      next unless changed
+      Pf::Watch.sync_lines(Pf::Watch.sync).each { |line| puts line }
+    end
+  ensure
+    store&.close
+  end
+end

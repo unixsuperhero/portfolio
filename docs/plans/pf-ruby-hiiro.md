@@ -1,12 +1,36 @@
 # Plan: convert `bin/pf` and `pf-*` to Ruby on hiiro
 
-Status: PLAN ONLY. No code changed. Written 2026-09-23.
+Status: Implemented and runtime-verified, Ruby-only. Original plan written 2026-09-23.
 
 Goal: replace the Bun/TypeScript `pf` dispatcher and 14 `pf-*` tools with Ruby
 executables built on the `hiiro` gem (`/Users/unixsuperhero/proj/hiiro`), the same
 way hiiro's own `h-*` tools are built. `h-pf` already exists as a hiiro shim that
 just `exec`s `bin/pf`; this plan folds `pf` itself into hiiro so `h-pf` (and `pf`)
 become native hiiro dispatch instead of an exec wrapper.
+
+## Execution decisions
+
+The user's Ruby-only scope supersedes the API-only mutation proposal below.
+The implementation preserves the former CLI's direct SQLite writes, original
+server URL and launchd behavior, and multipart document uploads. TypeScript,
+JavaScript, backend routes, and the canonical SQL schema remain unchanged.
+
+The runtime is Ruby with hiiro 0.1.384, sqlite3, and standard-library Net::HTTP.
+Dependencies live in the root Gemfile and lockfile. Shared code lives in
+`lib/pf/`; integration verification is Ruby/Minitest in `test/pf/`.
+`h-pf` retains its forwarding shim and Hiiro built-in commands.
+
+Four non-Astra workers ran through `/swarm` for mutations, documents,
+operations, and Ruby verification. The parent owns integration, disposable
+runtime verification, documentation, and the commit.
+
+Verification: six Ruby integration tests with 269 assertions passed, including
+42 read-command comparisons against the original Bun executables. Disposable
+runtime smoke checks covered the actual server's development mode and HTTP
+commands, multipart document upload, live watch edits and deletions, overlapping
+watch claims, failed scans, and signalling a test-owned TCP listener.
+Live launchd installation and control were not run against the user's service.
+The unchanged Bun package suite also passed: 139 tests, 601 assertions.
 
 ---
 

@@ -1,11 +1,27 @@
 # Testing
 
 ```bash
-bun test packages            # every package: 38 tests, ~1 s
+bundle install
+bundle exec ruby -Itest test/pf/pf_integration_test.rb
+bun test packages
 bun test packages/db         # one package
 bun run typecheck            # tsc --noEmit over packages/*/src, packages/*/test, bin/*.ts
 bun test                     # also runs the older test/*.test.js suite against app.js
 ```
+
+The Ruby integration suite launches the real CLI against temporary databases,
+files, and HOME directories. It covers offline mutations, collections, FTS,
+Markdown imports and rendering, watched-directory reconciliation, and database
+initialization and legacy migrations. Pandoc must be installed.
+
+To compare read output with a saved copy of the former Bun executables:
+
+```bash
+PF_BASELINE_BIN=/path/to/original/bin bundle exec ruby -Itest test/pf/pf_integration_test.rb
+```
+
+The baseline must have access to the original workspace packages. Tests pass
+the repository's TypeScript configuration to Bun explicitly.
 
 What the tests cover:
 
@@ -34,10 +50,10 @@ bin/pf-docs add -r docs/index.md && bin/pf-watch add /tmp/somedocs -r && bin/pf-
 
 `PF_PICKER=head` makes the fuzzy picker non-interactive (first match wins).
 
-## Regenerating the CLI reference
+## Maintaining the CLI reference
 
-```bash
-bun scripts/gen-cli-docs.ts     # rewrites docs/cli/*.md from --help output
-```
+Update `docs/cli/` alongside the Ruby command declarations. The retained
+`scripts/gen-cli-docs.ts` parses the former Bun help format; do not use it to
+regenerate the Ruby CLI reference.
 
 Back to the [index](index.md).

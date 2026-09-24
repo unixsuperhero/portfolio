@@ -1,12 +1,16 @@
-#!/usr/bin/env bun
-// pf — the Portfolio toolbox. Every pf-* executable in this directory is a subcommand:
-//   pf items ls yt        →  pf-items ls yt
-//   pf it ls              →  prefix matching, like hiiro
-import { cli } from "@portfolio/cli-kit";
-import { databasePath, projectRoot } from "@portfolio/cli";
+#!/usr/bin/env ruby
+# pf — the Portfolio toolbox. Every pf-* executable in this directory is a subcommand.
+require_relative '../lib/pf'
 
-cli("pf", c => {
-  c.cmd("root", { desc: "print the project root" }, ({ out }) => { out(projectRoot()); });
-  c.cmd("db-path", { desc: "print the database path" }, ({ out }) => { out(databasePath()); });
-  c.cmd("tools", { desc: "list the pf-* tools" }, ({ out, cli }) => { for (const name of cli.commandNames()) out(`pf ${name}`); });
-}, { desc: "Portfolio command line tools" }).run();
+Pf.run do
+  tools = {}
+  [__dir__, *ENV.fetch('PATH', '').split(File::PATH_SEPARATOR)].uniq.each do |directory|
+    Dir.glob(File.join(directory, 'pf-*')).sort.each do |path|
+      tools[File.basename(path).delete_prefix('pf-')] ||= path if File.file?(path) && File.executable?(path)
+    end
+  end
+  tools.each { |name, path| add_cmd(name, passthrough: true) { exec(path, *args) } }
+  add_cmd(:root) { puts Pf.project_root }
+  add_cmd(:'db-path') { puts Pf.database_path }
+  add_cmd(:tools) { runners.subcommand_names.map(&:to_s).sort.each { |name| puts "pf #{name}" } }
+end

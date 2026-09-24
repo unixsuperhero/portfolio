@@ -1,35 +1,43 @@
-# @portfolio/cli
+# Ruby CLI helpers
 
-The few helpers every `pf-*` tool shares, so each tool file stays a list of commands.
+`lib/pf.rb` loads hiiro and the shared helpers for `pf`, `h-pf`, and the 14
+`pf-*` tools. Install the pinned dependencies with `bundle install`.
 
-| Export | Does |
-|--------|------|
-| `projectRoot()` | `PORTFOLIO_HOME`, else the parent of the `bin/` directory the script runs from |
-| `databasePath()` | `PORTFOLIO_DB`, else `<root>/portfolio.sqlite` |
-| `openDefaultStore({ create, readonly })` | opens the store; a missing file is a clear error unless `create` |
-| `client()` | a `PortfolioClient` for `PORTFOLIO_SERVER` |
-| `LIST_OPTS` | the shared listing options: `-t type`, `-g tag`, `-p pinned`, `-s starred`, `-c contents`, `-l limit`, `-j json`, `-f full` |
-| `filterFromOpts(args, opts)`, `findItems(store, args, opts)` | words become the search, options become the filter |
-| `printItems(store, items, opts, out)` | labels, a table (`-f`), or JSON (`-j`) |
-| `pickItem(store, args, opts)` | one item by numeric id, or a fuzzy pick among matches |
-| `label(item)` | `Title [type #id]`, the same label `h-docs` prints |
-| `itemUrl(item)` | absolute URL to open |
+| Helper | Purpose |
+|--------|---------|
+| `Pf.run` | Hiiro command registration, prefix matching, options, and process exit codes |
+| `Pf.project_root`, `Pf.database_path` | `PORTFOLIO_HOME` and `PORTFOLIO_DB`, with repository defaults |
+| `Pf.store`, `Pf.writable_store` | Read-only or writable SQLite access; missing databases are errors |
+| `Pf::Database.init!` | Create or migrate a database using `packages/db/src/schema.sql` |
+| `Pf.client` | Ruby Net::HTTP client for the existing server |
+| `Pf.add_list_options`, `Pf::LIST_OPTIONS` | Shared type, tag, pinned, starred, contents, limit, JSON, and full-output options |
+| `Pf.find_items`, `Pf.pick_item`, `Pf.print_items` | Search, fuzzy selection, and item output |
+| `Pf.label`, `Pf.item_url` | Item labels and absolute URLs |
 
-A new tool is:
+Domain helpers in `lib/pf/` handle detection, Pandoc rendering and crawling,
+collections, projects, watched directories, ports, and server operations.
+Local mutations still write SQLite directly; they do not require a server.
 
-```ts
-#!/usr/bin/env bun
-import { cli } from "@portfolio/cli-kit";
-import { LIST_OPTS, findItems, openDefaultStore, printItems } from "@portfolio/cli";
+A new tool:
 
-cli("pf-mine", c => {
-  c.cmd("ls", { desc: "my listing", args: ["QUERY..."], opts: LIST_OPTS }, ({ args, opts, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    printItems(store, findItems(store, args, opts), opts, out);
-  });
-}, { desc: "my tool" }).run();
+```ruby
+#!/usr/bin/env ruby
+require_relative '../lib/pf'
+
+Pf.run do
+  Pf.add_list_options(self)
+  add_cmd :ls, opts: Pf::LIST_OPTIONS do
+    store = Pf.store
+    Pf.print_items(store, Pf.find_items(store, opts.args, opts), opts)
+  ensure
+    store&.close
+  end
+end
 ```
 
-Save it as `bin/pf-mine`, `chmod +x`, and `pf mine ls` works.
+Save it as `bin/pf-mine`, make it executable, and `pf mine ls` discovers it.
+
+The TypeScript `@portfolio/cli` and `@portfolio/cli-kit` packages remain
+unchanged for Bun consumers. The Ruby tools do not load them.
 
 Back to the [index](../index.md).

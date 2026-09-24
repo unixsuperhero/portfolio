@@ -1,72 +1,82 @@
-#!/usr/bin/env bun
-// pf-db — the SQLite file itself: where it is, its schema state, ad-hoc queries, backups.
-import { copyFileSync, existsSync, statSync } from "node:fs";
-import { cli, flag, json, option, table, CliError } from "@portfolio/cli-kit";
-import { databasePath, openDefaultStore } from "@portfolio/cli";
-import { SCHEMA_PATH, openDatabase } from "@portfolio/db";
+#!/usr/bin/env ruby
+# pf-db — the SQLite file itself: where it is, its schema state, ad-hoc queries, backups.
+require_relative '../lib/pf'
+require_relative '../lib/pf/database'
+require 'time'
 
-const size = (bytes: number) => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : bytes >= 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${bytes} B`;
+module PfDb
+  module_function
 
-cli("pf-db", c => {
-  c.cmd("path", { desc: "print the database path" }, ({ out }) => { out(databasePath()); });
+  def size(bytes)
+    bytes >= 1_048_576 ? format('%.1f MB', bytes / 1_048_576.0) : bytes >= 1024 ? format('%.1f KB', bytes / 1024.0) : "#{bytes} B"
+  end
+end
 
-  c.cmd("status", { desc: "file size, tables, and row counts" }, ({ out }) => {
-    const path = databasePath();
-    if (!existsSync(path)) throw new CliError(`no database at ${path}`);
-    const store = openDefaultStore({ readonly: true });
-    out(`${path} (${size(statSync(path).size)})`);
-    const tables = store.db.query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'items_fts%' ORDER BY name").all();
-    out(table(tables.map(({ name }) => ({ table: name, rows: store.db.query<{ n: number }, []>(`SELECT count(*) n FROM "${name}"`).get()!.n }))));
-  });
-
-  c.cmd("init", { desc: "create the database and apply the schema (safe to re-run)" }, ({ out }) => {
-    openDatabase(databasePath(), { log: line => out(line) }).close();
-    out(`ready: ${databasePath()}`);
-  });
-
-  c.cmd("schema", { desc: "print schema.sql, or the live schema with --live", opts: { live: flag("l", "read from the database instead of schema.sql") } }, async ({ opts, out }) => {
-    if (!opts.live) return out(await Bun.file(SCHEMA_PATH).text());
-    const store = openDefaultStore({ readonly: true });
-    for (const row of store.db.query<{ sql: string }, []>("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY type DESC, name").all()) out(row.sql + ";");
-  });
-
-  c.cmd(["q", "query"], { desc: "run SQL (SELECT prints a table; anything else prints changes)", args: ["SQL..."], opts: { json: flag("j", "print JSON"), all: flag("a", "no 50-row limit") } }, ({ args, opts, out }) => {
-    const sql = args.join(" ").trim();
-    if (!sql) throw new CliError("SQL required");
-    const store = openDefaultStore();
-    if (/^\s*(select|with|pragma|explain)/i.test(sql)) {
-      const rows = store.db.query<Record<string, unknown>, []>(sql).all();
-      const shown = opts.all ? rows : rows.slice(0, 50);
-      out(opts.json ? json(shown) : table(shown));
-      if (!opts.json && rows.length > shown.length) out(`(${shown.length} of ${rows.length} rows; --all for everything)`);
-      return;
-    }
-    out(`changes: ${store.db.query(sql).run().changes}`);
-  });
-
-  c.cmd("backup", { desc: "copy the database to DEST (or portfolio.sqlite.<timestamp>) using VACUUM INTO", args: ["DEST"] }, ({ args, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    const dest = args[0] ?? `${databasePath()}.${new Date().toISOString().replace(/[:.]/g, "-")}`;
-    store.db.query("VACUUM INTO ?").run(dest);
-    out(`backup: ${dest} (${size(statSync(dest).size)})`);
-  });
-
-  c.cmd("vacuum", { desc: "VACUUM and checkpoint the WAL" }, ({ out }) => {
-    const store = openDefaultStore();
-    store.db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
-    store.db.exec("VACUUM");
-    out(`vacuumed (${size(statSync(databasePath()).size)})`);
-  });
-
-  c.cmd("reindex", { desc: "rebuild the full-text search index" }, ({ out }) => {
-    const store = openDefaultStore();
-    store.db.exec("INSERT INTO items_fts(items_fts) VALUES ('rebuild')");
-    out("search index rebuilt");
-  });
-
-  c.cmd("sqlite", { desc: "open the database in the sqlite3 shell" }, () => {
-    const bin = Bun.which("sqlite3");
-    if (!bin) throw new CliError("sqlite3 not on PATH");
-    return Bun.spawnSync({ cmd: [bin, databasePath()], stdio: ["inherit", "inherit", "inherit"] }).exitCode ?? 1;
-  });
-}, { desc: "the Portfolio SQLite database" }).run();
+Pf.run do
+  add_cmd(:path) { puts Pf.database_path }
+  add_cmd(:status) do
+    path = Pf.database_path
+    raise Pf::Error, "no database at #{path}" unless File.exist?(path)
+    store = Pf.store
+    puts "#{path} (#{PfDb.size(File.size(path))})"
+    tables = store.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'items_fts%' ORDER BY name")
+    puts Pf.table(tables.map { |r| { 'table' => r['name'], 'rows' => store.one(%Q{SELECT count(*) n FROM "#{r['name']}"})['n'] } })
+  ensure
+    store&.close
+  end
+  add_cmd(:init) { Pf::Database.init!; puts "ready: #{Pf.database_path}" }
+  add_flag :live, short: :l, desc: 'read from the database instead of schema.sql'
+  add_cmd(:schema, opts: [:live]) do
+    if opts.live
+      store = Pf.store
+      store.query('SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY type DESC, name').each { |r| puts r['sql'] + ';' }
+    else
+      print Pf::Database.schema, "\n"
+    end
+  ensure
+    store&.close
+  end
+  add_flag :json, short: :j, desc: 'print JSON'
+  add_flag :all, short: :a, desc: 'no 50-row limit'
+  add_cmd(:q, :query, args: ['SQL...'], opts: [:json, :all]) do
+    sql = opts.args.join(' ').strip
+    raise Pf::Error, 'SQL required' if sql.empty?
+    db = Pf::Database.open
+    if sql =~ /^\s*(select|with|pragma|explain)/i
+      rows = Pf::Database.rows(db, sql)
+      shown = opts.all ? rows : rows.first(50)
+      puts(opts.json ? Pf.json(shown) : Pf.table(shown))
+      puts "(#{shown.length} of #{rows.length} rows; --all for everything)" if !opts.json && rows.length > shown.length
+    else
+      db.execute(sql)
+      puts "changes: #{db.changes}"
+    end
+  ensure
+    db&.close
+  end
+  add_cmd(:backup, args: ['DEST']) do
+    dest = opts.args[0] || "#{Pf.database_path}.#{Time.now.utc.iso8601.gsub(/[:.]/, '-')}"
+    store = Pf.store
+    store.db.execute('VACUUM INTO ?', dest)
+    puts "backup: #{dest} (#{PfDb.size(File.size(dest))})"
+  ensure
+    store&.close
+  end
+  add_cmd(:vacuum) do
+    db = Pf::Database.open; db.execute_batch('PRAGMA wal_checkpoint(TRUNCATE); VACUUM')
+    puts "vacuumed (#{PfDb.size(File.size(Pf.database_path))})"
+  ensure
+    db&.close
+  end
+  add_cmd(:reindex) do
+    db = Pf::Database.open; db.execute("INSERT INTO items_fts(items_fts) VALUES ('rebuild')")
+    puts 'search index rebuilt'
+  ensure
+    db&.close
+  end
+  add_cmd(:sqlite) do
+    bin = Pf.which('sqlite3')
+    raise Pf::Error, 'sqlite3 not on PATH' unless bin
+    system(bin, Pf.database_path)
+  end
+end

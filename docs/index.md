@@ -7,7 +7,7 @@ There are three levels, and every level is complete on its own:
 | Level | What | Where |
 |-------|------|-------|
 | Packages | TypeScript modules with no UI: domain logic, SQLite storage, Pandoc rendering, watching, ports, an HTTP client, and a CLI framework | `packages/*` |
-| CLI tools | `pf` and fifteen `pf-*` executables built on the packages, in the hiiro style | `bin/pf*`, `bin/h-pf` |
+| CLI tools | `pf`, `h-pf`, and fourteen `pf-*` executables built with Ruby and hiiro | `bin/pf*`, `bin/h-pf`, `lib/pf/` |
 | UI components | React components for the cards, rails, rows, badges, and forms, with the CSS tokens they use | `packages/ui` |
 
 ## Start here
@@ -30,7 +30,7 @@ There are three levels, and every level is complete on its own:
 - [@portfolio/client](packages/client.md) — fetch client for the HTTP API
 - [@portfolio/github](packages/github.md) — GitHub pull requests through the `gh` CLI: query building, parsing, diffing, and a poller
 - [@portfolio/cli-kit](packages/cli-kit.md) — the hiiro-style CLI framework for Bun
-- [@portfolio/cli](packages/cli.md) — shared helpers the `pf-*` tools use
+- [Ruby CLI helpers](packages/cli.md) — shared helpers the `pf-*` tools use; `@portfolio/cli` is retained for Bun consumers
 - [@portfolio/ui](packages/ui.md) — React components and CSS
 
 ## CLI tools

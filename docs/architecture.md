@@ -25,17 +25,21 @@ Arrows point at what a package imports. Nothing points back up, and nothing belo
                         ┌──────────────┐                  │
                         │ @portfolio/  │◄─────────────────┘
                         │     cli      │  + db + client
-                        └──────┬───────┘
-                               ▼
-                          bin/pf-*  (one file per tool)
+                        └──────────────┘
 ```
+
+The graph describes the retained TypeScript packages. The Ruby CLI has a
+separate dependency path: `bin/pf*` → `lib/pf/` → hiiro, sqlite3, Pandoc, and
+Ruby's Net::HTTP. It shares the canonical SQL schema with the application,
+preserves local database writes, and uses the existing HTTP API only where
+the former CLI did. No TypeScript backend changes are required.
 
 Design rules that kept this small:
 
 - **Data first.** Records are plain objects (see [data model](data-model.md)). Repos are functions that take `db` first: `getItem(db, id)`. `openStore(path)` binds them for callers that want `store.items.getItem(id)`.
 - **Inject the slow parts.** `watch` needs a renderer but takes it as an argument, so its tests run without Pandoc. `detect` takes a `probe` so path detection is testable without a disk.
 - **One shape for the outside world.** `ItemView` is what the API returns, what the client types, and what the components take.
-- **Tools are thin.** A `pf-*` file is a list of `c.cmd(...)` registrations; each handler is a few lines that call a package and print.
+- **Tools are thin.** A `pf-*` file declares Hiiro commands; handlers call Ruby helpers and print.
 
 ## How app.js maps onto the packages
 

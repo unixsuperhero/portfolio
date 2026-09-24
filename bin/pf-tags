@@ -1,47 +1,65 @@
-#!/usr/bin/env bun
-// pf-tags — tags and what carries them.
-import { cli, flag, json, numberArg, table, CliError } from "@portfolio/cli-kit";
-import { LIST_OPTS, openDefaultStore, printItems } from "@portfolio/cli";
+#!/usr/bin/env ruby
+# pf-tags — tags and what carries them.
+require_relative '../lib/pf'
 
-cli("pf-tags", c => {
-  c.cmd(["ls", "list"], { desc: "every tag with its item count", opts: { json: flag("j", "print JSON") } }, ({ opts, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    const tags = store.tags.listTags();
-    out(opts.json ? json(tags) : table(tags.map(tag => ({ id: tag.id, name: tag.name, count: tag.count }))));
-  });
+Pf.run do |h|
+  Pf.add_list_options(h)
+  h.add_flag(:json, short: 'j', desc: 'print JSON')
 
-  c.cmd(["items", "show"], { desc: "items carrying a tag", args: ["TAG"], opts: LIST_OPTS }, ({ args, opts, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    if (!args[0]) throw new CliError("tag name required");
-    printItems(store, store.items.listItems({ tagName: args[0], type: (opts.type ?? "") as "" }), opts, out);
-  });
+  list_opts = Pf::LIST_OPTIONS
 
-  c.cmd("rename", { desc: "rename a tag everywhere", args: ["OLD", "NEW"] }, ({ args, out }) => {
-    const store = openDefaultStore();
-    const tag = store.tags.findTag(args[0] ?? "");
-    if (!tag || !args[1]) throw new CliError("usage: pf-tags rename OLD NEW");
-    store.tags.renameTag(tag.id, args[1]);
-    out(`${tag.name} → ${args[1]}`);
-  });
+  h.add_cmd(:ls, :list, opts: [:json]) do
+    store = Pf.store
+    tags = store.list_tags
+    puts(opts.json? ? Pf.json(tags) : Pf.table(tags.map { |tag| { 'id' => tag['id'], 'name' => tag['name'], 'count' => tag['count'] } }))
+  ensure
+    store&.close
+  end
 
-  c.cmd(["rm", "remove"], { desc: "remove a tag from every item", args: ["TAG"] }, ({ args, out }) => {
-    const store = openDefaultStore();
-    const tag = store.tags.findTag(args[0] ?? "");
-    if (!tag) throw new CliError(`no tag named ${args[0]}`);
-    store.db.query("DELETE FROM tags WHERE id = ?").run(tag.id);
-    out(`removed tag ${tag.name}`);
-  });
+  h.add_cmd(:items, :show, args: ['TAG'], opts: list_opts) do
+    raise Pf::Error, 'tag name required' unless opts.args[0]
+    store = Pf.store
+    Pf.print_items(store, store.list_items(tag_name: opts.args[0], type: opts.type || ''), opts)
+  ensure
+    store&.close
+  end
 
-  c.cmd("prune", { desc: "delete tags that no item carries" }, ({ out }) => {
-    const store = openDefaultStore();
-    out(`pruned ${store.tags.pruneTags()} tags`);
-  });
+  h.add_cmd(:rename, args: ['OLD', 'NEW']) do
+    old_name, new_name = opts.args
+    store = Pf.writable_store
+    tag = store.one('SELECT * FROM tags WHERE name = ? COLLATE NOCASE', old_name.to_s)
+    raise Pf::Error, 'usage: pf-tags rename OLD NEW' unless tag && new_name
+    store.rename_tag(tag['id'], new_name)
+    puts "#{tag['name']} → #{new_name}"
+  ensure
+    store&.close
+  end
 
-  c.cmd("add", { desc: "tag several items at once", args: ["TAG", "ID..."] }, ({ args, out }) => {
-    const store = openDefaultStore();
-    const [tag, ...ids] = args;
-    if (!tag || !ids.length) throw new CliError("usage: pf-tags add TAG ID...");
-    ids.forEach(id => store.tags.setTags(numberArg(id), [tag]));
-    out(`tagged ${ids.length} items with ${tag}`);
-  });
-}, { desc: "tags in the Portfolio database" }).run();
+  h.add_cmd(:rm, :remove, args: ['TAG']) do
+    name = opts.args[0]
+    store = Pf.writable_store
+    tag = store.one('SELECT * FROM tags WHERE name = ? COLLATE NOCASE', name.to_s)
+    raise Pf::Error, "no tag named #{name}" unless tag
+    store.remove_tag(tag['id'])
+    puts "removed tag #{tag['name']}"
+  ensure
+    store&.close
+  end
+
+  h.add_cmd(:prune) do
+    store = Pf.writable_store
+    puts "pruned #{store.prune_tags} tags"
+  ensure
+    store&.close
+  end
+
+  h.add_cmd(:add, args: ['TAG', 'ID...']) do
+    tag, *ids = opts.args
+    raise Pf::Error, 'usage: pf-tags add TAG ID...' unless tag && ids.any?
+    store = Pf.writable_store
+    ids.each { |id| store.set_tags(Pf.number_arg(id), [tag]) }
+    puts "tagged #{ids.length} items with #{tag}"
+  ensure
+    store&.close
+  end
+end

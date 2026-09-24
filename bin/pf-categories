@@ -1,83 +1,115 @@
-#!/usr/bin/env bun
-// pf-categories — a category names a kind of item and the slots (files/dirs) every member has.
-import { cli, flag, json, numberArg, option, table, CliError } from "@portfolio/cli-kit";
-import { LIST_OPTS, openDefaultStore, printItems } from "@portfolio/cli";
-import { abbreviatePath, formatSlots, parseSlots, isItemType } from "@portfolio/core";
-import type { Store } from "@portfolio/db";
+#!/usr/bin/env ruby
+# pf-categories — a category names a kind of item and the slots (files/dirs) every member has.
+require_relative "../lib/pf"
 
-const categoryOf = (store: Store, word: string | undefined) => {
-  const found = word && /^\d+$/.test(word) ? store.categories.getCategory(Number(word)) : word ? store.categories.findCategory(word) : null;
-  if (!found) throw new CliError(`no category ${word ?? "(missing)"}; run pf-categories ls`);
-  return found;
-};
-const SLOT_OPTS = { slots: option("s", "slots, one per line: name | file or dir | path"), kind: option("k", "kind of item (dir, file, document, note, link, pr)") };
+module PfCategories
+  module_function
 
-cli("pf-categories", c => {
-  c.cmd(["ls", "list"], { desc: "categories with member counts and slots", opts: { json: flag("j", "print JSON") } }, ({ opts, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    const rows = store.categories.listCategories();
-    out(opts.json ? json(rows) : table(rows.map(cat => ({ id: cat.id, name: cat.name, kind: cat.kind, members: cat.member_count, slots: formatSlots(cat.slots).replace(/\n/g, "; ") }))));
-  });
+  def category_of(store, word)
+    found = if word&.match?(/^\d+$/)
+      store.get_category(word.to_i)
+    elsif word
+      store.find_category(word)
+    end
+    raise Pf::Error, "no category #{word || "(missing)"}; run pf-categories ls" unless found
+    found
+  end
 
-  c.cmd(["items", "members"], { desc: "items in a category", args: ["CATEGORY"], opts: LIST_OPTS }, ({ args, opts, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    printItems(store, store.categories.categoryMembers(categoryOf(store, args[0]).id), opts, out);
-  });
+  def parse_slots(value)
+    value.to_s.lines.map(&:strip).reject(&:empty?).map do |line|
+      name, kind, path = line.split("|").map(&:strip)
+      raise Pf::Error, "slot \"#{line}\" must read: name | file or dir | path" unless name && !name.empty? && %w[file dir].include?(kind) && path && !path.empty?
+      { "name" => name, "kind" => kind, "path" => path }
+    end.tap do |slots|
+      names = slots.map { |slot| slot["name"].downcase }
+      raise Pf::Error, "slot names must be unique" unless names.uniq.length == names.length
+    end
+  end
 
-  c.cmd("slots", { desc: "resolved slots of one member: path, exists, overridden", args: ["ITEM_ID"], opts: { json: flag("j", "print JSON") } }, ({ args, opts, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    const item = store.items.getItem(numberArg(args[0], "item id"));
-    if (!item) throw new CliError("no such item");
-    const slots = store.categories.memberSlots(item);
-    out(opts.json ? json(slots) : table(slots.map(slot => ({ name: slot.name, kind: slot.kind, path: slot.path ? abbreviatePath(slot.path) : "(needs a member path)", exists: slot.exists ? "yes" : "no", overridden: slot.overridden ? "yes" : "" }))));
-  });
+  def format_slots(slots)
+    Array(slots).map { |slot| "#{slot["name"]} | #{slot["kind"]} | #{slot["path"]}" }.join("\n")
+  end
+end
 
-  c.cmd(["add", "new"], { desc: "create a category", args: ["NAME"], opts: SLOT_OPTS }, ({ args, opts, out }) => {
-    const store = openDefaultStore();
-    const kind = opts.kind ?? "dir";
-    if (!isItemType(kind)) throw new CliError("invalid kind");
-    out(`created category #${store.categories.createCategory({ name: args[0] ?? "", kind, slots: parseSlots(opts.slots ?? "") })}`);
-  });
+Pf.run do |hiiro|
+  hiiro.add_flag :json, short: "j", desc: "print JSON"
+  slot_options = Hiiro::Options.setup do
+    option :slots, short: "s", desc: "slots, one per line: name | file or dir | path"
+    option :kind, short: "k", desc: "kind of item"
+  end
 
-  c.cmd(["edit", "set"], { desc: "rename a category, change its kind (only while empty), or replace its slots", args: ["CATEGORY", "NEW_NAME"], opts: SLOT_OPTS }, ({ args, opts, out }) => {
-    const store = openDefaultStore();
-    const category = categoryOf(store, args[0]);
-    if (opts.kind && !isItemType(opts.kind)) throw new CliError("invalid kind");
-    store.categories.updateCategory(category.id, { name: args[1], kind: (opts.kind as typeof category.kind) ?? undefined, slots: opts.slots === null ? undefined : parseSlots(opts.slots) });
-    out(`updated ${category.name}`);
-  });
+  hiiro.add_cmd :ls, :list, opts: [:json] do
+    rows = Pf.store.list_categories
+    puts opts.json? ? Pf.json(rows) : Pf.table(rows.map { |cat| { id: cat["id"], name: cat["name"], kind: cat["kind"], members: cat["member_count"], slots: PfCategories.format_slots(cat["slots"]).gsub("\n", "; ") } })
+  end
 
-  c.cmd("assign", { desc: "put an item in a category (its type must match the category kind)", args: ["ITEM_ID", "CATEGORY"] }, ({ args, out }) => {
-    const store = openDefaultStore();
-    const item = store.items.getItem(numberArg(args[0], "item id"));
-    if (!item) throw new CliError("no such item");
-    const category = categoryOf(store, args[1]);
-    if (category.kind !== item.type) throw new CliError(`category ${category.name} holds ${category.kind} items, this is a ${item.type}`);
-    store.items.setPathAndCategory(item.id, item.path, category.id);
-    out(`#${item.id} → ${category.name}`);
-  });
+  hiiro.add_cmd :items, :members, args: ["CATEGORY"], opts: Pf.add_list_options(hiiro) do
+    store = Pf.store
+    Pf.print_items(store, store.category_members(PfCategories.category_of(store, opts.args[0])["id"]), opts)
+  end
 
-  c.cmd("unassign", { desc: "take an item out of its category", args: ["ITEM_ID"] }, ({ args, out }) => {
-    const store = openDefaultStore();
-    const item = store.items.getItem(numberArg(args[0], "item id"));
-    if (!item) throw new CliError("no such item");
-    store.items.setPathAndCategory(item.id, item.path, null);
-    out(`#${item.id} has no category`);
-  });
+  hiiro.add_cmd :slots, args: ["ITEM_ID"], opts: [:json] do
+    store = Pf.store
+    item = store.get_item(Pf.number_arg(opts.args[0], "item id"))
+    raise Pf::Error, "no such item" unless item
+    slots = store.member_slots(item)
+    puts opts.json? ? Pf.json(slots) : Pf.table(slots.map { |slot| { name: slot["name"], kind: slot["kind"], path: slot["path"] ? Pf.abbreviate_path(slot["path"]) : "(needs a member path)", exists: slot["exists"] ? "yes" : "no", overridden: slot["overridden"] ? "yes" : "" } })
+  end
 
-  c.cmd("override", { desc: "give one member a different path for a slot; empty PATH clears it", args: ["ITEM_ID", "SLOT", "PATH"] }, ({ args, out }) => {
-    const store = openDefaultStore();
-    const item = store.items.getItem(numberArg(args[0], "item id"));
-    if (!item) throw new CliError("no such item");
-    if (!args[1]) throw new CliError("slot name required");
-    store.categories.setSlotOverride(item, args[1], args[2] ?? "");
-    out(json(store.categories.memberSlots(store.items.getItem(item.id)!)));
-  });
+  hiiro.add_subcmd :add, :new, opts: slot_options, subcmd_args: ["NAME"], subcmd_opts: slot_options do |opts|
+    next puts(opts.help_text) if opts.help?
+    kind = opts.kind || "dir"
+    raise Pf::Error, "invalid kind" unless Pf::ITEM_TYPES.include?(kind)
+    store = Pf.writable_store
+    puts "created category ##{store.create_category("name" => opts.args[0] || "", "kind" => kind, "slots" => PfCategories.parse_slots(opts.slots || ""))}"
+  ensure
+    store&.close
+  end
 
-  c.cmd(["rm", "remove", "delete"], { desc: "delete a category; members are kept without one", args: ["CATEGORY"] }, ({ args, out }) => {
-    const store = openDefaultStore();
-    const category = categoryOf(store, args[0]);
-    store.categories.deleteCategory(category.id);
-    out(`deleted ${category.name}`);
-  });
-}, { desc: "categories and slots" }).run();
+  hiiro.add_subcmd :edit, :set, opts: slot_options, subcmd_args: ["CATEGORY", "NEW_NAME"], subcmd_opts: slot_options do |opts|
+    next puts(opts.help_text) if opts.help?
+    store = Pf.writable_store
+    category = PfCategories.category_of(store, opts.args[0])
+    raise Pf::Error, "invalid kind" if opts.kind && !Pf::ITEM_TYPES.include?(opts.kind)
+    patch = {}
+    patch[:name] = opts.args[1] if opts.args[1]
+    patch[:kind] = opts.kind if opts.kind
+    patch[:slots] = PfCategories.parse_slots(opts.slots) unless opts.slots.nil?
+    store.update_category(category["id"], patch)
+    puts "updated #{category["name"]}"
+  end
+
+  hiiro.add_cmd :assign, args: ["ITEM_ID", "CATEGORY"] do
+    store = Pf.writable_store
+    item = store.get_item(Pf.number_arg(opts.args[0], "item id"))
+    raise Pf::Error, "no such item" unless item
+    category = PfCategories.category_of(store, opts.args[1])
+    raise Pf::Error, "category #{category["name"]} holds #{category["kind"]} items, this is a #{item["type"]}" unless category["kind"] == item["type"]
+    store.update_item(item["id"], { "category_id" => category["id"] })
+    puts "##{item["id"]} → #{category["name"]}"
+  end
+
+  hiiro.add_cmd :unassign, args: ["ITEM_ID"] do
+    store = Pf.writable_store
+    item = store.get_item(Pf.number_arg(opts.args[0], "item id"))
+    raise Pf::Error, "no such item" unless item
+    store.update_item(item["id"], { "category_id" => nil })
+    puts "##{item["id"]} has no category"
+  end
+
+  hiiro.add_cmd :override, args: ["ITEM_ID", "SLOT", "PATH"] do
+    store = Pf.writable_store
+    item = store.get_item(Pf.number_arg(opts.args[0], "item id"))
+    raise Pf::Error, "no such item" unless item
+    raise Pf::Error, "slot name required" unless opts.args[1]
+    store.set_slot_override(item, opts.args[1], opts.args[2] || "")
+    puts Pf.json(store.member_slots(store.get_item(item["id"])))
+  end
+
+  hiiro.add_cmd :rm, :remove, :delete, args: ["CATEGORY"] do
+    store = Pf.writable_store
+    category = PfCategories.category_of(store, opts.args[0])
+    store.delete_category(category["id"])
+    puts "deleted #{category["name"]}"
+  end
+end

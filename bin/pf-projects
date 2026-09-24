@@ -1,48 +1,61 @@
-#!/usr/bin/env bun
-// pf-projects — parent directories to scan for projects; each found project becomes a dir item in the project category.
-import { resolve } from "node:path";
-import { cli, flag, json, numberArg, table, CliError } from "@portfolio/cli-kit";
-import { LIST_OPTS, openDefaultStore, printItems } from "@portfolio/cli";
-import { abbreviatePath, expandPath } from "@portfolio/core";
-import { discoverProjects, scanProjects, PROJECT_SCAN_DEPTH } from "@portfolio/watch";
+#!/usr/bin/env ruby
+# pf-projects — parent directories to scan for projects; each found project becomes a dir item in the project category.
+require_relative "../lib/pf"
+require_relative "../lib/pf/projects"
 
-cli("pf-projects", c => {
-  c.cmd(["ls", "list"], { desc: "project items (dir items in the project category)", args: ["QUERY..."], opts: LIST_OPTS }, ({ args, opts, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    const category = store.categories.findCategory("project");
-    if (!category) return out("no project category yet; add a parent with pf-projects parents add"), 1;
-    const q = args.join(" ").toLowerCase();
-    printItems(store, store.categories.categoryMembers(category.id).filter(item => !q || item.title.toLowerCase().includes(q) || (item.path ?? "").toLowerCase().includes(q)), opts, out);
-  });
+Pf.run do |hiiro|
+  hiiro.add_flag :json, short: "j", desc: "print JSON"
+  hiiro.add_option :depth, short: "d", type: :integer, desc: "levels to walk (default #{Pf::Projects::SCAN_DEPTH})"
 
-  c.cmd("scan", { desc: "scan every parent and add new projects (never removes)" }, async ({ out }) => {
-    const store = openDefaultStore();
-    const added = await scanProjects(store.db);
-    out(`added ${added.length} projects`);
-    added.forEach(path => out(`  ${abbreviatePath(path)}`));
-  });
+  hiiro.add_cmd :ls, :list, args: ["QUERY..."], opts: Pf.add_list_options(hiiro) do
+    store = Pf.store
+    category = store.find_category("project")
+    unless category
+      puts "no project category yet; add a parent with pf-projects parents add"
+      exit 1
+    end
+    q = opts.args.join(" ").downcase
+    items = store.category_members(category["id"]).select do |item|
+      q.empty? || item["title"].downcase.include?(q) || item["path"].to_s.downcase.include?(q)
+    end
+    Pf.print_items(store, items, opts)
+  end
 
-  c.cmd("discover", { desc: "show what a scan of DIR would find, without touching the database", args: ["DIR"], opts: { depth: { kind: "option", short: "d", desc: `levels to walk (default ${PROJECT_SCAN_DEPTH})`, type: "number" }, json: flag("j", "print JSON") } }, async ({ args, opts, out }) => {
-    if (!args[0]) throw new CliError("directory required");
-    const found = await discoverProjects(resolve(expandPath(args[0])), opts.depth ?? PROJECT_SCAN_DEPTH);
-    out(opts.json ? json(found) : found.map(abbreviatePath).join("\n"));
-  });
+  hiiro.add_cmd :scan do
+    store = Pf.writable_store
+    added = store.scan_projects
+    puts "added #{added.length} projects"
+    added.each { |path| puts "  #{Pf.abbreviate_path(path)}" }
+  end
 
-  c.child("parents", "parent directories that get scanned", p => {
-    p.cmd(["ls", "list"], { desc: "parents with project counts", opts: { json: flag("j", "print JSON") } }, ({ opts, out }) => {
-      const store = openDefaultStore({ readonly: true });
-      const rows = store.projects.listProjectParents();
-      out(opts.json ? json(rows) : table(rows.map(row => ({ id: row.id, path: abbreviatePath(row.path), projects: row.count }))));
-    });
-    p.cmd("add", { desc: "add a parent and scan it", args: ["DIR"] }, async ({ args, out }) => {
-      if (!args[0]) throw new CliError("directory required");
-      const store = openDefaultStore();
-      store.projects.addProjectParent(resolve(expandPath(args[0])));
-      out(`added ${(await scanProjects(store.db)).length} projects`);
-    });
-    p.cmd(["rm", "remove"], { desc: "stop scanning a parent; its projects stay", args: ["ID"] }, ({ args, out }) => {
-      const store = openDefaultStore();
-      out(store.projects.removeProjectParent(numberArg(args[0])) ? "removed" : "no such parent");
-    });
-  });
-}, { desc: "project discovery" }).run();
+  hiiro.add_cmd :discover, args: ["DIR"], opts: [:depth, :json] do
+    raise Pf::Error, "directory required" unless opts.args[0]
+    found = Pf::Projects.discover(Pf.expand_path(opts.args[0]), opts.depth || Pf::Projects::SCAN_DEPTH)
+    puts opts.json? ? Pf.json(found) : found.map { |path| Pf.abbreviate_path(path) }.join("\n")
+  end
+
+  hiiro.add_cmd :parents, passthrough: true do
+    run_child(:parents, args, external_commands: false, builtin_commands: false) do
+      add_flag :json, short: "j", desc: "print JSON"
+      add_cmd :ls, :list, opts: [:json] do
+        rows = Pf.store.list_project_parents
+        puts opts.json? ? Pf.json(rows) : Pf.table(rows.map { |row| { id: row["id"], path: Pf.abbreviate_path(row["path"]), projects: row["count"] } })
+      end
+      add_cmd :add, args: ["DIR"] do
+        raise Pf::Error, "directory required" unless opts.args[0]
+        store = Pf.writable_store
+        store.add_project_parent(File.expand_path(Pf.expand_path(opts.args[0])))
+        added = store.scan_projects
+        puts "added #{added.length} projects"
+      ensure
+        store&.close
+      end
+      add_cmd :rm, :remove, args: ["ID"] do
+        store = Pf.writable_store
+        puts store.remove_project_parent(Pf.number_arg(opts.args[0])) ? "removed" : "no such parent"
+      ensure
+        store&.close
+      end
+    end
+  end
+end

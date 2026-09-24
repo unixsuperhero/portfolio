@@ -1,76 +1,110 @@
-#!/usr/bin/env bun
-// pf-cards — cards are saved queries: tags OR-ed, types narrowing, sorted, capped.
-import { cli, flag, json, numberArg, option, table, CliError } from "@portfolio/cli-kit";
-import { openDefaultStore } from "@portfolio/cli";
-import { describeCard, normalizeCard, ITEM_TYPES } from "@portfolio/core";
-import type { Store } from "@portfolio/db";
+#!/usr/bin/env ruby
+# pf-cards — cards are saved queries: tags OR-ed, types narrowing, sorted, capped.
+require_relative "../lib/pf"
+require_relative "../lib/pf/cards"
 
-const CARD_OPTS = {
-  tags: option("g", "comma-separated tags; an item matches with any one"),
-  types: option("t", `comma-separated types to narrow to (${ITEM_TYPES.join(",")})`),
-  sort: option("s", "created_at | updated_at | title | type"),
-  dir: option("d", "asc | desc"),
-  max: option("m", "max items, 1-1000", { type: "number" }),
-};
-type CardOpts = { tags: string | null; types: string | null; sort: string | null; dir: string | null; max: number | null };
-const inputFrom = (title: string | undefined, opts: CardOpts) => ({ title, tags: opts.tags ?? undefined, types: opts.types ?? undefined, sort_key: opts.sort ?? undefined, sort_dir: opts.dir ?? undefined, max_items: opts.max ?? undefined });
-const portfolioOf = (store: Store, word: string | undefined) => {
-  const found = word && /^\d+$/.test(word) ? store.portfolios.getPortfolio(Number(word)) : word ? store.portfolios.findPortfolio(word) : null;
-  if (!found) throw new CliError(`no portfolio ${word ?? "(missing)"}; run pf-portfolios ls`);
-  return found;
-};
+module PfCards
+  module_function
 
-cli("pf-cards", c => {
-  c.cmd(["ls", "list"], { desc: "cards of a portfolio", args: ["PORTFOLIO"], opts: { json: flag("j", "print JSON") } }, ({ args, opts, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    const cards = store.portfolios.portfolioCards(portfolioOf(store, args[0]).id);
-    out(opts.json ? json(cards) : table(cards.map(card => ({ id: card.id, pos: card.position, title: card.title, query: describeCard(card) }))));
-  });
+  def portfolio_of(store, word)
+    found = if word&.match?(/^\d+$/)
+      store.get_portfolio(word.to_i)
+    elsif word
+      store.find_portfolio(word)
+    end
+    raise Pf::Error, "no portfolio #{word || "(missing)"}; run pf-portfolios ls" unless found
+    found
+  end
 
-  c.cmd(["show", "run"], { desc: "run a card's query and list what it matches", args: ["CARD_ID"], opts: { json: flag("j", "print JSON") } }, ({ args, opts, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    const card = store.portfolios.getCard(numberArg(args[0], "card id"));
-    if (!card) throw new CliError("no such card");
-    const result = store.portfolios.cardItems(card);
-    if (opts.json) return out(json({ ...card, ...result }));
-    out(`${card.title}  ${describeCard(card)}  (${result.items.length}${result.total > result.items.length ? ` of ${result.total}` : ""})`);
-    for (const item of result.items) out(`  ${item.title} [${item.type} #${item.id}]`);
-  });
+  def card_options(hiiro)
+    hiiro.add_option :tags, short: "g", desc: "comma-separated tags; an item matches with any one"
+    hiiro.add_option :types, short: "t", desc: "comma-separated types to narrow to (#{Pf::ITEM_TYPES.join(",")})"
+    hiiro.add_option :sort, short: "s", desc: "created_at | updated_at | title | type"
+    hiiro.add_option :dir, short: "d", desc: "asc | desc"
+    hiiro.add_option :max, short: "m", type: :integer, desc: "max items, 1-1000"
+    %i[tags types sort dir max]
+  end
 
-  c.cmd(["preview", "query"], { desc: "run an unsaved card query from options, without touching any portfolio", opts: { ...CARD_OPTS, json: flag("j", "print JSON") } }, ({ opts, out }) => {
-    const store = openDefaultStore({ readonly: true });
-    const spec = normalizeCard(inputFrom("preview", opts));
-    const result = store.portfolios.cardItems(spec);
-    if (opts.json) return out(json({ ...spec, ...result }));
-    out(`${describeCard(spec)}  (${result.items.length}${result.total > result.items.length ? ` of ${result.total}` : ""})`);
-    for (const item of result.items) out(`  ${item.title} [${item.type} #${item.id}]`);
-  });
+  def input_from(title, opts)
+    values = opts.to_h
+    { "title" => title, "tags" => values[:tags], "types" => values[:types], "sort_key" => values[:sort], "sort_dir" => values[:dir], "max_items" => values[:max] }.reject { |_key, value| value.nil? }
+  end
 
-  c.cmd(["add", "new"], { desc: "add a card to a portfolio", args: ["PORTFOLIO", "TITLE"], opts: CARD_OPTS }, ({ args, opts, out }) => {
-    const store = openDefaultStore();
-    const portfolio = portfolioOf(store, args[0]);
-    out(`created card #${store.portfolios.createCard(portfolio.id, inputFrom(args.slice(1).join(" "), opts))} in ${portfolio.name}`);
-  });
+  def print_card_result(card, result)
+    total = result["total"].to_i
+    items = result["items"] || []
+    suffix = total > items.length ? " of #{total}" : ""
+    puts "#{card["title"]}  #{Pf::Cards.describe(card)}  (#{items.length}#{suffix})"
+    items.each { |item| puts "  #{item["title"]} [#{item["type"]} ##{item["id"]}]" }
+  end
+end
 
-  c.cmd(["edit", "set"], { desc: "change a card's title or query; only given options change", args: ["CARD_ID", "TITLE..."], opts: CARD_OPTS }, ({ args, opts, out }) => {
-    const store = openDefaultStore();
-    const id = numberArg(args[0], "card id");
-    const patch = Object.fromEntries(Object.entries(inputFrom(args.slice(1).join(" ") || undefined, opts)).filter(([, value]) => value !== undefined));
-    if (!store.portfolios.updateCard(id, patch)) throw new CliError("no such card");
-    out(`updated card #${id}: ${describeCard(store.portfolios.getCard(id)!)}`);
-  });
+Pf.run do |hiiro|
+  card_opts = PfCards.card_options(hiiro)
+  hiiro.add_flag :json, short: "j", desc: "print JSON"
 
-  c.cmd("move", { desc: "move a card earlier (left) or later (right)", args: ["CARD_ID", "left|right"] }, ({ args, out }) => {
-    const store = openDefaultStore();
-    const card = store.portfolios.getCard(numberArg(args[0], "card id"));
-    if (!card) throw new CliError("no such card");
-    const direction = args[1] === "left" ? "left" : args[1] === "right" ? "right" : null;
-    if (!direction) throw new CliError("direction must be left or right");
-    out(store.portfolios.moveCard(card, direction) ? "moved" : "already at the edge");
-  });
+  hiiro.add_cmd :ls, :list, args: ["PORTFOLIO"], opts: [:json] do
+    store = Pf.store
+    cards = store.portfolio_cards(PfCards.portfolio_of(store, opts.args[0])["id"])
+    puts opts.json? ? Pf.json(cards) : Pf.table(cards.map { |card| { id: card["id"], pos: card["position"], title: card["title"], query: Pf::Cards.describe(card) } })
+  end
 
-  c.cmd(["rm", "remove", "delete"], { desc: "delete a card; items are kept", args: ["CARD_ID"] }, ({ args, out }) => {
-    const store = openDefaultStore();
-    out(store.portfolios.deleteCard(numberArg(args[0], "card id")) ? "deleted" : "no such card");
-  });
-}, { desc: "cards: saved queries inside portfolios" }).run();
+  hiiro.add_cmd :show, :run, args: ["CARD_ID"], opts: [:json] do
+    store = Pf.writable_store
+    card = store.get_card(Pf.number_arg(opts.args[0], "card id"))
+    raise Pf::Error, "no such card" unless card
+    result = store.card_items(card)
+    if opts.json?
+      puts Pf.json(card.merge(result))
+    else
+      PfCards.print_card_result(card, result)
+    end
+  end
+
+  hiiro.add_cmd :preview, :query, opts: [*card_opts, :json] do
+    store = Pf.store
+    spec = Pf::Cards.normalize(PfCards.input_from("preview", opts))
+    result = store.card_items(spec)
+    if opts.json?
+      puts Pf.json(spec.merge(result))
+    else
+      total = result["total"].to_i
+      items = result["items"] || []
+      suffix = total > items.length ? " of #{total}" : ""
+      puts "#{Pf::Cards.describe(spec)}  (#{items.length}#{suffix})"
+      items.each { |item| puts "  #{item["title"]} [#{item["type"]} ##{item["id"]}]" }
+    end
+  end
+
+  hiiro.add_cmd :add, :new, args: ["PORTFOLIO", "TITLE"], opts: card_opts do
+    store = Pf.writable_store
+    portfolio = PfCards.portfolio_of(store, opts.args[0])
+    title = opts.args[1..]&.join(" ")
+    id = store.create_card(portfolio["id"], PfCards.input_from(title, opts))
+    puts "created card ##{id} in #{portfolio["name"]}"
+  end
+
+  hiiro.add_cmd :edit, :set, args: ["CARD_ID", "TITLE..."], opts: card_opts do
+    store = Pf.writable_store
+    id = Pf.number_arg(opts.args[0], "card id")
+    title = opts.args[1..]&.join(" ")
+    patch = PfCards.input_from(title.to_s.empty? ? nil : title, opts)
+    raise Pf::Error, "no such card" unless store.update_card(id, patch)
+    card = store.get_card(id)
+    puts "updated card ##{id}: #{Pf::Cards.describe(card)}"
+  end
+
+  hiiro.add_cmd :move, args: ["CARD_ID", "left|right"] do
+    store = Pf.writable_store
+    card = store.get_card(Pf.number_arg(opts.args[0], "card id"))
+    raise Pf::Error, "no such card" unless card
+    direction = opts.args[1] == "left" || opts.args[1] == "right" ? opts.args[1] : nil
+    raise Pf::Error, "direction must be left or right" unless direction
+    puts store.move_card(card, direction) ? "moved" : "already at the edge"
+  end
+
+  hiiro.add_cmd :rm, :remove, :delete, args: ["CARD_ID"] do
+    store = Pf.writable_store
+    puts store.delete_card(Pf.number_arg(opts.args[0], "card id")) ? "deleted" : "no such card"
+  end
+end

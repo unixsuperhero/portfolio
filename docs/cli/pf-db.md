@@ -127,6 +127,6 @@ pf-db reindex
 | `PORTFOLIO_HOME` | project root (default: the parent of `bin/`) |
 | `PORTFOLIO_SERVER` | server URL for commands that open pages or call the API (default `HDOCS_SERVER` or `http://127.0.0.1:4387`) |
 | `PF_PICKER` | fuzzy picker binary (default `sk`, then `fzf`) |
-| `PF_DEBUG` | print stack traces on errors |
+| `PF_DEBUG` | legacy Bun setting; Hiiro includes backtraces for unexpected errors without it |
 
-See also: [the pf toolbox](pf.md) · [cli-kit, the framework these are built on](../packages/cli-kit.md) · [back to the index](../index.md)
+See also: [the pf toolbox](pf.md) · [Ruby CLI helpers](../packages/cli.md) · [back to the index](../index.md)
