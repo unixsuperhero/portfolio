@@ -1,4 +1,5 @@
-import { DEFAULT_TEMPLATE, MARKDOWN_READER, runPandoc } from "./pandoc.ts";
+import { dirname } from "node:path";
+import { DEFAULT_TEMPLATE, EXTERNAL_IMAGES_FILTER, MARKDOWN_READER, runPandoc } from "./pandoc.ts";
 import { rewriteLinks } from "./links.ts";
 
 export interface RenderOptions {
@@ -29,6 +30,8 @@ export function renderMarkdown(markdown: string, options: RenderOptions): string
     `--template=${options.template ?? DEFAULT_TEMPLATE}`,
     `--syntax-highlighting=${options.highlight ?? "breezedark"}`,
     "--standalone",
+    "--embed-resources",
+    `--lua-filter=${EXTERNAL_IMAGES_FILTER}`,
     "--section-divs",
     "--html-q-tags",
     "--wrap=none",
@@ -36,6 +39,7 @@ export function renderMarkdown(markdown: string, options: RenderOptions): string
     "--metadata", `date=${options.date ?? today()}`,
   ];
   if (options.toc ?? true) args.push("--toc", "--toc-depth=3");
+  if (options.sourcePath) args.push(`--resource-path=${dirname(options.sourcePath)}`);
   return runPandoc(args, input, options.bin);
 }
 

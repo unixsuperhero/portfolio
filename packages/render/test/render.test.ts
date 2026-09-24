@@ -21,6 +21,14 @@ describe.skipIf(!available)("pandoc", () => {
     expect(html).toContain('href="https://x.dev"');
     expect(html).toContain('href="c.md"');
   });
+  test("embeds local images and keeps remote resources linked", () => {
+    const dir = mkdtempSync(join(tmpdir(), "render-"));
+    writeFileSync(join(dir, "pic.png"), Buffer.from("89504e470d0a1a0a", "hex"));
+    const html = renderMarkdown("![a](pic.png) ![b](https://x.dev/b.png)", { title: "a", sourcePath: join(dir, "a.md"), date: "x" });
+    expect(html).toContain('src="data:image/png;base64,');
+    expect(html).toContain('src="https://x.dev/b.png"');
+    expect(html).toContain('href="https://fonts.googleapis.com');
+  });
   test("ast links and crawl", () => {
     const dir = mkdtempSync(join(tmpdir(), "render-"));
     writeFileSync(join(dir, "index.md"), "# I\n\n[a](a.md) [b](sub/b.md?x=1) [img](i.png) [web](https://x.dev)");

@@ -38,6 +38,7 @@ beforeAll(async () => {
     copyFile(join(root, "tsconfig.json"), join(fixture, "tsconfig.json")),
     copyFile(join(root, "schema.sql"), join(fixture, "schema.sql")),
     copyFile(join(root, "templates", "document.html"), join(fixture, "templates", "document.html")),
+    copyFile(join(root, "templates", "external-images.lua"), join(fixture, "templates", "external-images.lua")),
     copyFile(join(root, "public", "app.css"), join(fixture, "public", "app.css")),
   ]);
   server = Bun.spawn({

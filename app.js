@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 const ROOT = import.meta.dir;
 const DB_PATH = process.env.PORTFOLIO_DB ?? join(ROOT, "portfolio.sqlite");
 const TEMPLATE = join(ROOT, "templates", "document.html");
+const EXTERNAL_IMAGES_FILTER = join(ROOT, "templates", "external-images.lua");
 const LEGACY_ROOT = resolve(process.env.PORTFOLIO_LEGACY_ROOT ?? join(process.env.HOME, "claude", "docs"));
 const PORT = Number(process.env.PORT ?? 4387);
 const HOST = process.env.HOST ?? "127.0.0.1";
@@ -90,6 +91,8 @@ function renderMarkdown(markdown, title, toc = true, sourcePath = null, sourceId
     `--template=${TEMPLATE}`,
     "--syntax-highlighting=breezedark",
     "--standalone",
+    "--embed-resources",
+    `--lua-filter=${EXTERNAL_IMAGES_FILTER}`,
     "--section-divs",
     "--html-q-tags",
     "--wrap=none",
@@ -97,6 +100,7 @@ function renderMarkdown(markdown, title, toc = true, sourcePath = null, sourceId
     "--metadata", `date=${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}`,
   ];
   if (toc) args.push("--toc", "--toc-depth=3");
+  if (sourcePath) args.push(`--resource-path=${dirname(sourcePath)}`);
   return runPandoc(args, input);
 }
 

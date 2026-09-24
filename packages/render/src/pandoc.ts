@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 
 export const MARKDOWN_READER = "markdown+lists_without_preceding_blankline-blank_before_header-blank_before_blockquote+autolink_bare_uris+emoji+mark+wikilinks_title_before_pipe";
 export const DEFAULT_TEMPLATE = join(import.meta.dir, "..", "templates", "document.html");
+export const EXTERNAL_IMAGES_FILTER = join(import.meta.dir, "..", "templates", "external-images.lua");
 
 let resolved: string | undefined;
 /** PANDOC_BIN, else pandoc on PATH, else the Homebrew path. */
