@@ -8,8 +8,8 @@ require 'uri'
 SERVER = ENV.fetch('HDOCS_SERVER', 'http://127.0.0.1:4387').sub(%r{/$}, '')
 DOCS_DIR = File.join(Dir.home, 'claude', 'docs')
 PROJECT_ROOT = ENV.fetch('PORTFOLIO_HOME', File.join(Dir.home, 'proj', 'portfolio'))
-DESKTOP_DIR = File.join(PROJECT_ROOT, 'apps/desktop')
-APP_PATH = File.join(DESKTOP_DIR, 'bin/desktop.app')
+DESKTOP_ROOT = File.join(PROJECT_ROOT, 'apps/desktop')
+APP_PATH = File.join(DESKTOP_ROOT, 'bin/desktop.app')
 SERVICE_LABEL = "com.#{ENV.fetch('USER')}.portfolio"
 SERVICE_DOMAIN = "gui/#{Process.uid}"
 SERVICE_TARGET = "#{SERVICE_DOMAIN}/#{SERVICE_LABEL}"
@@ -194,14 +194,6 @@ Hiiro.run(*ARGV, plugins: [Pins]) {
     matching_items(opts, limit: count).each { |item| puts item_label(item) }
   }
 
-  add_subcmd(:make) { |*args|
-    Dir.chdir DESKTOP_DIR
-    system 'wails3', 'package' 
-  }
-
-  add_subcmd(:run) { |*args|
-    system 'open', APP_PATH
-  }
 
   add_subcmd(:open) { |*args|
     opts = open_opts.parse(args)
@@ -213,6 +205,15 @@ Hiiro.run(*ARGV, plugins: [Pins]) {
     next puts('No matching items.') if items.empty?
 
     (opts.all ? items : [pick_one(items)].compact).each { |item| open_item(item) }
+  }
+
+  add_subcmd(:make) { |*_args|
+    Dir.chdir(DESKTOP_ROOT)
+    system 'wails3', 'package'
+  }
+
+  add_subcmd(:run) { |*_args|
+    system 'open', APP_PATH
   }
 
   add_subcmd(:vim) { |*args|
