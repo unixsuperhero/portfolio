@@ -10,12 +10,14 @@
   -webkit-app-region: drag;
 }
 
-.app-shell.native-macos .topbar :is(button, input) {
+.app-shell.native-macos .topbar :is(button, input, a) {
   -webkit-app-region: no-drag;
 }
 
 .topbar-command,
 .topbar-browser,
+.topbar-notifications,
+.topbar-dismiss,
 .topbar-theme {
   background: none;
   border: 1px solid var(--border);
@@ -28,6 +30,8 @@
 
 .topbar-command:hover,
 .topbar-browser:hover,
+.topbar-notifications:hover,
+.topbar-dismiss:enabled:hover,
 .topbar-theme:hover {
   border-color: var(--border2);
   color: var(--text);
@@ -41,6 +45,10 @@
   cursor: progress;
   opacity: 0.65;
 }
+
+.topbar { flex-wrap: wrap; gap: 0.5rem; }
+.topbar-notifications { text-decoration: none; font-variant-numeric: tabular-nums; }
+.topbar-dismiss:disabled { opacity: 0.5; cursor: default; }
 
 .topbar-error {
   color: var(--danger);

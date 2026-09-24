@@ -1,38 +1,54 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import type { DueToast } from "../hooks/useReminderPolling.ts";
+import { completeReminder } from "../api.ts";
+import { openInApp } from "../native.ts";
+import { dismissNotifications, NOTIFICATION_POPUP_MS, useNotifications, visibleNotifications } from "../lib/notifications.ts";
+import type { AppNotification } from "../lib/notifications.ts";
 
-const keyOf = (toast: DueToast) => `${toast.reminder.id}:${toast.due_at}`;
+export function NotificationActions({ item }: { item: AppNotification }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const prUrl = item.kind === "pr" ? item.url : null;
+  const complete = async () => {
+    if (item.kind !== "reminder" || busy) return;
+    setBusy(true); setError("");
+    try {
+      await completeReminder(item.reminder_id, item.due_at.slice(0, 10));
+      dismissNotifications([item.id]);
+    } catch (error) { setError(error instanceof Error ? error.message : String(error)); }
+    finally { setBusy(false); }
+  };
+  return <>
+    <div className="page-actions">
+      {item.kind === "pr" ? prUrl ? <button type="button" className="primary" onClick={() => { void openInApp(prUrl).catch(error => setError(String(error))); }}>Open PR</button> : <Link to="/prs">View pull requests</Link> : <>
+        <Link to={`/reminders?q=${encodeURIComponent(item.title)}`}>Open reminder</Link>
+        {item.task_id !== null ? <Link to={`/tasks/${item.task_id}`}>Linked task</Link> : null}
+        {item.dismissed_at === null ? <button type="button" className="primary" disabled={busy} onClick={() => void complete()}>{busy ? "Completing…" : "Done"}</button> : null}
+      </>}
+      {item.dismissed_at === null ? <button type="button" className="secondary" onClick={() => dismissNotifications([item.id])}>Dismiss</button> : null}
+    </div>
+    {error ? <p className="notification-error" role="alert">{error}</p> : null}
+  </>;
+}
 
-export function ToastStack({ toasts, onDismiss, onComplete }: { toasts: DueToast[]; onDismiss: (reminderId: number, dueAt?: string) => void; onComplete: (toast: DueToast) => void }) {
-  // Done fires the completion at once; the card settles out while the request is in flight.
-  // If the request fails the card is still in the list, so it is shown again after a moment.
-  const [settled, setSettled] = useState<Set<string>>(() => new Set());
-  const timers = useRef<number[]>([]);
-  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+export function ToastStack() {
+  const { items } = useNotifications();
+  const [now, setNow] = useState(Date.now);
+  const toasts = visibleNotifications(items, Math.max(now, Date.now()));
+  useEffect(() => {
+    const current = Date.now();
+    const next = items.filter(item => item.dismissed_at === null && item.received_at + NOTIFICATION_POPUP_MS > current)
+      .reduce((earliest, item) => Math.min(earliest, item.received_at + NOTIFICATION_POPUP_MS), Infinity);
+    if (!Number.isFinite(next)) return;
+    const timer = setTimeout(() => setNow(Date.now()), Math.max(1, next - current));
+    return () => clearTimeout(timer);
+  }, [items, now]);
 
   if (!toasts.length) return null;
-
-  const complete = (toast: DueToast) => {
-    const key = keyOf(toast);
-    setSettled(current => new Set(current).add(key));
-    onComplete(toast);
-    timers.current.push(window.setTimeout(() => setSettled(current => { const next = new Set(current); next.delete(key); return next; }), 1500));
-  };
-
-  return (
-    <div className="toast-stack">
-      {toasts.map(toast => (
-        <div className={`toast-card${settled.has(keyOf(toast)) ? " settled" : ""}`} key={keyOf(toast)}>
-          <strong>{toast.reminder.title}</strong>
-          {toast.reminder.notes ? <p>{toast.reminder.notes}</p> : null}
-          {toast.reminder.task_id !== null ? <p className="toast-meta"><Link to={`/tasks/${toast.reminder.task_id}`}>Linked task</Link></p> : null}
-          <div className="page-actions">
-            <button type="button" className="primary" onClick={() => complete(toast)}>Done</button>
-            <button type="button" className="secondary" onClick={() => onDismiss(toast.reminder.id, toast.due_at)}>Dismiss</button>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+  return <div className="toast-stack" aria-label="Recent notifications">
+    {toasts.map(item => <div className="toast-card" key={item.id}>
+      <div role="status"><strong>{item.title}</strong><p>{item.message}</p></div>
+      <NotificationActions item={item} />
+    </div>)}
+  </div>;
 }

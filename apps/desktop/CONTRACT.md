@@ -277,7 +277,7 @@ frontend/src/
   native.ts                         wrappers over the Go bindings that fall back to window.open / clipboard API
                                     when `window.wails`/`window._wails` is absent, so `bun run dev` in a browser works
   context-menu/                     the right-click menu; see below
-  pages/{Home,Portfolio,Library,Item,Categories,Category,Projects,Project,Ports,Reminders,Settings}.tsx
+  pages/{Home,Portfolio,Library,Item,Categories,Category,Projects,Project,Ports,Reminders,Notifications,Settings}.tsx
   cards/{QueryCard,TilesCard,TasksCard,RemindersCard,PortsCard,ClockCard,NoteCard,ServicesCard}.tsx   one per card kind
   terminal/                         OWNED BY THE TERMINAL PART — see below
 ```
@@ -309,8 +309,13 @@ export function TerminalDock(): JSX.Element;    // renders nothing when closed; 
 
 Keyboard: `Cmd+K` focus search, `` Ctrl+` `` toggle the terminal dock, `Cmd+T` inside the dock = new tab.
 
-Polling rules (absolute): reminders due (every 60s), ports (every 15s when the ports page or card is
-visible) update only their own slice of state. They never navigate, never reset forms, never scroll.
+Polling rules (absolute): reminder and PR notifications (60s after each completed poll), ports
+(every 15s when the ports page or card is visible) update only their own slice of state.
+They never navigate, never reset forms, never scroll. Notification popups expire after 8s
+without marking records dismissed. `/notifications` exposes URL-backed New/Dismissed tabs,
+search, source filters, sort, and selection; top-bar Dismiss all affects all New records.
+History persists per app/browser origin in `portfolio.notifications.v1` local storage.
+PR delivery acknowledgment follows successful local persistence, not user dismissal.
 
 ## Terminal part
 

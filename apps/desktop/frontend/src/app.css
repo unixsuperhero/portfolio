@@ -179,11 +179,11 @@ table.data-table th { color: var(--text3); font-weight: 500; }
 .context-menu hr { border: none; border-top: 1px solid var(--border); margin: 0.25rem 0; }
 
 /* Toasts */
-.toast-stack { position: fixed; bottom: 1rem; right: 1rem; display: flex; flex-direction: column; gap: 0.5rem; z-index: 2000; }
+.toast-stack { position: fixed; bottom: 1rem; right: 1rem; display: flex; flex-direction: column; gap: 0.5rem; z-index: 2000; width: min(26rem, calc(100vw - 2rem)); max-height: calc(100vh - 8rem); overflow-y: auto; }
 .toast-card {
   background: var(--surface); border: 1px solid var(--border2); border-radius: var(--radius);
   padding: 0.6rem 0.8rem; min-width: 16rem; box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-  display: flex; flex-direction: column; gap: 0.4rem;
+  display: flex; flex-direction: column; gap: 0.4rem; overflow-wrap: anywhere;
 }
 .toast-card strong { font-size: 0.9rem; }
 .toast-card p { margin: 0; font-size: 0.82rem; color: var(--text2); }
@@ -263,7 +263,20 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   .bulk-action-fields > label { flex: 1 1 10rem; }
 }
 
-.pr-toast-stack { bottom: auto; top: 1rem; }
+.notifications-page { max-width: 72rem; }
+.notification-hint, .notification-meta { color: var(--text2); }
+.notification-hint { margin: 0 0 1.25rem; }
+.notification-error { color: var(--danger); white-space: pre-wrap; }
+.notification-tabs { display: flex; gap: 0.5rem; border-bottom: 1px solid var(--border); margin-bottom: 1rem; }
+.notification-tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--text2); padding: 0.65rem 0.85rem; cursor: pointer; }
+.notification-tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+.notification-list { list-style: none; padding: 0; margin: 1rem 0; }
+.notification-list > li { display: flex; align-items: flex-start; gap: 0.8rem; padding: 1.1rem 0; border-bottom: 1px solid var(--border); }
+.notification-list > li > input { margin-top: 0.3rem; }
+.notification-body { min-width: 0; overflow-wrap: anywhere; }
+.notification-body h2 { margin: 0; font-size: 1rem; }
+.notification-body p { margin: 0.4rem 0; white-space: pre-wrap; }
+.notification-body .notification-meta { font-size: 0.8rem; margin-bottom: 0.7rem; }
 
 /* Modal */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1500; }

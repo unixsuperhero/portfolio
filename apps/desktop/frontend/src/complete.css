@@ -95,13 +95,8 @@
 @keyframes all-done-in { from { opacity: 0; transform: translateY(0.3rem); } to { opacity: 1; transform: none; } }
 @keyframes all-done-check { to { stroke-dashoffset: 0; } }
 
-/* Due reminders arrive, they do not blink into place. Done leaves the same way. */
 .toast-card { animation: toast-in 260ms cubic-bezier(0.2, 0.9, 0.3, 1) both; }
-.pr-toast-stack .toast-card { animation-name: toast-in-top; }
-.toast-card.settled { animation: toast-out 220ms ease-in forwards; pointer-events: none; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(0.6rem) scale(0.98); } to { opacity: 1; transform: none; } }
-@keyframes toast-in-top { from { opacity: 0; transform: translateY(-0.6rem) scale(0.98); } to { opacity: 1; transform: none; } }
-@keyframes toast-out { to { opacity: 0; transform: translateY(0.4rem) scale(0.98); } }
 
 /* Browser surfaces the design still owns. */
 ::selection { background: color-mix(in srgb, var(--accent) 32%, transparent); color: var(--text); }
@@ -110,7 +105,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .done-check, .done-check::after, .task-completed, .reminder-row:has(.done-check:checked) > span:first-of-type { transition: none; }
-  .streak-tick, .all-done, .all-done-check, .toast-card, .toast-card.settled { animation: none; }
+  .streak-tick, .all-done, .all-done-check, .toast-card { animation: none; }
   .all-done-check { stroke-dashoffset: 0; }
-  .toast-card.settled { opacity: 0; }
 }

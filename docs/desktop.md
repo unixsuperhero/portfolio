@@ -58,7 +58,7 @@ const pr = { state: "open", checks_summary: "success", watched: true, ignored: f
 const settings = { github_dirs: ["/Users/me/work/carrot", "/Users/me/proj"] };   // gh runs from each; empty = the API's own cwd
 ```
 
-The `tasks` card shows active tasks with nested subtasks and completion checkboxes. Completion checkboxes on tasks and reminders draw a check and settle the title; a daily task or reminder with a streak of two or more days shows an `N-day streak` count that ticks up when it advances, and a list whose entries are all complete ends with an "All done today." line. Due-reminder toasts slide in and settle out on Done. Each task links to its task page. Note cards support GitHub-flavored Markdown and a plain-text Markdown editor. Widget bodies and tile cards use the same horizontal padding as query rows.
+The `tasks` card shows active tasks with nested subtasks and completion checkboxes. Completion checkboxes on tasks and reminders draw a check and settle the title; a daily task or reminder with a streak of two or more days shows an `N-day streak` count that ticks up when it advances, and a list whose entries are all complete ends with an "All done today." line. Due-reminder toasts slide in; successful Done completes the reminder and dismisses its notification. Each task links to its task page. Note cards support GitHub-flavored Markdown and a plain-text Markdown editor. Widget bodies and tile cards use the same horizontal padding as query rows.
 
 The command palette (⌘K) adds things as well as navigating. While you type, the palette runs the same detection as the Library quick-add and offers `Add <kind>` for every addable kind (task, note, link, PR, file, directory, document) — the detected kind ranks first, the rest still list even when they'd fail for that text (a failure just shows the API's error in the top bar). Text with an `http://`/`https://` scheme, or that looks like a bare domain (`example.com`, `github.com/foo/bar`), is treated as a link (or a PR, for GitHub pull URLs); a bare domain is prefixed with `https://` before it's added, since detection only recognizes URLs that already carry a scheme. `Add file…` and `Add directory…` open the native picker inside the app, or the in-page directory browser in a plain browser, and add the picked path. `Add…` opens a dialog (always listed, near the top when the query is empty) with a multi-line field, the same live detection line, a kind override (Auto plus every kind), and file/directory pickers that fill the field; Enter submits, Escape cancels. A successful add navigates to the new item or task; a failure shows in the top bar or, from the `Add…` dialog, inside the dialog itself.
 
@@ -68,6 +68,41 @@ Single and bulk reminder deletion use an in-app confirmation dialog. Cancel or E
 
 See [data-model.md](data-model.md) for the full shapes and
 [packages/api.md](packages/api.md), [packages/github.md](packages/github.md) for the routes.
+
+## Notifications
+
+Reminder and pull-request popups close after eight seconds. Expiration only hides
+the popup: the notification remains **New** until dismissed. The window's top bar
+shows the New count and **Dismiss all**, which dismisses every New notification,
+including expired popups and notifications hidden by page filters.
+
+`/notifications` has **New** and **Dismissed** tabs, search, source filtering,
+sorting, and selection controls. These controls use URL query parameters.
+New notifications can be dismissed individually or by selection. Reminder
+**Done** completes the reminder before dismissing its notification; opening a
+reminder or PR does not dismiss it.
+
+History is stored in local storage under `portfolio.notifications.v1` and survives
+reloads and app restarts. It is local to the app/browser origin, not synced through
+the API; native and external-browser histories are separate. Clearing that
+origin's storage removes its history. Stable reminder-occurrence and PR-event IDs
+prevent repeated polls from reopening dismissed notifications. PR events are
+acknowledged only after their history has been saved. Storage and polling errors
+appear on the Notifications page, with an error indicator in the top bar.
+
+```js
+const notification = {
+  id: "reminder:7:2026-09-24T09:00",
+  kind: "reminder",
+  title: "Call the dentist",
+  message: "Book a checkup",
+  reminder_id: 7,
+  due_at: "2026-09-24T09:00",
+  task_id: null,
+  received_at: 1790254800000,
+  dismissed_at: null, // New; a dismissal timestamp moves it to Dismissed.
+};
+```
 
 ## Herdr
 

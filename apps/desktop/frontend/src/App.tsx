@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Detection, ItemType } from "@portfolio/core";
-import { createHashRouter, Link, NavLink, Outlet, RouterProvider, useLocation, useNavigate } from "react-router";
+import { createHashRouter, Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
+import { RouterProvider } from "react-router/dom";
 import { TerminalDock } from "./terminal/TerminalDock.tsx";
 import { useTerminalStore } from "./terminal/store.ts";
 import { ContextMenuProvider } from "./context-menu/ContextMenu.tsx";
@@ -11,9 +12,9 @@ import { AddModal } from "./components/AddModal.tsx";
 import { createTask, detect, quickAdd } from "./api.ts";
 import { ToastStack } from "./components/ToastStack.tsx";
 import { useSidecarStatus } from "./hooks/useSidecarStatus.ts";
-import { useReminderPolling } from "./hooks/useReminderPolling.ts";
-import { usePrEvents } from "./hooks/usePrEvents.ts";
-import { home, openInApp, openSystem, pickDirectory, pickFile } from "./native.ts";
+import { useNotificationPolling } from "./hooks/useNotificationPolling.ts";
+import { dismissNotifications, useNotifications } from "./lib/notifications.ts";
+import { home, openSystem, pickDirectory, pickFile } from "./native.ts";
 import { isWails } from "./lib/wails.ts";
 import "./shell.css";
 
@@ -32,6 +33,7 @@ import Reminders from "./pages/Reminders.tsx";
 import Tasks from "./pages/Tasks.tsx";
 import PullRequests from "./pages/PullRequests.tsx";
 import Settings from "./pages/Settings.tsx";
+import Notifications from "./pages/Notifications.tsx";
 
 const NAV_ITEMS = [
   { to: "/", label: "Home", end: true },
@@ -44,6 +46,7 @@ const NAV_ITEMS = [
   { to: "/tasks", label: "Tasks" },
   { to: "/reminders", label: "Reminders" },
   { to: "/prs", label: "PRs" },
+  { to: "/notifications", label: "Notifications" },
   { to: "/settings", label: "Settings" },
 ] as const;
 
@@ -78,28 +81,6 @@ function browserUrlForLocation(pathname: string, search: string): string {
   return `http://127.0.0.1:4388/app/#${pathname}${search}`;
 }
 
-/** Renders GET /api/prs/events toasts (from usePrEvents) in their own stack, separate from the
- * reminder toasts, with an "Open" action that opens the PR in the in-app browser. */
-function PrToastStack() {
-  const { toasts, dismiss } = usePrEvents();
-  if (!toasts.length) return null;
-  return (
-    <div className="toast-stack pr-toast-stack">
-      {toasts.map(toast => (
-        <div className="toast-card" key={toast.id}>
-          <strong>{toast.message}</strong>
-          <div className="page-actions">
-            {toast.url ? (
-              <button type="button" className="primary" onClick={() => { void openInApp(toast.url!); dismiss(toast.id); }}>Open</button>
-            ) : null}
-            <button type="button" className="secondary" onClick={() => dismiss(toast.id)}>Dismiss</button>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function useTheme() {
   const [theme, setTheme] = useState<"dark" | "light">(() => (localStorage.getItem("theme") === "light" ? "light" : "dark"));
   useEffect(() => {
@@ -113,6 +94,8 @@ function TopBar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { theme, toggle } = useTheme();
+  const { items: notifications, storageError, pollingError } = useNotifications();
+  const newNotifications = notifications.filter(item => item.dismissed_at === null).length;
   const commandButtonRef = useRef<HTMLButtonElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -260,6 +243,8 @@ function TopBar() {
         {browserBusy ? "Opening…" : "Open in browser"}
       </button>
       {browserError ? <span className="topbar-error" role="alert">{browserError}</span> : null}
+      <Link className="topbar-notifications" to="/notifications">Notifications ({newNotifications}){storageError || pollingError ? " · Error" : ""}</Link>
+      <button type="button" className="topbar-dismiss" disabled={!newNotifications} onClick={() => dismissNotifications()}>Dismiss all</button>
       <button type="button" className="topbar-theme" onClick={toggle}>{theme === "dark" ? "Light" : "Dark"} theme</button>
       <CommandPalette commands={commands} open={paletteOpen} onOpenChange={setPaletteOpen} returnFocusRef={returnFocusRef} onQueryChange={setPaletteQuery} />
       {browseKind ? (
@@ -302,7 +287,7 @@ function Sidebar() {
 
 function Layout() {
   const terminal = useTerminalStore();
-  const { toasts, dismiss, complete, error: reminderToastError } = useReminderPolling();
+  useNotificationPolling();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -328,9 +313,7 @@ function Layout() {
         <TerminalDock />
       </div>
       <ContextMenuProvider />
-      <ToastStack toasts={toasts} onDismiss={dismiss} onComplete={complete} />
-      {reminderToastError ? <div className="toast-stack"><div className="toast-card"><strong>Reminder polling failed</strong><p>{reminderToastError}</p></div></div> : null}
-      <PrToastStack />
+      <ToastStack />
     </div>
   );
 }
@@ -354,6 +337,7 @@ const router = createHashRouter([
       { path: "/tasks/:taskId", element: <Tasks /> },
       { path: "/reminders", element: <Reminders /> },
       { path: "/prs", element: <PullRequests /> },
+      { path: "/notifications", element: <Notifications /> },
       { path: "/settings", element: <Settings /> },
       { path: "*", element: <Link to="/">Back home</Link> },
     ],
