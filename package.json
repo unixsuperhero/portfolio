@@ -15,10 +15,11 @@
     "ui:demo": "bun run --cwd packages/ui demo",
     "app:make": "cd apps/desktop && wails3 package",
     "app:run": "open apps/desktop/bin/desktop.app",
-    "w": "cd apps/desktop && wails3 "
+    "w": "cd apps/desktop && wails3 ",
+    "up": "bun app:make && bun app:run"
   },
   "devDependencies": {
-    "@types/bun": "^1.2.0",
-    "typescript": "^5.6.0"
+    "@types/bun": "^1.4.2",
+    "typescript": "^5.9.3"
   }
 }
