@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { addItemTags, deleteItem, listCategories, patchItem, removeItemTag } from "../api.ts";
 import type { CategorySummary } from "../types.ts";
+import { useConfirm } from "./ConfirmDialog.tsx";
 
 export function CollectionToolbar({ query, onQueryChange, sort, onSortChange, sortOptions, children }: {
   query: string;
@@ -64,6 +65,7 @@ export function ItemBulkActions({ ids, onChanged }: { ids: readonly number[]; on
   const [error, setError] = useState("");
   const tagId = useId();
   const needsTags = action === "add_tags" || action === "remove_tags";
+  const { confirm, dialog } = useConfirm();
   useEffect(() => {
     if (action !== "category" || categories !== null) return;
     let live = true;
@@ -76,7 +78,7 @@ export function ItemBulkActions({ ids, onChanged }: { ids: readonly number[]; on
     if (busy || !ids.length) return;
     const names = [...new Set(tags.split(",").map(name => name.trim()).filter(Boolean))];
     if (needsTags && !names.length) { setError("Enter at least one tag."); return; }
-    if (action === "delete" && !confirm(`Remove ${ids.length} selected items from the database? Files on disk will be kept. Selected tasks will also be removed; their subtasks become top-level tasks.`)) return;
+    if (action === "delete" && !(await confirm({ title: `Remove ${ids.length} selected items from the database?`, body: "Files on disk will be kept. Selected tasks will also be removed; their subtasks become top-level tasks." }))) return;
     setBusy(true);
     setError("");
     try {
@@ -115,5 +117,6 @@ export function ItemBulkActions({ ids, onChanged }: { ids: readonly number[]; on
       <button type="button" className={action === "delete" ? "secondary danger" : "primary"} disabled={action === "category" && categories === null} onClick={() => void apply()}>{busy ? "Applying…" : "Apply to selected"}</button>
     </fieldset>
     {error ? <p role="alert" className="collection-error">{error}</p> : null}
+    {dialog}
   </div>;
 }

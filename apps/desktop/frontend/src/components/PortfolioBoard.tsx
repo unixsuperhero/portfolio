@@ -8,6 +8,7 @@ import { createCard, deleteCard, moveCard, updateCard } from "../api.ts";
 import { DashboardCard } from "../cards/DashboardCard.tsx";
 import { CardKindEditor } from "../cards/CardKindEditor.tsx";
 import { CollectionToolbar, SelectionBar, useSelection } from "./CollectionTools.tsx";
+import { useConfirm } from "./ConfirmDialog.tsx";
 
 export function PortfolioBoard({ portfolio, reload }: { portfolio: PortfolioView; reload: () => void }) {
   const [addKind, setAddKind] = useState<CardSpec["kind"]>("query");
@@ -19,6 +20,7 @@ export function PortfolioBoard({ portfolio, reload }: { portfolio: PortfolioView
   const [limit, setLimit] = useState(100);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const { confirm, dialog } = useConfirm();
   const cards = portfolio.cards.filter(card => (!kind || card.kind === kind) && `${card.title} ${card.kind}`.toLowerCase().includes(query.trim().toLowerCase()))
     .sort((a, b) => sort === "title" ? a.title.localeCompare(b.title) : sort === "kind" ? a.kind.localeCompare(b.kind) || a.title.localeCompare(b.title) : a.position - b.position);
   const selection = useSelection(cards.map(card => card.id));
@@ -34,10 +36,10 @@ export function PortfolioBoard({ portfolio, reload }: { portfolio: PortfolioView
     finally { setBusy(false); }
   };
   const saveCard = (id: number, patch: CardInput) => mutate(() => updateCard(id, patch));
-  const remove = (id: number) => { if (confirm("Delete this card? Its items will be kept.")) void mutate(() => deleteCard(id)); };
-  const applyBulk = () => {
+  const remove = async (id: number) => { if (await confirm({ title: "Delete this card?", body: "Its items will be kept." })) void mutate(() => deleteCard(id)); };
+  const applyBulk = async () => {
     if (!selected.length || (action !== "delete" && !queriesOnly)) return;
-    if (action === "delete" && !confirm(`Delete ${selected.length} selected cards? Their items will be kept.`)) return;
+    if (action === "delete" && !(await confirm({ title: `Delete ${selected.length} selected cards?`, body: "Their items will be kept." }))) return;
     void mutate(async () => {
       const results = await Promise.allSettled(selected.map(card => action === "delete" ? deleteCard(card.id) : updateCard(card.id, {
         title: card.title,
@@ -83,5 +85,6 @@ export function PortfolioBoard({ portfolio, reload }: { portfolio: PortfolioView
         {addKind === "query" ? <CardEditor summary="Query details" onSubmit={spec => mutate(() => createCard(portfolio.id, spec))} submitLabel="Add query card" /> : null}
       </section>
     </div>
+    {dialog}
   </div>;
 }

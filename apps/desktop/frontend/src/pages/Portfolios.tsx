@@ -4,6 +4,8 @@ import { Link, useSearchParams } from "react-router";
 import type { PortfolioSummary } from "../types.ts";
 import { createPortfolio, deletePortfolio, listPortfolios, patchPortfolio, patchSettings } from "../api.ts";
 import { CollectionToolbar, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
+import { AddTextarea } from "../components/AddTextarea.tsx";
+import { useConfirm } from "../components/ConfirmDialog.tsx";
 
 type SortKey = "name" | "created" | "cards";
 type FillFilter = "" | "empty" | "nonempty";
@@ -22,6 +24,7 @@ export default function Portfolios() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const { confirm, dialog } = useConfirm();
 
   const query = params.get("q") ?? "";
   const sort = (params.get("sort") ?? "name") as SortKey;
@@ -83,9 +86,9 @@ export default function Portfolios() {
       .finally(() => setBusy(false));
   };
 
-  const deleteSelected = () => {
+  const deleteSelected = async () => {
     if (!selectedIds.length) return;
-    if (!window.confirm(`Delete ${selectedIds.length} portfolio record${selectedIds.length === 1 ? "" : "s"}? Items and files are preserved.`)) return;
+    if (!(await confirm({ title: `Delete ${selectedIds.length} portfolio record${selectedIds.length === 1 ? "" : "s"}?`, body: "Items and files are preserved." }))) return;
     setBusy(true);
     setError("");
     Promise.allSettled(selectedIds.map(deletePortfolio))
@@ -102,8 +105,8 @@ export default function Portfolios() {
     <div>
       <div className="page-header"><h1>Portfolios</h1></div>
       <form className="field-row" onSubmit={submit}>
-        <label>Name<input value={name} onChange={event => setName(event.target.value)} required /></label>
-        <label>Description<input value={description} onChange={event => setDescription(event.target.value)} /></label>
+        <label>Name<AddTextarea value={name} onChange={setName} required /></label>
+        <label>Description<AddTextarea value={description} onChange={setDescription} /></label>
         <button className="primary" type="submit" disabled={busy}>Create</button>
       </form>
       <CollectionToolbar
@@ -150,6 +153,7 @@ export default function Portfolios() {
           </tbody>
         </table>
       ) : null}
+      {dialog}
     </div>
   );
 }

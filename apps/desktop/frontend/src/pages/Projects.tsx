@@ -5,6 +5,7 @@ import type { ProjectParentSummary, ProjectView } from "../types.ts";
 import { addProjectParent, listProjectParents, listProjects, removeProjectParent, scanProjects } from "../api.ts";
 import { PathField } from "../components/PathField.tsx";
 import { CollectionToolbar, ItemBulkActions, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
+import { useConfirm } from "../components/ConfirmDialog.tsx";
 
 type SortKey = "title" | "path" | "updated" | "ports" | "scripts";
 
@@ -22,6 +23,7 @@ export default function Projects() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [params, setParams] = useSearchParams();
+  const { confirm, dialog } = useConfirm();
 
   const query = params.get("q") ?? "";
   const sort = (params.get("sort") ?? "title") as SortKey;
@@ -94,8 +96,8 @@ export default function Projects() {
   const selection = useSelection(visible.map(project => project.id));
   const selectedIds = Array.from(selection.selected);
 
-  const removeParent = (parent: ProjectParentSummary) => {
-    if (!window.confirm(`Remove project parent ${parent.path}? Projects and disk files are preserved.`)) return;
+  const removeParent = async (parent: ProjectParentSummary) => {
+    if (!(await confirm({ title: `Remove project parent ${parent.path}?`, body: "Projects and disk files are preserved." }))) return;
     removeProjectParent(parent.id).then(load).catch(error => setError((error as Error).message));
   };
 
@@ -180,6 +182,7 @@ export default function Projects() {
           ))}
         </tbody>
       </table>
+      {dialog}
     </div>
   );
 }

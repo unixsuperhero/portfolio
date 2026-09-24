@@ -56,7 +56,7 @@ export function TasksCard() {
                 <Link to={`/tasks/${task.id}`} className={task.completed_today ? "task-completed" : ""}>{task.title}</Link>
                 <StreakBadge streak={task.streak} recurrence={task.recurrence} compact />
                 {task.notes ? <MarkdownContent text={task.notes} /> : null}
-                <TagList tags={tags} hrefFor={name => `/tasks?tag=${encodeURIComponent(name)}`} />
+                <TagList tags={tags} hrefFor={name => `#/tasks?tag=${encodeURIComponent(name)}`} />
               </div>
             </div>
             {children.has(task.id) ? rows(task.id) : null}

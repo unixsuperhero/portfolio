@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from "react-router";
 import type { PortEntryWithProject, ProjectView } from "../types.ts";
 import { getPorts, getProject, killPort } from "../api.ts";
 import { CollectionToolbar, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
+import { useConfirm } from "../components/ConfirmDialog.tsx";
 import { copyText, openInApp, openPath, reveal } from "../native.ts";
 import { openTerminal } from "../terminal/store.ts";
 
@@ -17,6 +18,7 @@ export default function Project() {
   const [args, setArgs] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const { confirm, dialog } = useConfirm();
 
   const serviceQuery = params.get("service_q") ?? "";
   const serviceSort = (params.get("service_sort") ?? "name") as ServiceSort;
@@ -78,9 +80,9 @@ export default function Project() {
     openTerminal({ cwd: project.path, command: extra ? `${command} ${extra}` : command, title: `${project.title}: ${name}` });
   };
 
-  const killSelected = () => {
+  const killSelected = async () => {
     if (!selectedPids.length) return;
-    if (!window.confirm(`Kill ${selectedPids.length} process${selectedPids.length === 1 ? "" : "es"}?`)) return;
+    if (!(await confirm({ title: `Kill ${selectedPids.length} process${selectedPids.length === 1 ? "" : "es"}?`, confirmLabel: "Kill" }))) return;
     setBusy(true);
     setError("");
     Promise.allSettled(selectedPids.map(pid => killPort(pid)))
@@ -173,7 +175,7 @@ export default function Project() {
                 <td>{port.pid}</td>
                 <td>
                   <button type="button" className="secondary" onClick={() => void openInApp(`http://${port.host || "127.0.0.1"}:${port.port}`)}>Open</button>{" "}
-                  <button type="button" className="danger" onClick={() => window.confirm(`Kill process ${port.pid}?`) && killPort(port.pid).then(loadPorts).catch(error => setError((error as Error).message))}>Kill</button>
+                  <button type="button" className="danger" onClick={async () => { if (await confirm({ title: `Kill process ${port.pid}?`, confirmLabel: "Kill" })) killPort(port.pid).then(loadPorts).catch(error => setError((error as Error).message)); }}>Kill</button>
                 </td>
               </tr>
             ))}
@@ -196,6 +198,7 @@ export default function Project() {
           </table>
         </>
       ) : null}
+      {dialog}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { openTerminal } from "../terminal/store.ts";
 import { ServicesCard } from "../cards/ServicesCard.tsx";
 import { PortsCard } from "../cards/PortsCard.tsx";
 import { PathField } from "../components/PathField.tsx";
+import { useConfirm } from "../components/ConfirmDialog.tsx";
 import Tasks from "./Tasks.tsx";
 
 export default function Item() {
@@ -18,6 +19,7 @@ export default function Item() {
   const [newTag, setNewTag] = useState("");
   const [editingSlot, setEditingSlot] = useState<string | null>(null);
   const [slotOverride, setSlotOverride] = useState("");
+  const { confirm, dialog } = useConfirm();
 
   const load = () => { if (id) getItem(Number(id)).then(setItem).catch(() => setItem(null)); };
   useEffect(load, [id]);
@@ -33,7 +35,7 @@ export default function Item() {
   if (!item) return <p>Loading…</p>;
 
   const toggle = (field: "pinned" | "starred") => toggleItem(item.id, field).then(load).catch(() => {});
-  const remove = () => { if (confirm(`Delete "${item.title}"?`)) deleteItem(item.id).then(() => navigate("/library")).catch(() => {}); };
+  const remove = async () => { if (await confirm({ title: `Delete "${item.title}"?` })) deleteItem(item.id).then(() => navigate("/library")).catch(() => {}); };
   const addTag = (event: React.FormEvent) => { event.preventDefault(); if (!newTag.trim()) return; addItemTags(item.id, [newTag.trim()]).then(() => { setNewTag(""); load(); }).catch(() => {}); };
 
   const startSlotEdit = (slotName: string, current: string) => { setEditingSlot(slotName); setSlotOverride(current); };
@@ -124,6 +126,7 @@ export default function Item() {
           <PortsCard projectId={item.project.id} />
         </div>
       ) : null}
+      {dialog}
     </div>
   );
 }

@@ -109,7 +109,8 @@ export default function Category() {
               item={item}
               leading={<input type="checkbox" checked={selection.selected.has(item.id)} onChange={() => selection.toggle(item.id)} aria-label={`Select ${item.title}`} />}
               onToggle={(item, field) => toggleItem(item.id, field).then(load).catch(error => setError((error as Error).message))}
-              editHref={item => `/items/${item.id}`}
+              hrefFor={item => (item.href.startsWith("/") ? `#${item.href}` : item.href)}
+              editHref={item => `#/items/${item.id}`}
             />
           ))}
         </div>

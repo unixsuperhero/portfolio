@@ -4,6 +4,7 @@ import type { PortEntryWithProject } from "../types.ts";
 import { getPorts, killPort } from "../api.ts";
 import { openInApp } from "../native.ts";
 import { CollectionToolbar, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
+import { useConfirm } from "../components/ConfirmDialog.tsx";
 import "../operational.css";
 
 type PortSort = "port" | "process" | "project";
@@ -35,6 +36,7 @@ export default function Ports() {
   const [ports, setPorts] = useState<PortEntryWithProject[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { confirm, dialog } = useConfirm();
   const query = params.get("q") ?? "";
   const sort = (params.get("sort") as PortSort | null) ?? "port";
   const projectFilter = params.get("project") ?? "";
@@ -67,8 +69,8 @@ export default function Ports() {
   const selectedPorts = visiblePorts.filter(entry => selection.selected.has(rowId(entry)));
   const selectedPids = Array.from(new Map(selectedPorts.map(entry => [entry.pid, entry])).values());
 
-  const kill = (entry: PortEntryWithProject) => {
-    if (!window.confirm(`Send TERM to ${entry.command} (${entry.pid}) on port ${entry.port ?? "—"}? This can stop a live process.`)) return;
+  const kill = async (entry: PortEntryWithProject) => {
+    if (!(await confirm({ title: `Send TERM to ${entry.command} (${entry.pid}) on port ${entry.port ?? "—"}?`, body: "This can stop a live process.", confirmLabel: "Send TERM" }))) return;
     setBusy(true);
     killPort(entry.pid)
       .then(load)
@@ -76,11 +78,11 @@ export default function Ports() {
       .finally(() => setBusy(false));
   };
 
-  const termSelected = () => {
+  const termSelected = async () => {
     if (!selectedPids.length) return;
     const names = selectedPids.slice(0, 8).map(entry => `${entry.command} (${entry.pid})`).join(", ");
     const extra = selectedPids.length > 8 ? ` and ${selectedPids.length - 8} more` : "";
-    if (!window.confirm(`Send TERM to ${selectedPids.length} selected unique PID${selectedPids.length === 1 ? "" : "s"}: ${names}${extra}?\n\nThis can stop live dev servers. Only visible selected rows are included.`)) return;
+    if (!(await confirm({ title: `Send TERM to ${selectedPids.length} selected unique PID${selectedPids.length === 1 ? "" : "s"}: ${names}${extra}?`, body: "This can stop live dev servers. Only visible selected rows are included.", confirmLabel: "Send TERM" }))) return;
     setBusy(true);
     setError(null);
     Promise.allSettled(selectedPids.map(entry => killPort(entry.pid)))
@@ -152,6 +154,7 @@ export default function Ports() {
           {!visiblePorts.length ? <tr><td colSpan={7} className="empty-table-cell">No ports match the current filters.</td></tr> : null}
         </tbody>
       </table>
+      {dialog}
     </div>
   );
 }

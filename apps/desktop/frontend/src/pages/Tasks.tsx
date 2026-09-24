@@ -7,6 +7,8 @@ import { completeTask, createTask, deleteTask, listItems, listTasks, patchItem, 
 import { CollectionToolbar, ItemBulkActions, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
 import { MarkdownContent } from "../components/MarkdownContent.tsx";
 import { StreakBadge } from "../components/Completion.tsx";
+import { AddTextarea } from "../components/AddTextarea.tsx";
+import { useConfirm } from "../components/ConfirmDialog.tsx";
 import "./Tasks.css";
 
 type Draft = { id: number | null; title: string; notes: string; parent_id: number | null; tags: string };
@@ -36,7 +38,7 @@ export default function Tasks({ taskId, onChange }: { taskId?: number; onChange?
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const formRef = useRef<HTMLFormElement | null>(null);
-  const titleRef = useRef<HTMLInputElement | null>(null);
+  const { confirm, dialog } = useConfirm();
 
   const query = searchParams.get("q") ?? "";
   const sortParam = searchParams.get("sort");
@@ -174,7 +176,7 @@ export default function Tasks({ taskId, onChange }: { taskId?: number; onChange?
     setAdvancedOpen(next.id !== null || next.parent_id !== null || Boolean(next.notes || next.tags));
     window.requestAnimationFrame(() => {
       formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      titleRef.current?.focus();
+      formRef.current?.querySelector<HTMLTextAreaElement>(".task-title-field textarea")?.focus();
     });
   };
 
@@ -186,9 +188,9 @@ export default function Tasks({ taskId, onChange }: { taskId?: number; onChange?
   const bulkPatch = (patch: { active?: boolean }, ids = selectedTasks.map(task => task.id)) =>
     bulkTasks(task => patchTask(task.id, patch), (tasks ?? []).filter(task => ids.includes(task.id)));
   const bulkComplete = (done: boolean) => bulkTasks(task => done ? completeTask(task.id) : uncompleteTask(task.id));
-  const bulkDelete = () => {
+  const bulkDelete = async () => {
     if (!selectedTasks.length) return;
-    if (!confirm(`Delete ${selectedTasks.length} selected task${selectedTasks.length === 1 ? "" : "s"}? Subtasks will become top-level tasks.`)) return;
+    if (!(await confirm({ title: `Delete ${selectedTasks.length} selected task${selectedTasks.length === 1 ? "" : "s"}?`, body: "Subtasks will become top-level tasks." }))) return;
     void bulkTasks(task => deleteTask(task.id));
   };
 
@@ -226,8 +228,9 @@ export default function Tasks({ taskId, onChange }: { taskId?: number; onChange?
           <button type="button" className="secondary" disabled={busy} onClick={() => openDraft(blank(task.id))}>Add subtask</button>
           <button type="button" className="secondary" disabled={busy} onClick={() => openDraft({ id: task.id, title: task.title, notes: task.notes, parent_id: task.parent_id, tags: tagText(taskTags) })}>Edit</button>
           <button type="button" className="secondary" disabled={busy} onClick={() => void bulkPatch({ active: !task.active }, [task.id])}>{task.active ? "Deactivate" : "Activate"}</button>
-          <button type="button" className="danger" disabled={busy} onClick={() => {
-            if (confirm(`Delete "${task.title}"? Its subtasks will become top-level tasks.`)) void mutate(async () => {
+          <button type="button" className="danger" disabled={busy} onClick={async () => {
+            if (!(await confirm({ title: `Delete "${task.title}"?`, body: "Its subtasks will become top-level tasks." }))) return;
+            void mutate(async () => {
               await deleteTask(task.id);
               if (task.id === selectedId) navigate("/tasks");
             }, draft.id === task.id || draft.parent_id === task.id);
@@ -270,7 +273,7 @@ export default function Tasks({ taskId, onChange }: { taskId?: number; onChange?
       {selectedId !== undefined ? <p><Link to="/tasks">All tasks</Link>{selected?.parent_id !== null && selected?.parent_id !== undefined ? <> / <Link to={`/tasks/${selected.parent_id}`}>{byId.get(selected.parent_id)?.title ?? "Parent task"}</Link></> : null}</p> : null}
       {error ? <p role="alert">{error}</p> : null}
       <form ref={formRef} className="simple-form field-row task-form" onSubmit={submit}>
-        <label className="task-title-field">Title<input ref={titleRef} required value={draft.title} onChange={event => setDraft({ ...draft, title: event.target.value })} disabled={busy} placeholder="Add a task…" /></label>
+        <label className="task-title-field">Title<AddTextarea required value={draft.title} onChange={value => setDraft({ ...draft, title: value })} disabled={busy} placeholder="Add a task…" /></label>
         <button type="submit" className="primary" disabled={busy || !draft.title.trim()}>{busy ? "Saving…" : draft.id !== null ? "Save" : "Add"}</button>
         <button type="button" className="secondary" onClick={() => setAdvancedOpen(open => !open)} aria-expanded={advancedOpen}>{advancedOpen ? "Hide details" : "Details"}</button>
         {draft.id !== null || draft.parent_id !== null ? <button type="button" className="secondary" disabled={busy} onClick={() => { setDraft(blank()); setAdvancedOpen(false); }}>Cancel</button> : null}
@@ -310,6 +313,7 @@ export default function Tasks({ taskId, onChange }: { taskId?: number; onChange?
 
       <h2>{selected ? "Task and subtasks" : "All tasks"}</h2>
       {tasks === null ? <p>Loading tasks…</p> : selectedId !== undefined && !selected ? <p>Task not found. <Link to="/tasks">View all tasks</Link></p> : tasks.length ? (hasFilters ? renderFlat() : renderTree(selected ? [selected] : children.get(null) ?? [])) : <p>No tasks yet. Add your first task above.</p>}
+      {dialog}
     </section>
   );
 }

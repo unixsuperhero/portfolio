@@ -88,7 +88,9 @@ export function ContextMenuProvider() {
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
       const anchor = target?.closest<HTMLAnchorElement>("a[href]");
-      if (!anchor || !/^https?:\/\//.test(anchor.href)) return;
+      // Only genuinely external links leave the page. In a plain browser the app's own links also
+      // resolve to http://…, so compare origins rather than trusting the scheme.
+      if (!anchor || !/^https?:\/\//.test(anchor.href) || anchor.origin === window.location.origin) return;
       event.preventDefault();
       if (getLinksOpenIn() === "system") void openSystem(anchor.href);
       else void openInApp(anchor.href);

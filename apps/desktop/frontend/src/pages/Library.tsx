@@ -5,6 +5,7 @@ import { ITEM_TYPES, isItemType } from "@portfolio/core";
 import type { ItemType, ItemView } from "@portfolio/core";
 import { detect, listItems, quickAdd, toggleItem } from "../api.ts";
 import { BrowsePicker } from "../components/BrowsePicker.tsx";
+import { AddTextarea } from "../components/AddTextarea.tsx";
 import { CollectionToolbar, ItemBulkActions, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
 import { isWails } from "../lib/wails.ts";
 import { home, pickDirectory, pickFile } from "../native.ts";
@@ -46,6 +47,10 @@ function compareBy(sort: SortValue) {
     return leftValue.localeCompare(rightValue, undefined, { numeric: true, sensitivity: "base" }) * factor;
   };
 }
+
+/** The UI package renders plain anchors; under the hash router an internal href must carry the
+ * hash or the webview navigates away from the app entirely (a white window). */
+const hashHref = (item: { href: string }) => (item.href.startsWith("/") ? `#${item.href}` : item.href);
 
 export default function Library() {
   const [params, setParams] = useSearchParams();
@@ -137,9 +142,9 @@ export default function Library() {
       <form className="field-row" onSubmit={submitQuick}>
         <label style={{ flex: 1 }}>Quick add
           <div className="path-field">
-            <input
+            <AddTextarea
               value={quick}
-              onChange={event => setQuick(event.target.value)}
+              onChange={setQuick}
               placeholder="Paste a URL, path, or text…"
               disabled={quickBusy}
             />
@@ -204,9 +209,10 @@ export default function Library() {
               <ItemRow
                 key={item.id}
                 item={item}
-                tagHrefFor={t => `/library?tag=${encodeURIComponent(t)}`}
+                hrefFor={hashHref}
+                tagHrefFor={t => `#/library?tag=${encodeURIComponent(t)}`}
                 onToggle={onToggle}
-                editHref={() => `/items/${item.id}`}
+                editHref={() => `#/items/${item.id}`}
                 leading={(
                   <input
                     type="checkbox"
