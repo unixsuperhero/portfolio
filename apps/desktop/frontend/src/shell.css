@@ -114,6 +114,9 @@
   font-size: 0.78rem;
 }
 
+.command-palette-list button > span { flex-shrink: 0; }
+.command-palette-list small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .command-palette-empty {
   padding: 0.8rem 0.65rem;
 }

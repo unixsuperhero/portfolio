@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 
-type Command = {
+export type Command = {
   id: string;
   label: string;
   hint: string;
   run: (query: string) => void;
+  /** Listed whatever the query is, e.g. commands that act on the typed text itself. */
+  always?: boolean;
 };
 
 type CommandPaletteProps = {
@@ -12,10 +14,12 @@ type CommandPaletteProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   returnFocusRef: RefObject<HTMLElement | null>;
+  /** Called with the trimmed query as it changes, so the owner can offer query-dependent commands. */
+  onQueryChange?: (query: string) => void;
   children?: ReactNode;
 };
 
-export function CommandPalette({ commands, open, onOpenChange, returnFocusRef, children }: CommandPaletteProps) {
+export function CommandPalette({ commands, open, onOpenChange, returnFocusRef, onQueryChange, children }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -23,8 +27,16 @@ export function CommandPalette({ commands, open, onOpenChange, returnFocusRef, c
   const matches = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return commands;
-    return commands.filter(command => `${command.label} ${command.hint}`.toLowerCase().includes(needle) || command.id === "search-library");
+    // Commands the text names come first ("add dir" finds "Add directory…"), then commands
+    // whose hint mentions it, then commands that act on the text itself. Enter therefore
+    // never adds a note when a real command matched.
+    const byLabel = commands.filter(command => command.label.toLowerCase().includes(needle));
+    const byHint = commands.filter(command => !byLabel.includes(command) && command.hint.toLowerCase().includes(needle));
+    const fallback = commands.filter(command => command.always && !byLabel.includes(command) && !byHint.includes(command));
+    return [...byLabel, ...byHint, ...fallback];
   }, [commands, query]);
+
+  useEffect(() => { onQueryChange?.(query.trim()); }, [onQueryChange, query]);
 
   useEffect(() => {
     if (!open) return;

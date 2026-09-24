@@ -1,14 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Detection, ItemType } from "@portfolio/core";
 import { createHashRouter, Link, NavLink, Outlet, RouterProvider, useLocation, useNavigate } from "react-router";
 import { TerminalDock } from "./terminal/TerminalDock.tsx";
 import { useTerminalStore } from "./terminal/store.ts";
 import { ContextMenuProvider } from "./context-menu/ContextMenu.tsx";
 import { CommandPalette } from "./components/CommandPalette.tsx";
+import type { Command } from "./components/CommandPalette.tsx";
+import { BrowsePicker } from "./components/BrowsePicker.tsx";
+import { createTask, detect, quickAdd } from "./api.ts";
 import { ToastStack } from "./components/ToastStack.tsx";
 import { useSidecarStatus } from "./hooks/useSidecarStatus.ts";
 import { useReminderPolling } from "./hooks/useReminderPolling.ts";
 import { usePrEvents } from "./hooks/usePrEvents.ts";
-import { openInApp, openSystem } from "./native.ts";
+import { home, openInApp, openSystem, pickDirectory, pickFile } from "./native.ts";
 import { isWails } from "./lib/wails.ts";
 import "./shell.css";
 
@@ -41,6 +45,9 @@ const NAV_ITEMS = [
 ] as const;
 
 const isNativeMac = () => isWails() && /Mac/i.test(navigator.platform);
+
+const TYPE_LABEL: Record<ItemType, string> = { document: "document", note: "note", link: "link", pr: "PR", file: "file", dir: "directory", task: "task" };
+type PickerKind = "file" | "dir";
 
 function browserUrlForLocation(pathname: string, search: string): string {
   if (!isWails()) return window.location.href;
@@ -87,21 +94,87 @@ function TopBar() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [browserBusy, setBrowserBusy] = useState(false);
   const [browserError, setBrowserError] = useState("");
+  const [paletteQuery, setPaletteQuery] = useState("");
+  const [detection, setDetection] = useState<Detection | null>(null);
+  const [browseKind, setBrowseKind] = useState<PickerKind | null>(null);
 
-  const commands = useMemo(() => [
-    ...NAV_ITEMS.map(item => ({
+  // Detect what the palette text is (URL, path, or text) the same way the Library quick-add does.
+  useEffect(() => {
+    if (!paletteQuery) { setDetection(null); return; }
+    let live = true;
+    const id = setTimeout(() => {
+      detect(paletteQuery)
+        .then(result => { if (live) setDetection(result); })
+        .catch(() => { if (live) setDetection(null); });
+    }, 250);
+    return () => { live = false; clearTimeout(id); };
+  }, [paletteQuery]);
+
+  const report = (err: unknown, fallback: string) => setBrowserError(err instanceof Error ? err.message : fallback);
+
+  const addItem = useCallback((content: string, type?: ItemType) => {
+    setBrowserError("");
+    return quickAdd(content, type ? { type } : {})
+      .then(result => navigate(`/items/${result.id}`))
+      .catch(err => report(err, "Could not add the item."));
+  }, [navigate]);
+
+  const addTask = useCallback((title: string) => {
+    setBrowserError("");
+    return createTask({ title })
+      .then(result => navigate(`/tasks/${result.id}`))
+      .catch(err => report(err, "Could not add the task."));
+  }, [navigate]);
+
+  const addPath = useCallback(async (kind: PickerKind) => {
+    if (!isWails()) { setBrowseKind(kind); return; }
+    const picked = kind === "dir" ? await pickDirectory("Add a directory to the library", await home()) : await pickFile("Add a file to the library", await home());
+    if (picked) await addItem(picked, kind);
+  }, [addItem]);
+
+  const commands = useMemo<Command[]>(() => {
+    const nav: Command[] = NAV_ITEMS.map(item => ({
       id: `go-${item.to}`,
       label: `Go to ${item.label}`,
       hint: item.to,
       run: () => navigate(item.to),
-    })),
-    {
+    }));
+
+    // Adding what was typed: the detected kind first, then the other kinds the text could be.
+    const add: Command[] = [];
+    const text = paletteQuery;
+    if (text) {
+      const detectedType = detection?.type;
+      const addAs = (type: ItemType, hint: string): Command => ({
+        id: `add-as-${type}`,
+        label: `Add ${TYPE_LABEL[type]}`,
+        hint,
+        always: true,
+        run: query => { void (type === "task" ? addTask(query) : addItem(query, type)); },
+      });
+      if (detection && detectedType) {
+        add.push({ ...addAs(detectedType, `Detected · ${detection.title}`), id: "add-detected", run: query => { void (detectedType === "task" ? addTask(query) : addItem(query)); } });
+      }
+      const shape = detection?.shape ?? "text";
+      const alternatives: ItemType[] = shape === "url" ? ["link", "pr"] : shape === "path" ? ["file", "dir", ...(detection?.exists ? ["document" as ItemType] : [])] : ["task", "note"];
+      for (const type of alternatives) if (type !== detectedType) add.push(addAs(type, type === "task" ? "A task titled with the palette text" : type === "document" ? "Import the file as a rendered document" : `Add the palette text as a ${TYPE_LABEL[type]}`));
+    }
+
+    const pickers: Command[] = [
+      { id: "pick-file", label: "Add file…", hint: "Pick a file to add to the library", always: true, run: () => { void addPath("file"); } },
+      { id: "pick-dir", label: "Add directory…", hint: "Pick a directory to add to the library", always: true, run: () => { void addPath("dir"); } },
+    ];
+
+    const search: Command = {
       id: "search-library",
       label: "Search Library",
       hint: "Use the palette text as a library query",
-      run: (query: string) => navigate(query ? `/library?q=${encodeURIComponent(query)}` : "/library"),
-    },
-  ], [navigate]);
+      always: true,
+      run: query => navigate(query ? `/library?q=${encodeURIComponent(query)}` : "/library"),
+    };
+
+    return [...nav, ...add, ...pickers, search];
+  }, [addItem, addPath, addTask, detection, navigate, paletteQuery]);
 
   const openPalette = (trigger: HTMLElement | null) => {
     if (trigger?.closest(".command-palette")) return;
@@ -142,7 +215,10 @@ function TopBar() {
       </button>
       {browserError ? <span className="topbar-error" role="alert">{browserError}</span> : null}
       <button type="button" className="topbar-theme" onClick={toggle}>{theme === "dark" ? "Light" : "Dark"} theme</button>
-      <CommandPalette commands={commands} open={paletteOpen} onOpenChange={setPaletteOpen} returnFocusRef={returnFocusRef} />
+      <CommandPalette commands={commands} open={paletteOpen} onOpenChange={setPaletteOpen} returnFocusRef={returnFocusRef} onQueryChange={setPaletteQuery} />
+      {browseKind ? (
+        <BrowsePicker kind={browseKind} onClose={() => setBrowseKind(null)} onPick={path => { setBrowseKind(null); void addItem(path, browseKind); }} />
+      ) : null}
     </div>
   );
 }
