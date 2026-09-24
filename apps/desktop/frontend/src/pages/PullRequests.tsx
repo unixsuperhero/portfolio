@@ -3,287 +3,162 @@ import { useSearchParams } from "react-router";
 import { PortfolioApiError } from "@portfolio/client";
 import type { Pr, PrsResponse } from "../types.ts";
 import { getPrs, getSettings, patchPr, patchSettings, refreshPrs, watchPr } from "../api.ts";
-import { PrRow, confirmIgnorePr, confirmIgnoreRepo, dirLabel, ignoreRepo } from "../components/PrRow.tsx";
-import type { Confirm } from "../components/PrRow.tsx";
+import { PrRow, confirmIgnorePr, confirmIgnoreRepo, ignoreRepo } from "../components/PrRow.tsx";
+import { PrStatusIcon } from "../components/PrStatus.tsx";
 import { CollectionToolbar, SelectionBar, useSelection } from "@portfolio/ui/collections";
 import { useConfirm } from "../components/ConfirmDialog.tsx";
+import { CHECK_FILTERS, lifecycle, matchesPr, PR_FILTER_KEYS, PR_FILTERS, PR_SORTS, sortPrs } from "../lib/pr-collection.ts";
+import type { PrFilter } from "../lib/pr-collection.ts";
 import "../operational.css";
 
 const EMPTY: PrsResponse = { mine: [], review_requested: [], watched: [], ignored: [], status: { last_poll_at: null, next_poll_at: null, rate: null, polling: false, error: null, gh_ok: true, login: null } };
-
-const SORT_OPTIONS = [
-  { value: "updated", label: "Updated" },
-  { value: "title", label: "Title" },
-  { value: "repo", label: "Repo" },
-  { value: "dir", label: "Directory" },
-] as const;
-
-type PrSort = "updated" | "title" | "repo" | "dir";
-
-/** The filter value for a PR's directory; "-" stands for the API's own directory (source_dir null). */
-const DEFAULT_DIR = "-";
-const dirKey = (pr: Pr) => pr.source_dir ?? DEFAULT_DIR;
-
-function formatTime(value: string | null): string {
-  if (!value) return "–";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleTimeString();
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof PortfolioApiError ? error.message : "Request failed.";
-}
-
-function setParam(params: URLSearchParams, key: string, value: string): URLSearchParams {
-  const next = new URLSearchParams(params);
-  if (value) next.set(key, value);
-  else next.delete(key);
-  return next;
-}
-
-function comparePrs(sort: PrSort): (a: Pr, b: Pr) => number {
-  if (sort === "title") return (a, b) => a.title.localeCompare(b.title) || a.repo.localeCompare(b.repo);
-  if (sort === "repo") return (a, b) => `${a.owner}/${a.repo}`.localeCompare(`${b.owner}/${b.repo}`) || a.number - b.number;
-  if (sort === "dir") return (a, b) => (a.source_dir ?? "").localeCompare(b.source_dir ?? "") || Date.parse(b.updated_at) - Date.parse(a.updated_at);
-  return (a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at) || a.title.localeCompare(b.title);
-}
-
-function matchesPr(pr: Pr, query: string, state: string, checks: string, dir: string): boolean {
-  const needle = query.trim().toLowerCase();
-  if (state && pr.state !== state) return false;
-  if (checks && pr.checks_summary !== checks) return false;
-  if (dir && dirKey(pr) !== dir) return false;
-  return !needle || [pr.title, pr.owner, pr.repo, `${pr.owner}/${pr.repo}`, String(pr.number), pr.source_dir ?? ""].some(value => value.toLowerCase().includes(needle));
-}
-
-function PrListCard({
-  title,
-  prs,
-  total,
-  selected,
-  onToggle,
-  onChanged,
-  confirm,
-}: {
-  title: string;
-  prs: Pr[];
-  total: number;
-  selected: ReadonlySet<number>;
-  onToggle: (id: number) => void;
-  onChanged: () => void;
-  confirm: Confirm;
-}) {
-  return (
-    <section className="rail-section portfolio-card">
-      <header>
-        <h2>{title}</h2>
-        <div className="rail-heading-actions"><span>{prs.length}{prs.length === total ? "" : ` / ${total}`}</span></div>
-      </header>
-      {prs.length ? (
-        <div className="pr-list">
-          {prs.map(pr => (
-            <div className={`selectable-pr-row${selected.has(pr.id) ? " is-selected" : ""}`} key={pr.id}>
-              <input type="checkbox" checked={selected.has(pr.id)} onChange={() => onToggle(pr.id)} aria-label={`Select ${pr.owner}/${pr.repo}#${pr.number}`} />
-              <PrRow pr={pr} onChanged={onChanged} confirm={confirm} />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="empty"><strong>No pull requests.</strong></div>
-      )}
-    </section>
-  );
-}
+const COLLECTIONS = [
+  { value: "visible", label: "Visible PRs" }, { value: "mine", label: "Mine" }, { value: "review_requested", label: "Review requested" },
+  { value: "watched", label: "Watched" }, { value: "ignored", label: "Ignored" }, { value: "all", label: "All, including ignored" },
+];
+const GROUPS = ["People and location", "Tracking", "Identifiers and text", "Activity"] as const;
+const formatTime = (value: string | null) => value ? new Date(value).toLocaleTimeString() : "Not scheduled";
+const errorMessage = (error: unknown) => error instanceof PortfolioApiError ? error.message : "Request failed.";
 
 export default function PullRequests() {
   const [params, setParams] = useSearchParams();
   const [data, setData] = useState<PrsResponse>(EMPTY);
+  const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
   const [ignoredText, setIgnoredText] = useState("");
-  const [showIgnored, setShowIgnored] = useState(false);
   const [ignoredRepos, setIgnoredRepos] = useState<string[]>([]);
   const { confirm, dialog } = useConfirm();
   const query = params.get("q") ?? "";
-  const stateFilter = params.get("state") ?? "";
-  const checksFilter = params.get("checks") ?? "";
-  const dirFilter = params.get("dir") ?? "";
-  const sort = (params.get("sort") as PrSort | null) ?? "updated";
-
+  const sort = params.get("sort") ?? "updated";
+  const direction = params.get("direction") ?? (["updated", "fetched", "comments"].includes(sort) ? "desc" : "asc");
+  const collection = params.get("collection") ?? "visible";
+  const expanded = params.get("filters") === "1";
+  const update = (key: string, value: string) => {
+    const next = new URLSearchParams(params);
+    if (value) next.set(key, value); else next.delete(key);
+    setParams(next, { replace: true, flushSync: true });
+  };
+  const clearFilters = () => {
+    const next = new URLSearchParams(params);
+    PR_FILTER_KEYS.forEach(key => next.delete(key));
+    setParams(next, { replace: true, flushSync: true });
+    selection.clear();
+  };
   const load = () => {
-    getPrs()
-      .then(result => { setData(result); setOffline(false); })
-      .catch(() => setOffline(true));
+    getPrs().then(result => { setData(result); setOffline(false); }).catch(() => setOffline(true)).finally(() => setLoading(false));
     getSettings().then(settings => setIgnoredRepos(settings.github_ignored_repos ?? [])).catch(() => {});
   };
-  const unignoreRepo = (repo: string) => patchSettings({ github_ignored_repos: ignoredRepos.filter(entry => entry !== repo) }).then(load).catch(() => {});
   useEffect(load, []);
-
   const refresh = () => {
-    setRefreshing(true);
-    setRefreshError(null);
-    refreshPrs()
-      .then(result => { setData(result); setOffline(false); })
-      .catch(error => setRefreshError(error instanceof PortfolioApiError ? error.message : "Refresh failed."))
-      .finally(() => setRefreshing(false));
+    setRefreshing(true); setRefreshError(null);
+    refreshPrs().then(result => { setData(result); setOffline(false); })
+      .catch(error => setRefreshError(errorMessage(error))).finally(() => setRefreshing(false));
   };
-
-  const filterList = (prs: Pr[]) => prs.filter(pr => matchesPr(pr, query, stateFilter, checksFilter, dirFilter)).sort(comparePrs(sort));
-  const lists = useMemo(() => ({
-    mine: filterList(data.mine),
-    review_requested: filterList(data.review_requested),
-    watched: filterList(data.watched),
-  }), [checksFilter, data.mine, data.review_requested, data.watched, dirFilter, query, sort, stateFilter]);
-  // Every directory that any loaded PR came from, so the filter only offers real choices.
-  const dirs = useMemo(() => Array.from(new Set([...data.mine, ...data.review_requested, ...data.watched].map(dirKey))).sort(), [data.mine, data.review_requested, data.watched]);
-
-  const visiblePrs = useMemo(() => Array.from(new Map([...lists.mine, ...lists.review_requested, ...lists.watched].map(pr => [pr.id, pr])).values()), [lists.mine, lists.review_requested, lists.watched]);
+  const allPrs = useMemo(() => [...new Map([...data.mine, ...data.review_requested, ...data.watched, ...data.ignored].map(pr => [pr.id, pr])).values()], [data]);
+  const hiddenIds = useMemo(() => new Set(data.ignored.map(pr => pr.id)), [data.ignored]);
+  const visiblePrs = sortPrs(allPrs.filter(pr => matchesPr(pr, params, hiddenIds.has(pr.id))), sort, direction);
   const selection = useSelection(visiblePrs.map(pr => pr.id));
   const selectedPrs = visiblePrs.filter(pr => selection.selected.has(pr.id));
+  const withoutState = new URLSearchParams(params);
+  withoutState.delete("state");
+  const stateCandidates = allPrs.filter(pr => matchesPr(pr, withoutState, hiddenIds.has(pr.id)));
+  const activeFilters = PR_FILTER_KEYS.filter(key => params.get(key) && !(key === "collection" && params.get(key) === "visible"));
+  const primaryKeys = PR_FILTERS.filter(filter => filter.group === "Primary").map(filter => filter.key);
+  const advancedCount = activeFilters.filter(key => !["q", "collection", ...primaryKeys].includes(key)).length;
 
+  const renderFilter = (filter: PrFilter) => {
+    const value = params.get(filter.key) ?? "";
+    const choices = filter.options ?? [...new Set(allPrs.map(pr => String(filter.read(pr))))].sort().map(value => ({ value, label: value === "-" ? "API directory" : value }));
+    return <label key={filter.key}>{filter.label}{filter.input === "select"
+      ? <select name={filter.key} value={value} onChange={event => update(filter.key, event.target.value)}><option value="">Any</option>{choices.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+      : <input name={filter.key} type={filter.input} min={filter.input === "number" ? 0 : undefined} value={value} onChange={event => update(filter.key, event.target.value)} />}</label>;
+  };
   const runBulk = (label: string, action: (pr: Pr) => Promise<unknown>) => {
     if (!selectedPrs.length) return;
-    setBulkBusy(true);
-    setBulkMessage(null);
-    Promise.allSettled(selectedPrs.map(action))
-      .then(results => {
-        const failed = results.filter(result => result.status === "rejected");
-        const succeeded = results.length - failed.length;
-        setBulkMessage(failed.length ? `${label}: ${succeeded} succeeded, ${failed.length} failed (${failed.map(result => result.status === "rejected" ? errorMessage(result.reason) : "").filter(Boolean).slice(0, 2).join("; ")}).` : `${label}: updated ${succeeded} pull request${succeeded === 1 ? "" : "s"}.`);
-        selection.clear();
-        load();
-      })
-      .finally(() => setBulkBusy(false));
+    setBulkBusy(true); setBulkMessage(null);
+    Promise.allSettled(selectedPrs.map(action)).then(results => {
+      const failed = results.filter(result => result.status === "rejected");
+      const succeeded = results.length - failed.length;
+      setBulkMessage(failed.length ? `${label}: ${succeeded} succeeded, ${failed.length} failed (${failed.map(result => result.status === "rejected" ? errorMessage(result.reason) : "").filter(Boolean).slice(0, 2).join("; ")}).` : `${label}: updated ${succeeded} pull request${succeeded === 1 ? "" : "s"}.`);
+      selection.clear(); load();
+    }).finally(() => setBulkBusy(false));
   };
-
-  const ignoredChecks = ignoredText.split("\n").map(line => line.trim()).filter(Boolean);
-  const status = data.status;
-  const selectedRepos = Array.from(new Set(selectedPrs.map(pr => `${pr.owner}/${pr.repo}`)));
   const bulkIgnore = async () => {
     if (!selectedPrs.length) return;
-    const ok = selectedPrs.length === 1
-      ? await confirmIgnorePr(confirm, selectedPrs[0])
-      : await confirm({ title: `Ignore ${selectedPrs.length} selected pull requests?`, body: "They leave every list and stop notifying. Restore them from the Ignored section.", confirmLabel: "Ignore" });
+    const ok = selectedPrs.length === 1 ? await confirmIgnorePr(confirm, selectedPrs[0])
+      : await confirm({ title: `Ignore ${selectedPrs.length} selected pull requests?`, body: "They leave visible lists and stop notifying. Restore them from the Ignored collection.", confirmLabel: "Ignore" });
     if (ok) runBulk("Ignore", pr => patchPr(pr.id, { ignored: true }));
   };
   const bulkIgnoreRepos = async () => {
-    if (!selectedRepos.length) return;
-    if (await confirmIgnoreRepo(confirm, selectedRepos)) runBulk("Ignore repos", pr => ignoreRepo(pr));
+    const repos = [...new Set(selectedPrs.map(pr => `${pr.owner}/${pr.repo}`))];
+    if (repos.length && await confirmIgnoreRepo(confirm, repos)) runBulk("Ignore repos", pr => ignoreRepo(pr));
   };
+  const repoQuery = params.get("repo_q") ?? "";
+  const repoSort = params.get("repo_sort") ?? "asc";
+  const visibleRepos = ignoredRepos.filter(repo => repo.toLowerCase().includes(repoQuery.toLowerCase())).sort((a, b) => (repoSort === "desc" ? -1 : 1) * a.localeCompare(b));
+  const repoSelection = useSelection(visibleRepos);
+  const restoreRepos = (repos: readonly string[]) => patchSettings({ github_ignored_repos: ignoredRepos.filter(repo => !repos.includes(repo)) })
+    .then(() => { repoSelection.clear(); load(); }).catch(error => setRefreshError(errorMessage(error)));
+  const status = data.status;
 
-  return (
-    <div>
-      <div className="page-header">
-        <h1>Pull requests</h1>
-        <div className="page-actions">
-          <button type="button" className="primary" onClick={refresh} disabled={refreshing}>{refreshing ? "Refreshing…" : "Refresh"}</button>
-        </div>
-      </div>
+  return <div className="pr-page">
+    <div className="page-header"><div><h1>Pull requests</h1><p className="pr-page-intro">Lifecycle, reviews, and checks. One place to see what needs your attention.</p></div>
+      <button type="button" className="primary" onClick={refresh} disabled={refreshing}>{refreshing ? "Refreshing…" : "Refresh"}</button></div>
+    {offline ? <p className="pr-status pr-status-error" role="alert">Couldn't reach the API. Check the desktop sidecar, then Refresh.</p>
+      : !status.gh_ok ? <p className="pr-status pr-status-error" role="alert">GitHub is not authenticated. Run <code>gh auth login</code>, then Refresh.</p>
+      : <p className="pr-status">{status.login ? `@${status.login} · ` : ""}Last poll {formatTime(status.last_poll_at)} · Next {formatTime(status.next_poll_at)}{status.rate ? ` · ${status.rate.remaining} API requests remaining` : ""}{status.error ? ` · ${status.error}` : ""}</p>}
+    {refreshError ? <p className="pr-status pr-status-error" role="alert">{refreshError}</p> : null}
 
-      {offline ? (
-        <p className="pr-status pr-status-error">Couldn't reach the API. Make sure the desktop sidecar is running.</p>
-      ) : !status.gh_ok ? (
-        <p className="pr-status pr-status-error">
-          gh not authenticated. Run <code>gh auth login</code> in a terminal, then hit Refresh.
-        </p>
-      ) : (
-        <p className="pr-status">
-          {status.login ? `Signed in as ${status.login} · ` : ""}
-          Last poll {formatTime(status.last_poll_at)} · Next {formatTime(status.next_poll_at)}
-          {status.rate ? ` · Rate remaining ${status.rate.remaining}` : ""}
-          {status.error ? ` · ${status.error}` : ""}
-        </p>
-      )}
-      {refreshError ? <p className="pr-status pr-status-error">{refreshError}</p> : null}
-
-      <CollectionToolbar
-        query={query}
-        onQueryChange={value => setParams(setParam(params, "q", value))}
-        sort={sort}
-        onSortChange={value => setParams(setParam(params, "sort", value))}
-        sortOptions={SORT_OPTIONS}
-      >
-        <label>State
-          <select value={stateFilter} onChange={event => setParams(setParam(params, "state", event.target.value))}>
-            <option value="">Any state</option>
-            <option value="open">Open</option>
-            <option value="closed">Closed</option>
-            <option value="merged">Merged</option>
-          </select>
-        </label>
-        <label>Checks
-          <select value={checksFilter} onChange={event => setParams(setParam(params, "checks", event.target.value))}>
-            <option value="">Any checks</option>
-            <option value="success">Success</option>
-            <option value="failure">Failure</option>
-            <option value="pending">Pending</option>
-            <option value="none">None</option>
-          </select>
-        </label>
-        {dirs.length > 1 || dirFilter ? (
-          <label>Directory
-            <select value={dirFilter} onChange={event => setParams(setParam(params, "dir", event.target.value))}>
-              <option value="">Any directory</option>
-              {dirs.map(dir => <option key={dir} value={dir}>{dir === DEFAULT_DIR ? "API directory" : dirLabel(dir)}</option>)}
-            </select>
-          </label>
-        ) : null}
-      </CollectionToolbar>
-
-      <SelectionBar
-        count={selection.selected.size}
-        total={visiblePrs.length}
-        allSelected={selection.allSelected}
-        onToggleAll={selection.toggleAll}
-        onClear={selection.clear}
-        busy={bulkBusy}
-      >
-        <button type="button" className="secondary" onClick={() => runBulk("Watch", pr => watchPr(pr.url, true))} disabled={!selection.selected.size || bulkBusy}>Watch</button>
-        <button type="button" className="secondary" onClick={() => runBulk("Unwatch", pr => watchPr(pr.url, false))} disabled={!selection.selected.size || bulkBusy}>Unwatch</button>
-        <button type="button" className="secondary" onClick={() => void bulkIgnore()} disabled={!selection.selected.size || bulkBusy}>Ignore</button>
-        <button type="button" className="secondary" onClick={() => void bulkIgnoreRepos()} disabled={!selection.selected.size || bulkBusy}>Ignore repos</button>
-        <label className="bulk-inline-field">Ignored checks
-          <textarea value={ignoredText} onChange={event => setIgnoredText(event.target.value)} rows={2} placeholder="one glob per line" />
-        </label>
-        <button type="button" className="secondary" onClick={() => runBulk("Ignored checks", pr => patchPr(pr.id, { ignored_checks: ignoredChecks }))} disabled={!selection.selected.size || bulkBusy}>Apply ignored checks</button>
-      </SelectionBar>
-      {bulkMessage ? <p className={bulkMessage.includes("failed") ? "operational-error" : "operational-status"}>{bulkMessage}</p> : null}
-
-      <div className="portfolio-grid">
-        <PrListCard title="Mine" prs={lists.mine} total={data.mine.length} selected={selection.selected} onToggle={selection.toggle} onChanged={load} confirm={confirm} />
-        <PrListCard title="Review requested" prs={lists.review_requested} total={data.review_requested.length} selected={selection.selected} onToggle={selection.toggle} onChanged={load} confirm={confirm} />
-        <PrListCard title="Watched" prs={lists.watched} total={data.watched.length} selected={selection.selected} onToggle={selection.toggle} onChanged={load} confirm={confirm} />
-      </div>
-
-      {data.ignored.length || ignoredRepos.length ? (
-        <section className="rail-section portfolio-card pr-ignored">
-          <header>
-            <h2>Ignored</h2>
-            <div className="rail-heading-actions">
-              <span>{data.ignored.length} PR{data.ignored.length === 1 ? "" : "s"} · {ignoredRepos.length} repo{ignoredRepos.length === 1 ? "" : "s"}</span>
-              <button type="button" className="secondary" onClick={() => setShowIgnored(value => !value)}>{showIgnored ? "Hide" : "Review"}</button>
-            </div>
-          </header>
-          {showIgnored ? (
-            <div className="pr-list">
-              {ignoredRepos.map(repo => (
-                <div className="pr-row" key={repo}>
-                  <div className="pr-row-main">
-                    <span className="kind">REPO</span>
-                    <span className="pr-title">{repo}</span>
-                    <button type="button" className="secondary" onClick={() => void unignoreRepo(repo)}>Unignore repo</button>
-                  </div>
-                </div>
-              ))}
-              {data.ignored.map(pr => <PrRow key={pr.id} pr={pr} onChanged={load} confirm={confirm} repoIgnored={!pr.ignored} />)}
-            </div>
-          ) : null}
-        </section>
-      ) : null}
-      {dialog}
+    <div className="pr-state-shortcuts" aria-label="Filter by lifecycle">
+      <button type="button" aria-pressed={!params.get("state")} onClick={() => update("state", "")}>All states <span>{stateCandidates.length}</span></button>
+      {(["draft", "open", "merged", "closed"] as const).map(state => <button type="button" className={`pr-tone-${state}`} key={state} aria-pressed={params.get("state") === state} onClick={() => update("state", params.get("state") === state ? "" : state)}><PrStatusIcon kind={state} />{state[0].toUpperCase() + state.slice(1)}<span>{stateCandidates.filter(pr => lifecycle(pr) === state).length}</span></button>)}
     </div>
-  );
+    <CollectionToolbar query={query} onQueryChange={value => update("q", value)} sort={sort} onSortChange={value => update("sort", value)} sortOptions={PR_SORTS}>
+      <label>Collection<select name="collection" value={collection} onChange={event => update("collection", event.target.value)}>{COLLECTIONS.map(option => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
+      {PR_FILTERS.filter(filter => filter.group === "Primary").map(renderFilter)}
+      <label>Order<select name="direction" value={direction} onChange={event => update("direction", event.target.value)}><option value="desc">Descending</option><option value="asc">Ascending</option></select></label>
+    </CollectionToolbar>
+    <div className="pr-filter-actions"><button type="button" className="secondary" aria-expanded={expanded} aria-controls="pr-advanced-filters" onClick={() => update("filters", expanded ? "" : "1")}>{expanded ? "Fewer filters" : "More filters"}{advancedCount ? ` (${advancedCount} active)` : ""}</button>
+      {activeFilters.length ? <button type="button" className="secondary" onClick={clearFilters}>Clear filters ({activeFilters.length})</button> : null}</div>
+    {activeFilters.length ? <div className="pr-active-filters" aria-label="Active filters">{activeFilters.map(key => {
+      const filter = PR_FILTERS.find(filter => filter.key === key);
+      const label = filter?.label ?? CHECK_FILTERS.find(filter => filter.key === key)?.label ?? (key === "q" ? "Search" : key === "membership" ? "List membership" : "Collection");
+      const value = (key === "collection" ? COLLECTIONS : filter?.options)?.find(option => option.value === params.get(key))?.label ?? params.get(key);
+      return <button type="button" key={key} onClick={() => update(key, "")} aria-label={`Remove ${label} filter`}><span>{label}: {value}</span><PrStatusIcon kind="closed" /></button>;
+    })}</div> : null}
+    <div id="pr-advanced-filters" className="pr-advanced-filters" hidden={!expanded}>
+      {GROUPS.map(group => <fieldset key={group}><legend>{group}</legend><div className="pr-filter-grid">{PR_FILTERS.filter(filter => filter.group === group).map(renderFilter)}
+        {group === "Tracking" ? <label>List membership<select name="membership" value={params.get("membership") ?? ""} onChange={event => update("membership", event.target.value)}><option value="">Any</option><option value="mine">Mine</option><option value="review_requested">Review requested</option><option value="watched">Watched</option><option value="none">No memberships</option></select></label> : null}</div></fieldset>)}
+      <fieldset><legend>Individual checks</legend><p className="pr-ignore-hint">These conditions must match the same check, including ignored checks.</p><div className="pr-filter-grid">{CHECK_FILTERS.map(filter => <label key={filter.key}>{filter.label}{filter.input === "select" ? <select name={filter.key} value={params.get(filter.key) ?? ""} onChange={event => update(filter.key, event.target.value)}><option value="">Any</option>{filter.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : <input name={filter.key} type="text" value={params.get(filter.key) ?? ""} onChange={event => update(filter.key, event.target.value)} />}</label>)}</div></fieldset>
+    </div>
+
+    <SelectionBar count={selection.selected.size} total={visiblePrs.length} allSelected={selection.allSelected} onToggleAll={selection.toggleAll} onClear={selection.clear} busy={bulkBusy}>
+      <button type="button" className="secondary" onClick={() => runBulk("Watch", pr => watchPr(pr.url, true))}>Watch</button>
+      <button type="button" className="secondary" onClick={() => runBulk("Unwatch", pr => watchPr(pr.url, false))}>Unwatch</button>
+      <button type="button" className="secondary" onClick={() => void bulkIgnore()}>Ignore</button>
+      <button type="button" className="secondary" disabled={!selectedPrs.some(pr => pr.ignored)} onClick={() => runBulk("Unignore", pr => patchPr(pr.id, { ignored: false }))}>Unignore PRs</button>
+      <button type="button" className="secondary" onClick={() => void bulkIgnoreRepos()}>Ignore repos</button>
+      <label className="bulk-inline-field">Ignored-check patterns<textarea value={ignoredText} onChange={event => setIgnoredText(event.target.value)} rows={2} placeholder="one glob per line" /></label>
+      <button type="button" className="secondary" onClick={() => runBulk("Ignored checks", pr => patchPr(pr.id, { ignored_checks: ignoredText.split("\n").map(line => line.trim()).filter(Boolean) }))}>Apply ignored checks</button>
+    </SelectionBar>
+    {bulkMessage ? <p role="status" className={bulkMessage.includes("failed") ? "operational-error" : "operational-status"}>{bulkMessage}</p> : null}
+    {loading ? <p className="pr-status" role="status">Loading pull requests…</p> : <div className="pr-list" aria-label="Pull requests">
+      {visiblePrs.map(pr => <div className={`selectable-pr-row${selection.selected.has(pr.id) ? " is-selected" : ""}`} key={pr.id}>
+        <input type="checkbox" checked={selection.selected.has(pr.id)} onChange={() => selection.toggle(pr.id)} aria-label={`Select ${pr.owner}/${pr.repo}#${pr.number}`} />
+        <PrRow pr={pr} onChanged={load} confirm={confirm} repoIgnored={hiddenIds.has(pr.id) && !pr.ignored} />
+      </div>)}
+      {!visiblePrs.length ? <div className="empty"><strong>{activeFilters.length ? "No pull requests match these filters." : "No pull requests in this collection."}</strong><p>{activeFilters.length ? "Clear filters to see the rest of your pull requests." : "Refresh to check GitHub for updates, or choose another collection."}</p>{activeFilters.length ? <button type="button" className="secondary" onClick={clearFilters}>Clear filters</button> : null}</div> : null}
+    </div>}
+    {ignoredRepos.length ? <details className="pr-ignored-repos"><summary>Ignored repositories ({ignoredRepos.length})</summary>
+      <CollectionToolbar query={repoQuery} onQueryChange={value => update("repo_q", value)} sort={repoSort} onSortChange={value => update("repo_sort", value)} sortOptions={[{ value: "asc", label: "Repository A–Z" }, { value: "desc", label: "Repository Z–A" }]} />
+      <SelectionBar count={repoSelection.selected.size} total={visibleRepos.length} allSelected={repoSelection.allSelected} onToggleAll={repoSelection.toggleAll} onClear={repoSelection.clear}><button type="button" className="secondary" onClick={() => void restoreRepos([...repoSelection.selected])}>Restore selected repositories</button></SelectionBar>
+      <ul>{visibleRepos.map(repo => <li key={repo}><label><input type="checkbox" checked={repoSelection.selected.has(repo)} onChange={() => repoSelection.toggle(repo)} />{repo}</label><button type="button" className="secondary" onClick={() => void restoreRepos([repo])}>Unignore repo</button></li>)}</ul>
+      {!visibleRepos.length ? <p className="pr-ignore-hint">No repositories match this search.</p> : null}
+    </details> : null}
+    {dialog}
+  </div>;
 }

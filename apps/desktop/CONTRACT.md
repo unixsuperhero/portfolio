@@ -389,21 +389,32 @@ POST   /api/prs/events/seen { ids }    → { ok }
 GET/PATCH /api/settings                 gain github_ignored_checks: string[], github_ignored_repos: string[], github_poll_minutes: number, and github_dirs: string[] (absolute paths; 422 otherwise)
 ```
 
-Frontend: sidebar entry "PRs" → `/prs` page with three portfolio-style cards (same `DashboardCard` chrome as the portfolio page):
-"Mine", "Review requested", "Watched". A PR row: state badge, `owner/repo#n`, title, review decision, checks pill
-(✓ / ✗ / ● with counts, hover lists checks; ignored ones shown struck through), comment count, "Watch"/"Unwatch" toggle,
-"Ignore"/"Unignore" (PATCH `{ ignored }`), "Ignore repo" (appends `owner/repo` to `github_ignored_repos`), and
-"Ignore checks…" opens a small editor (per-PR list + link to global list in Settings). Every Ignore / Ignore repo action
-(row and bulk) first asks through the in-app confirm dialog (`useConfirm`; window.confirm never shows in the webview).
-Below the three cards, an "Ignored" card summarises `N PRs · M repos` with a Review toggle that lists each ignored repo
-with "Unignore repo" (removes it from `github_ignored_repos`) and each hidden PR with Unignore, or a "Repo ignored" note
-when the repo is what hides it. The selection bar's bulk actions include Ignore and Ignore repos. Links carry `data-url` so the
-context menu and in-app browser work. `prs` card kind: `config: { list: "mine" | "review_requested" | "watched" }` renders the
-same rows inside a portfolio. Notifications: the existing 60s reminder poll gains `GET /api/prs/events` (own state only):
-each new event → in-app toast + `native.notify` + a short WebAudio ping (`src/lib/sound.ts`, no audio asset), then
-`POST /api/prs/events/seen`. Settings page: global ignored checks (one per line), ignored repos (one `owner/repo` glob per line), poll minutes, and the PR check directories
-(add with the directory picker, remove per row). PRs page: rows show the directory's basename as a chip (full path on hover);
-the toolbar filters by directory, sorts by it, and the search matches it.
+Frontend: sidebar entry "PRs" → `/prs`, a single full-width list deduplicated by PR ID.
+Collection selects visible, mine, review-requested, watched, ignored, or all loaded PRs.
+Lifecycle is Draft only when `state === "open" && is_draft`; merged/closed take precedence.
+Text, SVG icons, semantic color, and row borders distinguish Draft/Open/Merged/Closed.
+Draft uses a dashed border; terminal drafts retain a secondary Draft flag badge.
+Reviews, watch/ignore status, and checks have separate labeled indicators. Check details
+show all six check outcomes, ignored flags, and URL-backed collection controls; No checks
+and All checks ignored are explicit, distinct states.
+
+Primary filters cover lifecycle, draft flag, review, and checks summary. More filters cover
+every PR data field: identifiers, text/URLs, people/repository/directory, flags, memberships,
+linked items, comments, timestamps, check counts, patterns, and individual-check fields.
+Combined individual-check predicates apply to the same check. Search indexes all PR data;
+sort/order and filters are URL-backed, including ignored PRs and null-valued fields.
+Lifecycle shortcuts show counts under the other active filters. Nested check filters use
+`pr<ID>_check_*` query keys so they do not change the page's PR filters.
+
+Watch/Unwatch is a row action. Manage exposes Ignore/Unignore, Ignore repo, and Ignore checks.
+Every Ignore / Ignore repo action first uses the in-app confirmation dialog. The selection
+bar retains bulk actions and supports clearing individual PR ignore flags. Ignored repository
+rules have separate search, sort, selection, and restore controls. Links retain `data-url`;
+the `prs` dashboard card keeps using the same rows without changing its config contract.
+
+Notifications remain independent of the page: new events produce an expiring popup,
+native notification, and WebAudio ping, then delivery acknowledgment after history is saved.
+Settings keeps global ignored checks, ignored repositories, poll cadence, and GitHub directories.
 
 ## Native pickers, reminder days, projects filters (added 2026-09-22, round 2)
 

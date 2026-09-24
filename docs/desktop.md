@@ -69,6 +69,44 @@ Single and bulk reminder deletion use an in-app confirmation dialog. Cancel or E
 See [data-model.md](data-model.md) for the full shapes and
 [packages/api.md](packages/api.md), [packages/github.md](packages/github.md) for the routes.
 
+## Pull requests
+
+The PRs page uses one full-width list, deduplicated by PR ID. The Collection
+selector switches between visible PRs, Mine, Review requested, Watched, Ignored,
+and all loaded PRs including ignored ones.
+
+Lifecycle badges pair text and SVG icons with semantic colors and matching row
+borders: **Draft** is muted with a dashed border, **Open** is green, **Merged** is
+purple, and **Closed** is red. A terminal state takes precedence over the draft
+flag; a closed draft shows **Closed** plus a separate **Draft flag** badge.
+
+```js
+const pr = { state: "closed", is_draft: true };
+// Primary badge: Closed. Additional badge: Draft flag.
+// Lifecycle=Draft selects only open drafts; Draft flag=Yes also finds closed drafts.
+```
+
+Review decisions and checks have separate labeled indicators. Expanding checks
+shows Passed, Failed, Pending, Skipped, Cancelled, or Neutral for each check, plus
+an explicit Ignored label when applicable. No checks and All checks ignored are
+different states. Check lists have their own URL-backed search, filters, and sort.
+
+Lifecycle shortcuts show counts within the other active filters. The primary
+toolbar exposes lifecycle, draft flag, review, checks, collection, sort, and order.
+**More filters** covers owner, repository, author, source directory (including the
+API directory), raw GitHub state, watched/ignored flags, list memberships, linked
+item IDs, PR IDs/numbers, title/URL text, comment ranges, updated/fetched time
+ranges, check counts, ignored-check patterns, and individual check names, URLs,
+statuses, and ignored flags. Individual-check conditions must match the same
+check. Search covers the complete PR data; filters, sorting, and direction persist
+in the URL. Active filters can be removed individually or cleared together.
+
+Watch remains directly available on each row. **Manage** holds ignore and
+ignored-check controls; **Details** exposes full directory paths, timestamps,
+memberships, IDs, and linked items. Hidden PRs can be restored from the Ignored
+collection. Repository rules are managed separately under **Ignored repositories**:
+clearing a PR's own ignored flag does not override an ignored-repository rule.
+
 ## Notifications
 
 Reminder and pull-request popups close after eight seconds. Expiration only hides
