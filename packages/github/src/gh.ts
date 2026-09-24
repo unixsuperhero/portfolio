@@ -6,12 +6,17 @@ export interface RunResult {
   code: number;
 }
 
-export type Runner = (cmd: string[]) => Promise<RunResult>;
+export interface RunOptions {
+  /** Working directory for the gh process; gh resolves the host and repo from the git remote there. */
+  cwd?: string;
+}
+
+export type Runner = (cmd: string[], options?: RunOptions) => Promise<RunResult>;
 
 const GH_TIMEOUT_MS = 30_000;
 
-async function defaultRun(cmd: string[]): Promise<RunResult> {
-  const proc = Bun.spawn({ cmd, stdout: "pipe", stderr: "pipe" });
+async function defaultRun(cmd: string[], options: RunOptions = {}): Promise<RunResult> {
+  const proc = Bun.spawn({ cmd, cwd: options.cwd, stdout: "pipe", stderr: "pipe" });
   const timer = setTimeout(() => proc.kill(), GH_TIMEOUT_MS);
   try {
     const [stdout, stderr, code] = await Promise.all([
@@ -28,6 +33,8 @@ async function defaultRun(cmd: string[]): Promise<RunResult> {
 export interface GhOptions {
   run?: Runner;
   bin?: string;
+  /** Directory to run gh from (see RunOptions.cwd). */
+  cwd?: string;
 }
 
 /** Runs `gh api graphql -f query=... -F var=...`, returning the parsed `data`. Throws on a non-zero exit or a GraphQL error. */
@@ -36,7 +43,7 @@ export async function ghGraphql(query: string, variables: Record<string, string 
   const run = options.run ?? defaultRun;
   const args = ["api", "graphql", "-f", `query=${query}`];
   for (const [name, value] of Object.entries(variables)) args.push("-F", `${name}=${value}`);
-  const { stdout, stderr, code } = await run([bin, ...args]);
+  const { stdout, stderr, code } = await run([bin, ...args], { cwd: options.cwd });
   if (code !== 0) throw new Error(stderr.trim() || `gh exited with code ${code}`);
   let parsed: { data?: unknown; errors?: { message: string }[] };
   try {

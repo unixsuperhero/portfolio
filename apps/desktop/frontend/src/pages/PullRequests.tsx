@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router";
 import { PortfolioApiError } from "@portfolio/client";
 import type { Pr, PrsResponse } from "../types.ts";
 import { getPrs, patchPr, refreshPrs, watchPr } from "../api.ts";
-import { PrRow } from "../components/PrRow.tsx";
+import { PrRow, dirLabel } from "../components/PrRow.tsx";
 import { CollectionToolbar, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
 import "../operational.css";
 
@@ -13,9 +13,14 @@ const SORT_OPTIONS = [
   { value: "updated", label: "Updated" },
   { value: "title", label: "Title" },
   { value: "repo", label: "Repo" },
+  { value: "dir", label: "Directory" },
 ] as const;
 
-type PrSort = "updated" | "title" | "repo";
+type PrSort = "updated" | "title" | "repo" | "dir";
+
+/** The filter value for a PR's directory; "-" stands for the API's own directory (source_dir null). */
+const DEFAULT_DIR = "-";
+const dirKey = (pr: Pr) => pr.source_dir ?? DEFAULT_DIR;
 
 function formatTime(value: string | null): string {
   if (!value) return "–";
@@ -37,14 +42,16 @@ function setParam(params: URLSearchParams, key: string, value: string): URLSearc
 function comparePrs(sort: PrSort): (a: Pr, b: Pr) => number {
   if (sort === "title") return (a, b) => a.title.localeCompare(b.title) || a.repo.localeCompare(b.repo);
   if (sort === "repo") return (a, b) => `${a.owner}/${a.repo}`.localeCompare(`${b.owner}/${b.repo}`) || a.number - b.number;
+  if (sort === "dir") return (a, b) => (a.source_dir ?? "").localeCompare(b.source_dir ?? "") || Date.parse(b.updated_at) - Date.parse(a.updated_at);
   return (a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at) || a.title.localeCompare(b.title);
 }
 
-function matchesPr(pr: Pr, query: string, state: string, checks: string): boolean {
+function matchesPr(pr: Pr, query: string, state: string, checks: string, dir: string): boolean {
   const needle = query.trim().toLowerCase();
   if (state && pr.state !== state) return false;
   if (checks && pr.checks_summary !== checks) return false;
-  return !needle || [pr.title, pr.owner, pr.repo, `${pr.owner}/${pr.repo}`, String(pr.number)].some(value => value.toLowerCase().includes(needle));
+  if (dir && dirKey(pr) !== dir) return false;
+  return !needle || [pr.title, pr.owner, pr.repo, `${pr.owner}/${pr.repo}`, String(pr.number), pr.source_dir ?? ""].some(value => value.toLowerCase().includes(needle));
 }
 
 function PrListCard({
@@ -96,6 +103,7 @@ export default function PullRequests() {
   const query = params.get("q") ?? "";
   const stateFilter = params.get("state") ?? "";
   const checksFilter = params.get("checks") ?? "";
+  const dirFilter = params.get("dir") ?? "";
   const sort = (params.get("sort") as PrSort | null) ?? "updated";
 
   const load = () => {
@@ -114,12 +122,14 @@ export default function PullRequests() {
       .finally(() => setRefreshing(false));
   };
 
-  const filterList = (prs: Pr[]) => prs.filter(pr => matchesPr(pr, query, stateFilter, checksFilter)).sort(comparePrs(sort));
+  const filterList = (prs: Pr[]) => prs.filter(pr => matchesPr(pr, query, stateFilter, checksFilter, dirFilter)).sort(comparePrs(sort));
   const lists = useMemo(() => ({
     mine: filterList(data.mine),
     review_requested: filterList(data.review_requested),
     watched: filterList(data.watched),
-  }), [checksFilter, data.mine, data.review_requested, data.watched, query, sort, stateFilter]);
+  }), [checksFilter, data.mine, data.review_requested, data.watched, dirFilter, query, sort, stateFilter]);
+  // Every directory that any loaded PR came from, so the filter only offers real choices.
+  const dirs = useMemo(() => Array.from(new Set([...data.mine, ...data.review_requested, ...data.watched].map(dirKey))).sort(), [data.mine, data.review_requested, data.watched]);
 
   const visiblePrs = useMemo(() => Array.from(new Map([...lists.mine, ...lists.review_requested, ...lists.watched].map(pr => [pr.id, pr])).values()), [lists.mine, lists.review_requested, lists.watched]);
   const selection = useSelection(visiblePrs.map(pr => pr.id));
@@ -192,6 +202,14 @@ export default function PullRequests() {
             <option value="none">None</option>
           </select>
         </label>
+        {dirs.length > 1 || dirFilter ? (
+          <label>Directory
+            <select value={dirFilter} onChange={event => setParams(setParam(params, "dir", event.target.value))}>
+              <option value="">Any directory</option>
+              {dirs.map(dir => <option key={dir} value={dir}>{dir === DEFAULT_DIR ? "API directory" : dirLabel(dir)}</option>)}
+            </select>
+          </label>
+        ) : null}
       </CollectionToolbar>
 
       <SelectionBar

@@ -17,11 +17,13 @@ export interface PollerDb {
   settings: {
     getGithubIgnoredChecks(): string[];
     getGithubPollMinutes(): number;
+    getGithubDirs(): string[];
   };
 }
 
 export interface GhClient {
-  graphql(query: string): Promise<unknown>;
+  /** `options.cwd` is the settings.github_dirs entry to run gh from; omitted for the API's own cwd. */
+  graphql(query: string, options?: { cwd?: string }): Promise<unknown>;
 }
 
 export interface PollerOptions {
@@ -46,7 +48,7 @@ export class PollTooSoonError extends Error {
   }
 }
 
-/** One cycle's request(s), the diff, and the schedule around it. Never more than 2 GraphQL requests per tick. */
+/** One cycle's request(s), the diff, and the schedule around it. Never more than 2 GraphQL requests per directory per tick. */
 export function createPrPoller(options: PollerOptions) {
   const { db, gh } = options;
   const now = options.now ?? (() => new Date());
@@ -76,9 +78,17 @@ export function createPrPoller(options: PollerOptions) {
     return { ...parsed, checks, checks_summary: checksSummary(checks, patterns) };
   }
 
-  async function processNode(node: PrNode, lists: string[], globalIgnored: string[], fetchedAt: string, events: PrEventDraft[]): Promise<void> {
+  /** settings.github_dirs, or [null] for the API's own cwd, so every tick has at least one target. */
+  function targetDirs(): (string | null)[] {
+    const dirs = db.settings.getGithubDirs();
+    return dirs.length ? dirs : [null];
+  }
+
+  const ghOptions = (dir: string | null) => (dir === null ? undefined : { cwd: dir });
+
+  async function processNode(node: PrNode, lists: string[], globalIgnored: string[], fetchedAt: string, events: PrEventDraft[], dir: string | null): Promise<void> {
     const previous = db.github.findPrByUrl(node.url);
-    const parsed = finalize(parsePrNode(node, { ignored_checks: previous?.ignored_checks ?? [], watched: previous?.watched ?? false, item_id: previous?.item_id ?? null, lists }, fetchedAt), globalIgnored);
+    const parsed = finalize(parsePrNode(node, { ignored_checks: previous?.ignored_checks ?? [], watched: previous?.watched ?? false, item_id: previous?.item_id ?? null, lists, source_dir: dir }, fetchedAt), globalIgnored);
     const id = db.github.upsertPr(parsed);
     const next: Pr = { ...parsed, id };
     events.push(...diffPr(previous, next, globalIgnored, fetchedAt));
@@ -102,34 +112,55 @@ export function createPrPoller(options: PollerOptions) {
       const events: PrEventDraft[] = [];
       const seenUrls = new Set<string>();
 
-      const listsData = (await gh.graphql(listsQuery())) as ListsResponse;
-      for (const node of listsData.mine.nodes) { seenUrls.add(node.url); }
-      for (const node of listsData.review_requested.nodes) { seenUrls.add(node.url); }
-      const byUrl = new Map<string, { node: PrNode; lists: string[] }>();
-      for (const node of listsData.mine.nodes) byUrl.set(node.url, { node, lists: [...(byUrl.get(node.url)?.lists ?? []), "mine"] });
-      for (const node of listsData.review_requested.nodes) byUrl.set(node.url, { node, lists: [...(byUrl.get(node.url)?.lists ?? []), "review_requested"] });
-      for (const { node, lists } of byUrl.values()) await processNode(node, lists, globalIgnored, fetchedAt, events);
+      // The lists request runs once per directory. A directory that fails is reported and
+      // skipped; the tick only counts as failed (and backs off) when every directory fails.
+      const dirs = targetDirs();
+      const failures: string[] = [];
+      let rate: ListsResponse["rateLimit"] | null = null;
+      const lowestRate = (next: ListsResponse["rateLimit"]) => { if (!rate || next.remaining < rate.remaining) rate = next; };
+      for (const dir of dirs) {
+        let listsData: ListsResponse;
+        try {
+          listsData = (await gh.graphql(listsQuery(), ghOptions(dir))) as ListsResponse;
+        } catch (err) {
+          failures.push(`${dir ?? "default dir"}: ${(err as Error).message}`);
+          continue;
+        }
+        const byUrl = new Map<string, { node: PrNode; lists: string[] }>();
+        for (const node of listsData.mine.nodes) byUrl.set(node.url, { node, lists: [...(byUrl.get(node.url)?.lists ?? []), "mine"] });
+        for (const node of listsData.review_requested.nodes) byUrl.set(node.url, { node, lists: [...(byUrl.get(node.url)?.lists ?? []), "review_requested"] });
+        for (const { node, lists } of byUrl.values()) {
+          if (seenUrls.has(node.url)) continue; // first directory to return a PR owns it
+          seenUrls.add(node.url);
+          await processNode(node, lists, globalIgnored, fetchedAt, events, dir);
+        }
+        lowestRate(listsData.rateLimit);
+      }
+      if (!rate || failures.length === dirs.length) throw new Error(failures.join("; "));
 
-      let rate = listsData.rateLimit;
-
-      if (rate.remaining >= RATE_LIMIT_FLOOR) {
-        const watched = db.github.listPrs({ watched: true }).filter(pr => !seenUrls.has(pr.url)).slice(0, 25);
-        if (watched.length) {
-          const watchedData = (await gh.graphql(watchedQuery(watched.map(refPr)))) as WatchedResponse;
-          for (const node of watchedNodes(watchedData)) await processNode(node, [], globalIgnored, fetchedAt, events);
-          rate = watchedData.rateLimit;
+      if ((rate as ListsResponse["rateLimit"]).remaining >= RATE_LIMIT_FLOOR) {
+        // Watched PRs outside the lists, batched by the directory they were fetched from.
+        const watched = db.github.listPrs({ watched: true }).filter(pr => !seenUrls.has(pr.url));
+        const groups = new Map<string | null, Pr[]>();
+        for (const pr of watched) groups.set(pr.source_dir, [...(groups.get(pr.source_dir) ?? []), pr]);
+        for (const [dir, prs] of groups) {
+          const batch = prs.slice(0, 25);
+          const watchedData = (await gh.graphql(watchedQuery(batch.map(refPr)), ghOptions(dir))) as WatchedResponse;
+          for (const node of watchedNodes(watchedData)) await processNode(node, [], globalIgnored, fetchedAt, events, dir);
+          lowestRate(watchedData.rateLimit);
         }
       } else {
-        state.skipUntil = new Date(rate.resetAt).getTime();
+        state.skipUntil = new Date((rate as ListsResponse["rateLimit"]).resetAt).getTime();
       }
 
       db.github.insertEvents(events);
 
+      const finalRate = rate as ListsResponse["rateLimit"];
       state.lastPollAt = fetchedAt;
-      state.rate = { remaining: rate.remaining, reset_at: rate.resetAt };
-      state.error = null;
+      state.rate = { remaining: finalRate.remaining, reset_at: finalRate.resetAt };
+      state.error = failures.length ? failures.join("; ") : null;
       state.backoffMs = BASE_BACKOFF_MS;
-      if (rate.remaining < RATE_LIMIT_FLOOR) state.skipUntil = new Date(rate.resetAt).getTime();
+      if (finalRate.remaining < RATE_LIMIT_FLOOR) state.skipUntil = new Date(finalRate.resetAt).getTime();
       state.nextPollAt = new Date(now().getTime() + cadenceMs()).toISOString();
     } catch (err) {
       state.error = (err as Error).message;
@@ -182,19 +213,32 @@ export function createPrPoller(options: PollerOptions) {
       if (state.timer) scheduleNext();
       return this.status();
     },
-    /** Fetches and stores exactly one PR (one GraphQL request), e.g. when watching a URL not already tracked. */
+    /** Fetches and stores exactly one PR (one GraphQL request per directory until one returns it),
+     * e.g. when watching a URL not already tracked. The directory that finds it becomes its source_dir. */
     async fetchOne(ref: PrRef): Promise<Pr> {
       const fetchedAt = now().toISOString();
       const globalIgnored = db.settings.getGithubIgnoredChecks();
-      const data = (await gh.graphql(watchedQuery([ref]))) as WatchedResponse;
-      const [node] = watchedNodes(data);
-      if (!node) throw new Error("PR not found");
+      let node: PrNode | undefined;
+      let foundIn: string | null = null;
+      const failures: string[] = [];
+      for (const dir of targetDirs()) {
+        let data: WatchedResponse;
+        try {
+          data = (await gh.graphql(watchedQuery([ref]), ghOptions(dir))) as WatchedResponse;
+        } catch (err) {
+          failures.push(`${dir ?? "default dir"}: ${(err as Error).message}`);
+          continue;
+        }
+        if (data.rateLimit) state.rate = { remaining: data.rateLimit.remaining, reset_at: data.rateLimit.resetAt };
+        [node] = watchedNodes(data);
+        if (node) { foundIn = dir; break; }
+      }
+      if (!node) throw new Error(failures.length ? failures.join("; ") : "PR not found");
       const previous = db.github.findPrByUrl(node.url);
-      const parsed = finalize(parsePrNode(node, { ignored_checks: previous?.ignored_checks ?? [], watched: previous?.watched ?? false, item_id: previous?.item_id ?? null, lists: previous?.lists ?? [] }, fetchedAt), globalIgnored);
+      const parsed = finalize(parsePrNode(node, { ignored_checks: previous?.ignored_checks ?? [], watched: previous?.watched ?? false, item_id: previous?.item_id ?? null, lists: previous?.lists ?? [], source_dir: previous?.source_dir ?? foundIn }, fetchedAt), globalIgnored);
       const id = db.github.upsertPr(parsed);
       const next: Pr = { ...parsed, id };
       db.github.insertEvents(diffPr(previous, next, globalIgnored, fetchedAt));
-      if (data.rateLimit) state.rate = { remaining: data.rateLimit.remaining, reset_at: data.rateLimit.resetAt };
       return next;
     },
   };

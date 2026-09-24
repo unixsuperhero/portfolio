@@ -108,7 +108,7 @@ export const deleteCategory = (id: number) => api.request<{ ok: true }>(`/api/ca
 
 export const getSettings = () => api.request<import("./types.ts").SettingsView>("/api/settings");
 
-export const patchSettings = (patch: { home_portfolio_id?: number | null; pastry_enabled?: boolean; github_ignored_checks?: string[]; github_poll_minutes?: number }) =>
+export const patchSettings = (patch: { home_portfolio_id?: number | null; pastry_enabled?: boolean; github_ignored_checks?: string[]; github_poll_minutes?: number; github_dirs?: string[] }) =>
   api.request<import("./types.ts").SettingsView>("/api/settings", { method: "PATCH", json: patch });
 
 export const getHome = () => api.request<{ portfolio: PortfolioView | null }>("/api/home");

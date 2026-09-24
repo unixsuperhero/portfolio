@@ -199,6 +199,7 @@ table.data-table th { color: var(--text3); font-weight: 500; }
 .pr-row:last-child { border-bottom: none; }
 .pr-row-main { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .pr-repo { font-family: var(--mono); font-size: 0.8rem; white-space: nowrap; }
+.pr-dir { color: var(--accent2); border-color: var(--border2); text-transform: none; letter-spacing: 0; max-width: 9rem; overflow: hidden; text-overflow: ellipsis; }
 .pr-title { flex: 1; min-width: 8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pr-review { font-size: 0.72rem; color: var(--text3); white-space: nowrap; }
 .pr-review-approved { color: #59d38c; }

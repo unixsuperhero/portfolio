@@ -19,5 +19,8 @@ export const setHomePortfolioId = (db: Database, id: number | null): void => {
 export const getGithubIgnoredChecks = (db: Database): string[] => JSON.parse(getSetting(db, "github_ignored_checks", "[]"));
 export const setGithubIgnoredChecks = (db: Database, checks: string[]): void => setSetting(db, "github_ignored_checks", JSON.stringify(checks));
 
+export const getGithubDirs = (db: Database): string[] => JSON.parse(getSetting(db, "github_dirs", "[]"));
+export const setGithubDirs = (db: Database, dirs: string[]): void => setSetting(db, "github_dirs", JSON.stringify(Array.from(new Set(dirs.map(dir => dir.trim()).filter(Boolean)))));
+
 export const getGithubPollMinutes = (db: Database): number => Number(getSetting(db, "github_poll_minutes", "2")) || 2;
 export const setGithubPollMinutes = (db: Database, minutes: number): void => setSetting(db, "github_poll_minutes", String(Math.max(1, Math.floor(minutes))));

@@ -45,6 +45,13 @@ export function migrateItemKinds(db: Database, path: string, schema: string, log
   return true;
 }
 
+/** Adds source_dir to an older github_prs table. A table that does not exist yet is left for `schema` to create with it already. */
+export function migrateGithubPrColumns(db: Database): void {
+  const columns = db.query<{ name: string }, []>("PRAGMA table_info(github_prs)").all().map(column => column.name);
+  if (!columns.length) return;
+  if (!columns.includes("source_dir")) db.exec("ALTER TABLE github_prs ADD COLUMN source_dir TEXT");
+}
+
 /** Adds the kind and config columns to an older cards table. A table that does not exist yet is left for `schema` to create with them already. */
 export function migrateCardColumns(db: Database): void {
   const columns = db.query<{ name: string }, []>("PRAGMA table_info(cards)").all().map(column => column.name);
@@ -112,6 +119,7 @@ export function openDatabase(path: string = defaultDatabasePath(), options: Open
   const schema = options.schema ?? readSchema();
   if (options.migrate ?? true) migrateItemKinds(db, path, schema, options.log);
   migrateCardColumns(db);
+  migrateGithubPrColumns(db);
   migrateReminderColumns(db);
   migrateReminderEntities(db);
   const taskColumns = db.query<{ name: string }, []>("PRAGMA table_info(tasks)").all();

@@ -48,7 +48,7 @@ await watcher.reload();
 
 const auth = await ghAuth();
 const prPoller = auth.ok
-  ? createPrPoller({ db: store, gh: { graphql: query => ghGraphql(query) }, log: message => console.log(`prs: ${message}`), login: auth.login, ghOk: true })
+  ? createPrPoller({ db: store, gh: { graphql: (query, options) => ghGraphql(query, {}, options) }, log: message => console.log(`prs: ${message}`), login: auth.login, ghOk: true })
   : undefined;
 if (prPoller) prPoller.start();
 else console.log("prs: gh auth failed, PR polling disabled");

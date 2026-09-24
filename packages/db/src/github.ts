@@ -20,6 +20,7 @@ interface PrRow {
   watched: 0 | 1;
   ignored_checks: string;
   item_id: number | null;
+  source_dir: string | null;
   fetched_at: string;
 }
 
@@ -42,6 +43,7 @@ const rowToPr = (row: PrRow): Pr => ({
   ignored_checks: JSON.parse(row.ignored_checks),
   lists: JSON.parse(row.lists),
   item_id: row.item_id,
+  source_dir: row.source_dir ?? null,
   fetched_at: row.fetched_at,
 });
 
@@ -67,6 +69,8 @@ export const findPrByUrl = (db: Database, url: string): Pr | null => {
 export interface PrListFilter {
   list?: PrList;
   watched?: boolean;
+  /** Narrow to PRs fetched from this github_dirs entry (null: the API's own cwd). */
+  dir?: string | null;
 }
 
 /** Every PR, optionally narrowed to a search list (member of `lists`) or to watched-only. */
@@ -75,6 +79,7 @@ export function listPrs(db: Database, filter: PrListFilter = {}): Pr[] {
   let prs = rows.map(rowToPr);
   if (filter.watched) prs = prs.filter(pr => pr.watched);
   if (filter.list) prs = filter.list === "watched" ? prs.filter(pr => pr.watched) : prs.filter(pr => pr.lists.includes(filter.list!));
+  if (filter.dir !== undefined) prs = prs.filter(pr => pr.source_dir === filter.dir);
   return prs;
 }
 
@@ -84,20 +89,20 @@ export type PrUpsertInput = Omit<Pr, "id">;
 export function upsertPr(db: Database, input: PrUpsertInput): number {
   const row = db.query<{ id: number }, [
     string, string, string, number, string, string, number, string, string | null, string, number,
-    string, string, number, string, number | null, string,
+    string, string, number, string, number | null, string | null, string,
   ]>(
-    `INSERT INTO github_prs(url, owner, repo, number, title, author, is_draft, state, review_decision, updated_at, comments, checks, lists, watched, ignored_checks, item_id, fetched_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO github_prs(url, owner, repo, number, title, author, is_draft, state, review_decision, updated_at, comments, checks, lists, watched, ignored_checks, item_id, source_dir, fetched_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(url) DO UPDATE SET
        owner = excluded.owner, repo = excluded.repo, number = excluded.number, title = excluded.title, author = excluded.author,
        is_draft = excluded.is_draft, state = excluded.state, review_decision = excluded.review_decision, updated_at = excluded.updated_at,
        comments = excluded.comments, checks = excluded.checks, lists = excluded.lists, watched = excluded.watched,
-       ignored_checks = excluded.ignored_checks, item_id = excluded.item_id, fetched_at = excluded.fetched_at
+       ignored_checks = excluded.ignored_checks, item_id = excluded.item_id, source_dir = excluded.source_dir, fetched_at = excluded.fetched_at
      RETURNING id`,
   ).get(
     input.url, input.owner, input.repo, input.number, input.title, input.author, Number(input.is_draft), input.state,
     input.review_decision, input.updated_at, input.comments, JSON.stringify(input.checks), JSON.stringify(input.lists),
-    Number(input.watched), JSON.stringify(input.ignored_checks), input.item_id, input.fetched_at,
+    Number(input.watched), JSON.stringify(input.ignored_checks), input.item_id, input.source_dir, input.fetched_at,
   )!;
   return row.id;
 }

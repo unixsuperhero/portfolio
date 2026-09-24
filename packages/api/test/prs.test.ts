@@ -24,7 +24,7 @@ function fakePoller(store: ReturnType<typeof openStore>) {
       const id = store.github.upsertPr({
         url, owner: ref.owner, repo: ref.repo, number: ref.number, title: "Fetched PR", author: "jearsh",
         is_draft: false, state: "open", review_decision: null, updated_at: "t", comments: 0, checks: [],
-        checks_summary: "none", watched: false, ignored_checks: [], lists: [], item_id: null, fetched_at: "t",
+        checks_summary: "none", watched: false, ignored_checks: [], lists: [], item_id: null, source_dir: null, fetched_at: "t",
       });
       return store.github.getPr(id)!;
     },
@@ -41,7 +41,7 @@ describe("prs", () => {
 
   test("GET /api/prs with a poller reflects the store and poller status", async () => {
     const store = openStore(":memory:");
-    store.github.upsertPr({ url: "https://github.com/acme/app/pull/1", owner: "acme", repo: "app", number: 1, title: "A", author: "x", is_draft: false, state: "open", review_decision: null, updated_at: "t", comments: 0, checks: [], checks_summary: "none", watched: false, ignored_checks: [], lists: ["mine"], item_id: null, fetched_at: "t" });
+    store.github.upsertPr({ url: "https://github.com/acme/app/pull/1", owner: "acme", repo: "app", number: 1, title: "A", author: "x", is_draft: false, state: "open", review_decision: null, updated_at: "t", comments: 0, checks: [], checks_summary: "none", watched: false, ignored_checks: [], lists: ["mine"], item_id: null, source_dir: null, fetched_at: "t" });
     const api = createApi(store, { prPoller: fakePoller(store) });
     const res = await get(api, "/api/prs");
     const body = await res.json();
@@ -77,7 +77,7 @@ describe("prs", () => {
 
   test("POST /api/prs/watch: unwatching an already-known PR doesn't refetch", async () => {
     const store = openStore(":memory:");
-    const id = store.github.upsertPr({ url: "https://github.com/acme/app/pull/9", owner: "acme", repo: "app", number: 9, title: "B", author: "x", is_draft: false, state: "open", review_decision: null, updated_at: "t", comments: 0, checks: [], checks_summary: "none", watched: true, ignored_checks: [], lists: [], item_id: null, fetched_at: "t" });
+    const id = store.github.upsertPr({ url: "https://github.com/acme/app/pull/9", owner: "acme", repo: "app", number: 9, title: "B", author: "x", is_draft: false, state: "open", review_decision: null, updated_at: "t", comments: 0, checks: [], checks_summary: "none", watched: true, ignored_checks: [], lists: [], item_id: null, source_dir: null, fetched_at: "t" });
     const api = createApi(store, { prPoller: fakePoller(store) });
     const res = await send(api, "POST", "/api/prs/watch", { url: "https://github.com/acme/app/pull/9", watched: false });
     expect(res.status).toBe(200);
@@ -87,7 +87,7 @@ describe("prs", () => {
 
   test("PATCH /api/prs/:id sets ignored_checks, 404 for unknown id", async () => {
     const store = openStore(":memory:");
-    const id = store.github.upsertPr({ url: "https://github.com/acme/app/pull/3", owner: "acme", repo: "app", number: 3, title: "C", author: "x", is_draft: false, state: "open", review_decision: null, updated_at: "t", comments: 0, checks: [{ name: "codecov/patch", status: "pending", url: "", ignored: false }], checks_summary: "pending", watched: false, ignored_checks: [], lists: [], item_id: null, fetched_at: "t" });
+    const id = store.github.upsertPr({ url: "https://github.com/acme/app/pull/3", owner: "acme", repo: "app", number: 3, title: "C", author: "x", is_draft: false, state: "open", review_decision: null, updated_at: "t", comments: 0, checks: [{ name: "codecov/patch", status: "pending", url: "", ignored: false }], checks_summary: "pending", watched: false, ignored_checks: [], lists: [], item_id: null, source_dir: null, fetched_at: "t" });
     const api = createApi(store, {});
     const res = await send(api, "PATCH", `/api/prs/${id}`, { ignored_checks: ["codecov/*"] });
     expect(res.status).toBe(200);
@@ -99,7 +99,7 @@ describe("prs", () => {
 
   test("events: list unseen since an id, then mark seen", async () => {
     const store = openStore(":memory:");
-    const id = store.github.upsertPr({ url: "https://github.com/acme/app/pull/4", owner: "acme", repo: "app", number: 4, title: "D", author: "x", is_draft: false, state: "open", review_decision: null, updated_at: "t", comments: 0, checks: [], checks_summary: "none", watched: false, ignored_checks: [], lists: [], item_id: null, fetched_at: "t" });
+    const id = store.github.upsertPr({ url: "https://github.com/acme/app/pull/4", owner: "acme", repo: "app", number: 4, title: "D", author: "x", is_draft: false, state: "open", review_decision: null, updated_at: "t", comments: 0, checks: [], checks_summary: "none", watched: false, ignored_checks: [], lists: [], item_id: null, source_dir: null, fetched_at: "t" });
     store.github.insertEvents([{ pr_id: id, kind: "state", message: "acme/app#4 merged", at: "t" }]);
     const api = createApi(store, {});
     let res = await get(api, "/api/prs/events");

@@ -9,7 +9,7 @@ const newPr = (db: ReturnType<typeof fresh>, overrides: Partial<Omit<Pr, "id">> 
     url: "https://github.com/acme/app/pull/12", owner: "acme", repo: "app", number: 12, title: "Add widgets",
     author: "jearsh", is_draft: false, state: "open", review_decision: null, updated_at: "t", comments: 0,
     checks: [{ name: "ci/test", status: "failure", url: "https://ci/1", ignored: false }, { name: "codecov/patch", status: "pending", url: "https://ci/2", ignored: false }],
-    checks_summary: "failure", watched: false, ignored_checks: [], lists: ["mine"], item_id: null, fetched_at: "t",
+    checks_summary: "failure", watched: false, ignored_checks: [], lists: ["mine"], item_id: null, source_dir: null, fetched_at: "t",
     ...overrides,
   });
 

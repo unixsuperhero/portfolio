@@ -43,7 +43,7 @@ Reminders use their own CRUD and completion endpoints under `/api/reminders`. `P
 | `GET /api/prs/events?since=<id>` | `store.github.listUnseenEvents(since)` |
 | `POST /api/prs/events/seen { ids }` | `store.github.markEventsSeen(ids)` |
 
-`server.ts` calls `ghAuth()` on startup; when it succeeds it builds a `createPrPoller` (wrapping `ghGraphql`) and starts it, and passes it to `createApi` as `prPoller`. `GET`/`PATCH /api/settings` carry `github_ignored_checks: string[]` and `github_poll_minutes: number` alongside the existing keys.
+`server.ts` calls `ghAuth()` on startup; when it succeeds it builds a `createPrPoller` (wrapping `ghGraphql`) and starts it, and passes it to `createApi` as `prPoller`. `GET`/`PATCH /api/settings` carry `github_ignored_checks: string[]`, `github_poll_minutes: number`, and `github_dirs: string[]` (the directories gh runs from, absolute paths only; a relative path is a 422) alongside the existing keys.
 
 Errors are `{ error: string }` with a 4xx/5xx status. An uncaught handler error becomes a 500 with the error's message; `readJson` fails a bad JSON body the same way.
 

@@ -245,6 +245,13 @@ describe("settings and home", () => {
     const listing = await res.json();
     expect(listing.directories).toEqual([{ name: "sub", path: join(dir, "sub") }]);
 
+    res = await send(api, "PATCH", "/api/settings", { github_dirs: ["/work/carrot", " /work/carrot ", "/home/test/proj"] });
+    expect((await res.json()).github_dirs).toEqual(["/work/carrot", "/home/test/proj"]);
+    res = await send(api, "PATCH", "/api/settings", { github_dirs: ["relative/dir"] });
+    expect(res.status).toBe(422);
+    res = await get(api, "/api/settings");
+    expect((await res.json()).github_dirs).toEqual(["/work/carrot", "/home/test/proj"]);
+
     res = await get(api, "/api/directories?path=relative");
     expect(res.status).toBe(400);
     res = await get(api, `/api/directories?path=${encodeURIComponent(join(dir, "missing"))}`);

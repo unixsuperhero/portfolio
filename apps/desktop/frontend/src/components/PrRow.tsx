@@ -5,6 +5,8 @@ import type { Pr, PrReviewDecision } from "../types.ts";
 import { patchPr, watchPr } from "../api.ts";
 import { PrChecks } from "./PrChecks.tsx";
 
+export const dirLabel = (dir: string) => dir.replace(/\/+$/, "").split("/").pop() || dir;
+
 function reviewLabel(decision: PrReviewDecision): string {
   if (decision === "approved") return "Approved";
   if (decision === "changes_requested") return "Changes requested";
@@ -49,6 +51,7 @@ export function PrRow({ pr, onChanged }: { pr: Pr; onChanged: () => void }) {
         <span className={`kind pr-state-${pr.state}`}>{pr.is_draft ? "DRAFT" : pr.state.toUpperCase()}</span>
         <a className="pr-repo" href={pr.url} data-url={pr.url}>{pr.owner}/{pr.repo}#{pr.number}</a>
         <span className="pr-title" title={pr.title}>{pr.title}</span>
+        {pr.source_dir ? <span className="kind pr-dir" title={pr.source_dir}>{dirLabel(pr.source_dir)}</span> : null}
         {pr.review_decision ? <span className={`pr-review pr-review-${pr.review_decision}`}>{reviewLabel(pr.review_decision)}</span> : null}
         <PrChecks pr={pr} />
         <span className="pr-comments" title="Comments">💬 {pr.comments}</span>

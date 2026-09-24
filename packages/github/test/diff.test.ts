@@ -7,7 +7,7 @@ function pr(overrides: Partial<Pr> = {}): Pr {
     id: 1, url: "https://github.com/acme/app/pull/12", owner: "acme", repo: "app", number: 12,
     title: "Add widgets", author: "jearsh", is_draft: false, state: "open", review_decision: null,
     updated_at: "t", comments: 0, checks: [], checks_summary: "none", watched: true, ignored_checks: [],
-    lists: ["mine"], item_id: null, fetched_at: "t",
+    lists: ["mine"], item_id: null, source_dir: null, fetched_at: "t",
     ...overrides,
   };
 }

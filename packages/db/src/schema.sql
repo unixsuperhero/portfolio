@@ -199,6 +199,8 @@ CREATE TABLE IF NOT EXISTS github_prs (
   -- JSON array of glob patterns, per PR; settings.github_ignored_checks is global
   ignored_checks TEXT NOT NULL DEFAULT '[]',
   item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
+  -- the settings.github_dirs entry gh ran from; NULL for the API's own cwd
+  source_dir TEXT,
   fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

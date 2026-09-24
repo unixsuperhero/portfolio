@@ -14,7 +14,7 @@ const seedWatched = (store: ReturnType<typeof openStore>, overrides: Partial<Pr>
   store.github.upsertPr({
     url: "https://github.com/acme/app/pull/40", owner: "acme", repo: "app", number: 40, title: "Refactor storage",
     author: "jearsh", is_draft: false, state: "open", review_decision: null, updated_at: "2026-09-22T10:00:00Z",
-    comments: 1, checks: [], checks_summary: "none", watched: true, ignored_checks: [], lists: [], item_id: null,
+    comments: 1, checks: [], checks_summary: "none", watched: true, ignored_checks: [], lists: [], item_id: null, source_dir: null,
     fetched_at: "2026-09-22T10:00:00Z", ...overrides,
   });
 
@@ -104,5 +104,104 @@ describe("createPrPoller.refresh", () => {
 
     nowMs += 31_000;
     await expect(poller.refresh()).resolves.toBeTruthy();
+  });
+});
+
+describe("createPrPoller with settings.github_dirs", () => {
+  function fakeGhDirs(responses: unknown[]) {
+    const calls: { query: string; cwd: string | undefined }[] = [];
+    return {
+      graphql: async (query: string, options?: { cwd?: string }) => {
+        calls.push({ query, cwd: options?.cwd });
+        const response = responses[calls.length - 1];
+        if (response instanceof Error) throw response;
+        return response;
+      },
+      calls,
+    };
+  }
+  const withDirs = (dirs: string[]) => { const store = openStore(":memory:"); store.settings.setGithubDirs(dirs); return store; };
+  const renamed = (suffix: string) => {
+    const copy = structuredClone(listsFixture) as typeof listsFixture;
+    for (const node of [...copy.mine.nodes, ...copy.review_requested.nodes]) node.url = `${node.url}${suffix}`;
+    return copy;
+  };
+
+  test("the lists request runs once per directory, in order, and each PR remembers the directory that returned it", async () => {
+    const store = withDirs(["/dir/a", "/dir/b"]);
+    const gh = fakeGhDirs([listsFixture, renamed("0")]);
+    const poller = createPrPoller({ db: store, gh, now: () => new Date("2026-09-22T14:05:00Z") });
+
+    await poller.tick();
+
+    expect(gh.calls.map(call => call.cwd)).toEqual(["/dir/a", "/dir/b"]);
+    const prs = store.github.listPrs();
+    expect(prs).toHaveLength(4);
+    expect(store.github.listPrs({ dir: "/dir/a" }).map(pr => pr.number).sort()).toEqual([12, 20]);
+    expect(store.github.listPrs({ dir: "/dir/b" }).map(pr => pr.number).sort()).toEqual([12, 20]);
+    expect(poller.status().error).toBeNull();
+  });
+
+  test("a PR returned by two directories belongs to the first", async () => {
+    const store = withDirs(["/dir/a", "/dir/b"]);
+    const gh = fakeGhDirs([listsFixture, listsFixture]);
+    await createPrPoller({ db: store, gh, now: () => new Date("2026-09-22T14:05:00Z") }).tick();
+
+    expect(store.github.listPrs().map(pr => pr.source_dir)).toEqual(["/dir/a", "/dir/a"]);
+  });
+
+  test("no directories configured polls once with no cwd and source_dir null", async () => {
+    const store = openStore(":memory:");
+    const gh = fakeGhDirs([listsFixture]);
+    await createPrPoller({ db: store, gh, now: () => new Date("2026-09-22T14:05:00Z") }).tick();
+
+    expect(gh.calls.map(call => call.cwd)).toEqual([undefined]);
+    expect(store.github.listPrs().every(pr => pr.source_dir === null)).toBe(true);
+  });
+
+  test("one failing directory is reported in status.error while the others still land", async () => {
+    const store = withDirs(["/dir/a", "/dir/b"]);
+    const gh = fakeGhDirs([new Error("gh: not a git repository"), listsFixture]);
+    const poller = createPrPoller({ db: store, gh, now: () => new Date("2026-09-22T14:05:00Z") });
+
+    await poller.tick();
+
+    expect(store.github.listPrs()).toHaveLength(2);
+    expect(poller.status().last_poll_at).toBe("2026-09-22T14:05:00.000Z");
+    expect(poller.status().error).toBe("/dir/a: gh: not a git repository");
+  });
+
+  test("every directory failing counts as a failed tick", async () => {
+    const store = withDirs(["/dir/a", "/dir/b"]);
+    const gh = fakeGhDirs([new Error("down"), new Error("down too")]);
+    const poller = createPrPoller({ db: store, gh, now: () => new Date("2026-09-22T14:05:00Z") });
+
+    await poller.tick();
+
+    expect(poller.status().last_poll_at).toBeNull();
+    expect(poller.status().error).toBe("/dir/a: down; /dir/b: down too");
+  });
+
+  test("watched PRs outside the lists are batched by their own directory", async () => {
+    const store = withDirs(["/dir/a", "/dir/b"]);
+    seedWatched(store, { source_dir: "/dir/b" });
+    const gh = fakeGhDirs([listsFixture, renamed("0"), watchedFixture]);
+    await createPrPoller({ db: store, gh, now: () => new Date("2026-09-22T14:05:00Z") }).tick();
+
+    expect(gh.calls).toHaveLength(3);
+    expect(gh.calls[2].cwd).toBe("/dir/b");
+    expect(gh.calls[2].query).toContain("pullRequest(number: 40)");
+    expect(store.github.findPrByUrl("https://github.com/acme/app/pull/40")?.source_dir).toBe("/dir/b");
+  });
+
+  test("fetchOne tries each directory until one returns the PR", async () => {
+    const store = withDirs(["/dir/a", "/dir/b"]);
+    const gh = fakeGhDirs([{ pr0: { pullRequest: null }, rateLimit: { remaining: 10, resetAt: "t" } }, watchedFixture]);
+    const poller = createPrPoller({ db: store, gh, now: () => new Date("2026-09-22T14:05:00Z") });
+
+    const pr = await poller.fetchOne({ owner: "acme", repo: "app", number: 40 });
+
+    expect(gh.calls.map(call => call.cwd)).toEqual(["/dir/a", "/dir/b"]);
+    expect(pr.source_dir).toBe("/dir/b");
   });
 });

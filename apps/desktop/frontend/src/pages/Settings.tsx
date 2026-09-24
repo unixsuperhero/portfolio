@@ -4,6 +4,7 @@ import { addProjectParent, addWatchedDirectory, getSettings, listPortfolios, pat
 import { getLinksOpenIn, setLinksOpenIn, type LinksOpenIn } from "../context-menu/ContextMenu.tsx";
 import { useSidecarStatus } from "../hooks/useSidecarStatus.ts";
 import { PathField } from "../components/PathField.tsx";
+import "../operational.css";
 import { getTerminalOptionAsAlt, setTerminalOptionAsAlt, type TerminalOptionAsAlt } from "../terminal/GhosttyTerminal.tsx";
 
 export default function Settings() {
@@ -16,6 +17,8 @@ export default function Settings() {
   const [ignoredChecksText, setIgnoredChecksText] = useState("");
   const [pollMinutes, setPollMinutes] = useState("2");
   const [savingGithub, setSavingGithub] = useState(false);
+  const [newGithubDir, setNewGithubDir] = useState("");
+  const [githubDirError, setGithubDirError] = useState("");
   const status = useSidecarStatus();
 
   const load = () => getSettings().then(loaded => {
@@ -42,6 +45,18 @@ export default function Settings() {
     event.preventDefault();
     if (!newParentDir.trim()) return;
     addProjectParent(newParentDir.trim()).then(() => { setNewParentDir(""); load(); }).catch(() => {});
+  };
+
+  const githubDirs = settings?.github_dirs ?? [];
+  const saveGithubDirs = (dirs: string[]) => {
+    setGithubDirError("");
+    return patchSettings({ github_dirs: dirs }).then(load).catch(err => setGithubDirError(err instanceof Error ? err.message : "Could not save GitHub directories."));
+  };
+  const addGithubDir = (event: React.FormEvent) => {
+    event.preventDefault();
+    const dir = newGithubDir.trim();
+    if (!dir) return;
+    void saveGithubDirs([...githubDirs, dir]).then(() => setNewGithubDir(""));
   };
 
   const saveGithub = (event: React.FormEvent) => {
@@ -93,6 +108,26 @@ export default function Settings() {
         <label>Poll every (minutes)<input type="number" min={1} value={pollMinutes} onChange={event => setPollMinutes(event.target.value)} /></label>
         <button className="primary" type="submit" disabled={savingGithub}>Save GitHub settings</button>
       </form>
+
+      <h3 style={{ marginTop: "1.25rem" }}>PR check directories</h3>
+      <p style={{ color: "var(--text2)", margin: "0 0 0.6rem" }}>gh runs from each directory in turn, so each one's git remote decides which host and credentials answer. Empty means the API's own directory.</p>
+      <form className="field-row" onSubmit={addGithubDir}>
+        <PathField label="Path" kind="dir" value={newGithubDir} onChange={setNewGithubDir} placeholder="~/work/carrot" />
+        <button className="secondary" type="submit">Add</button>
+      </form>
+      {githubDirError ? <p className="operational-error">{githubDirError}</p> : null}
+      <table className="data-table">
+        <thead><tr><th>Path</th><th></th></tr></thead>
+        <tbody>
+          {githubDirs.map(dir => (
+            <tr key={dir}>
+              <td><code>{dir}</code></td>
+              <td><button type="button" className="danger" onClick={() => void saveGithubDirs(githubDirs.filter(entry => entry !== dir))}>Remove</button></td>
+            </tr>
+          ))}
+          {!githubDirs.length ? <tr><td colSpan={2} className="empty-table-cell">None. gh runs from the API's own directory.</td></tr> : null}
+        </tbody>
+      </table>
 
       <h2 style={{ marginTop: "1.5rem" }}>Watched directories</h2>
       <form className="field-row" onSubmit={addWatchDir}>

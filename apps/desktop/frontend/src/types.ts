@@ -115,6 +115,8 @@ export interface Pr {
   ignored_checks: string[];
   lists: PrList[];
   item_id: number | null;
+  /** The settings.github_dirs entry gh ran from; null for the API's own cwd. */
+  source_dir: string | null;
   fetched_at: string;
 }
 
@@ -146,4 +148,4 @@ export interface PrsResponse {
 
 /** Settings gains github_ignored_checks / github_poll_minutes; kept optional here since
  * @portfolio/core's Settings type may not have caught up yet. */
-export type SettingsView = Settings & { github_ignored_checks?: string[]; github_poll_minutes?: number };
+export type SettingsView = Settings & { github_ignored_checks?: string[]; github_poll_minutes?: number; github_dirs?: string[] };

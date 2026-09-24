@@ -318,6 +318,7 @@ const pr = {
   watched: true, ignored_checks: ["codecov/patch"],             // per PR; settings.github_ignored_checks is global (glob patterns like "codecov/*")
   lists: ["mine", "review_requested"],    // which search lists it currently appears in ([] for watched-only)
   item_id: 42 | null,                     // the library `pr` item, created when watched
+  source_dir: "/Users/me/work/carrot" | null, // the settings.github_dirs entry gh ran from; null = the API's own cwd
   fetched_at: "2026-09-22T14:02:00Z",
 };
 const prEvent = { id: 1, pr_id: 7, kind: "state" | "comments" | "checks" | "review", message: "acme/app#12 merged", at: "…", seen: false };
@@ -327,15 +328,18 @@ const prStatus = { last_poll_at, next_poll_at, rate: { remaining, reset_at } | n
 Schema: `github_prs` (id, url UNIQUE, owner, repo, number, title, author, is_draft, state, review_decision, updated_at,
 comments, checks JSON, lists JSON, watched 0/1, ignored_checks JSON, item_id nullable FK, fetched_at) and
 `github_pr_events` (id, pr_id FK cascade, kind, message, at, seen 0/1). Settings keys: `github_ignored_checks` (JSON array),
-`github_poll_minutes` (default 2).
+`github_poll_minutes` (default 2), `github_dirs` (JSON array of absolute paths, default `[]`).
 
 Polling (in `packages/api/src/server.ts`, started only when `gh auth status` succeeds):
-- One GraphQL request refreshes both search lists: `search(query:"is:pr is:open author:@me")` and
+- `gh` runs from each `github_dirs` entry in turn (cwd only; gh resolves the host and credentials from that directory's git
+  remote). With no entries it runs from the API's own cwd. A PR belongs to the first directory that returns it (`source_dir`);
+  a directory that fails is reported in `prStatus.error` and skipped, and the tick fails only when every directory fails.
+- Per directory, one GraphQL request refreshes both search lists: `search(query:"is:pr is:open author:@me")` and
   `search(query:"is:pr is:open review-requested:@me")` as two aliases, first 50 each, plus `rateLimit { remaining resetAt }`.
 - One GraphQL request refreshes every watched PR not already in those results: `repository(owner,name){ pullRequest(number) }`
-  aliases, batched (≤ 25 per request).
+  aliases, batched (≤ 25 per request) and grouped by the PR's `source_dir`, so each batch runs from its own directory.
 - Cadence: every `github_poll_minutes` (2) when at least one PR is watched, else every 10 minutes; also on
-  `POST /api/prs/refresh` (rate-limited to once per 30s). Never more than 2 requests per cycle. If `rateLimit.remaining < 200`
+  `POST /api/prs/refresh` (rate-limited to once per 30s). Never more than 2 requests per directory per cycle. If `rateLimit.remaining < 200`
   skip cycles until `resetAt`. On error: exponential backoff up to 15 minutes, error surfaced in `prStatus`.
 - Diffing (pure, tested): compare the stored row to the new one and append events for: state change, review_decision change,
   comments increase (message says how many new), and checks_summary change computed over non-ignored checks (global + per PR).
@@ -344,11 +348,11 @@ Routes:
 ```text
 GET    /api/prs                        → { mine: Pr[], review_requested: Pr[], watched: Pr[], status: PrStatus }
 POST   /api/prs/refresh                → same as GET after a forced poll (429 { error } when called within 30s)
-POST   /api/prs/watch { url, watched }  → Pr        (creates the github_prs row from a URL if unknown, fetches it once; creates/links a library `pr` item when watched)
+POST   /api/prs/watch { url, watched }  → Pr        (creates the github_prs row from a URL if unknown, trying each github_dirs entry until one returns it; creates/links a library `pr` item when watched)
 PATCH  /api/prs/:id { ignored_checks }  → Pr
 GET    /api/prs/events?since=<id>      → { events: PrEvent[] }   (unseen and newer than since)
 POST   /api/prs/events/seen { ids }    → { ok }
-GET/PATCH /api/settings                 gain github_ignored_checks: string[] and github_poll_minutes: number
+GET/PATCH /api/settings                 gain github_ignored_checks: string[], github_poll_minutes: number, and github_dirs: string[] (absolute paths; 422 otherwise)
 ```
 
 Frontend: sidebar entry "PRs" → `/prs` page with three portfolio-style cards (same `DashboardCard` chrome as the portfolio page):
@@ -358,7 +362,9 @@ Frontend: sidebar entry "PRs" → `/prs` page with three portfolio-style cards (
 context menu and in-app browser work. `prs` card kind: `config: { list: "mine" | "review_requested" | "watched" }` renders the
 same rows inside a portfolio. Notifications: the existing 60s reminder poll gains `GET /api/prs/events` (own state only):
 each new event → in-app toast + `native.notify` + a short WebAudio ping (`src/lib/sound.ts`, no audio asset), then
-`POST /api/prs/events/seen`. Settings page: global ignored checks (one per line) and poll minutes.
+`POST /api/prs/events/seen`. Settings page: global ignored checks (one per line), poll minutes, and the PR check directories
+(add with the directory picker, remove per row). PRs page: rows show the directory's basename as a chip (full path on hover);
+the toolbar filters by directory, sorts by it, and the search matches it.
 
 ## Native pickers, reminder days, projects filters (added 2026-09-22, round 2)
 

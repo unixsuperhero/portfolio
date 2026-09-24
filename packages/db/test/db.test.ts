@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addProjectParent, addWatchedDirectory, cardItems, categoryMembers, claimItem, completeReminder, completeTask, countByType, createCard, createCategory, createPortfolio, createReminder, createTask, deleteCard, deleteItems, deletePortfolio, deleteTask, dueReminders, ensureCategory, getCard, getHomePortfolioId, getItem, getTask, listItems, listProjectParents, listReminderViews, listTags, listTaskViews, listTasks, memberSlots, migrateCardColumns, migrateReminderColumns, moveCard, openDatabase, openStore, portfolioCards, portfolioView, readSchema, removeTags, removeWatchedDirectory, setHomePortfolioId, setPathAndCategory, setReminders, setSlotOverride, setTags, taskView, todayReminders, toggleItemField, uncompleteTask, updateCard, updateCategory, updateItem, updateTask, upsertItem, viewItem } from "../src/index.ts";
+import { addProjectParent, addWatchedDirectory, cardItems, categoryMembers, claimItem, completeReminder, completeTask, countByType, createCard, createCategory, createPortfolio, createReminder, createTask, deleteCard, deleteItems, deletePortfolio, deleteTask, dueReminders, ensureCategory, getCard, getHomePortfolioId, getItem, getTask, listItems, listProjectParents, listReminderViews, listTags, listTaskViews, listTasks, memberSlots, migrateCardColumns, migrateGithubPrColumns, migrateReminderColumns, moveCard, openDatabase, openStore, portfolioCards, portfolioView, readSchema, removeTags, removeWatchedDirectory, setHomePortfolioId, setPathAndCategory, setReminders, setSlotOverride, setTags, taskView, todayReminders, toggleItemField, uncompleteTask, updateCard, updateCategory, updateItem, updateTask, upsertItem, viewItem } from "../src/index.ts";
 
 const fresh = () => openDatabase(":memory:");
 
@@ -140,6 +140,16 @@ describe("card kind and config", () => {
     const columns = raw.query("PRAGMA table_info(cards)").all().map((c: any) => c.name);
     expect(columns).toContain("kind");
     expect(columns).toContain("config");
+    raw.close();
+  });
+
+  test("migrateGithubPrColumns adds source_dir to a pre-existing github_prs table", () => {
+    const raw = new Database(":memory:");
+    const schema = readSchema().replace(/\s*-- the settings\.github_dirs entry gh ran from; NULL for the API's own cwd\n\s*source_dir TEXT,\n/, "\n");
+    raw.exec(schema);
+    expect(raw.query("PRAGMA table_info(github_prs)").all().map((c: any) => c.name)).not.toContain("source_dir");
+    migrateGithubPrColumns(raw);
+    expect(raw.query("PRAGMA table_info(github_prs)").all().map((c: any) => c.name)).toContain("source_dir");
     raw.close();
   });
 });

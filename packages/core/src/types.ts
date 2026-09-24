@@ -255,6 +255,8 @@ export interface Settings {
   project_parents: { id: number; path: string; count: number }[];
   github_ignored_checks: string[];
   github_poll_minutes: number;
+  /** Directories gh runs from when polling, in order. Empty means the API's own cwd. */
+  github_dirs: string[];
 }
 
 export type PrState = "open" | "closed" | "merged";
@@ -296,6 +298,8 @@ export interface Pr {
   lists: string[];
   /** The library `pr` item, created when watched. */
   item_id: number | null;
+  /** The github_dirs entry gh ran from when this PR was fetched; null for the API's own cwd. */
+  source_dir: string | null;
   fetched_at: string;
 }
 

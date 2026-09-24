@@ -58,7 +58,7 @@ export function parseCheck(node: CheckContextNode): { name: string; status: Chec
 }
 
 /** Parses a GraphQL `...prFields` node into the contract's Pr shape. `ignored_checks` and `watched` carry over from the stored row. */
-export function parsePrNode(node: PrNode, existing: { ignored_checks?: string[]; watched?: boolean; lists?: string[]; item_id?: number | null } = {}, fetchedAt: string = new Date().toISOString()): Omit<Pr, "id"> {
+export function parsePrNode(node: PrNode, existing: { ignored_checks?: string[]; watched?: boolean; lists?: string[]; item_id?: number | null; source_dir?: string | null } = {}, fetchedAt: string = new Date().toISOString()): Omit<Pr, "id"> {
   const contexts = node.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes ?? [];
   const ignored_checks = existing.ignored_checks ?? [];
   const checks = contexts.map(context => {
@@ -83,6 +83,7 @@ export function parsePrNode(node: PrNode, existing: { ignored_checks?: string[];
     ignored_checks,
     lists: existing.lists ?? [],
     item_id: existing.item_id ?? null,
+    source_dir: existing.source_dir ?? null,
     fetched_at: fetchedAt,
   };
 }

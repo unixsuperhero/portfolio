@@ -12,6 +12,7 @@ export function settingsView(ctx: Ctx): Settings {
     project_parents: ctx.store.projects.listProjectParents(),
     github_ignored_checks: ctx.store.settings.getGithubIgnoredChecks(),
     github_poll_minutes: ctx.store.settings.getGithubPollMinutes(),
+    github_dirs: ctx.store.settings.getGithubDirs(),
   };
 }
 
@@ -25,6 +26,12 @@ export async function patchSettingsRoute(ctx: Ctx, request: Request): Promise<Re
   if ("pastry_enabled" in body) ctx.store.settings.setFlag("pastry_enabled", Boolean(body.pastry_enabled));
   if ("github_ignored_checks" in body) ctx.store.settings.setGithubIgnoredChecks(Array.isArray(body.github_ignored_checks) ? body.github_ignored_checks.map(String) : []);
   if ("github_poll_minutes" in body) ctx.store.settings.setGithubPollMinutes(Number(body.github_poll_minutes));
+  if ("github_dirs" in body) {
+    const dirs = Array.isArray(body.github_dirs) ? body.github_dirs.map(String).map(dir => dir.trim()).filter(Boolean) : [];
+    const relative = dirs.find(dir => !isAbsolute(dir));
+    if (relative) return error(422, `GitHub directory must be an absolute path: ${relative}`);
+    ctx.store.settings.setGithubDirs(dirs.map(dir => resolve(dir)));
+  }
   return json(settingsView(ctx));
 }
 
