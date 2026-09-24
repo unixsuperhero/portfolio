@@ -37,6 +37,43 @@ describe("createPrPoller.tick", () => {
     expect(status.error).toBeNull();
   });
 
+  test("a lists query GitHub times out on is retried one list at a time", async () => {
+    const store = openStore(":memory:");
+    const calls: string[] = [];
+    const gh = {
+      graphql: async (query: string) => {
+        calls.push(query);
+        if (calls.length === 1) throw new Error("gh: HTTP 504");
+        if (query.includes("mine: search")) return { mine: listsFixture.mine, rateLimit: listsFixture.rateLimit };
+        return { review_requested: listsFixture.review_requested, rateLimit: listsFixture.rateLimit };
+      },
+    };
+    const logged: string[] = [];
+    const poller = createPrPoller({ db: store, gh, now: () => new Date("2026-09-22T14:05:00Z"), log: m => logged.push(m) });
+
+    await poller.tick();
+
+    expect(calls).toHaveLength(3);
+    expect(calls[1]).toContain("first: 20");
+    expect(calls[1]).not.toContain("review_requested");
+    expect(calls[2]).toContain("review_requested: search");
+    expect(store.github.listPrs()).toHaveLength(2);
+    expect(poller.status().error).toBeNull();
+    expect(logged[0]).toContain("HTTP 504");
+  });
+
+  test("a non-timeout failure on the lists query is not retried", async () => {
+    const store = openStore(":memory:");
+    const calls: string[] = [];
+    const gh = { graphql: async (query: string) => { calls.push(query); throw new Error("gh: Not Found (HTTP 404)"); } };
+    const poller = createPrPoller({ db: store, gh, now: () => new Date("2026-09-22T14:05:00Z") });
+
+    await poller.tick();
+
+    expect(calls).toHaveLength(1);
+    expect(poller.status().error).toContain("HTTP 404");
+  });
+
   test("1 request when nothing watched falls outside the lists", async () => {
     const store = openStore(":memory:");
     const gh = fakeGh([listsFixture]);

@@ -3,8 +3,8 @@ import type { PrEventDraft } from "@portfolio/db";
 import { applyIgnored, checksSummary, diffPr } from "./diff.ts";
 import { parsePrNode, watchedNodes } from "./parse.ts";
 import type { ListsResponse, PrNode, WatchedResponse } from "./parse.ts";
-import { listsQuery, watchedQuery } from "./query.ts";
-import type { PrRef } from "./query.ts";
+import { listQuery, listsQuery, watchedQuery } from "./query.ts";
+import type { ListName, PrRef } from "./query.ts";
 
 /** The subset of @portfolio/db's Store this poller needs. Duck-typed so tests can pass a fake. */
 export interface PollerDb {
@@ -39,6 +39,11 @@ const RATE_LIMIT_FLOOR = 200;
 const NO_WATCHED_MINUTES = 10;
 const REFRESH_MIN_GAP_MS = 30_000;
 const BASE_BACKOFF_MS = 60_000;
+/** Page size for the per-list retry after the combined query times out on GitHub's side. */
+const FALLBACK_LIST_PAGE = 20;
+
+/** GitHub's GraphQL backend gave up on the query: gh reports the bare gateway status, or GraphQL says timeout. */
+const isGatewayTimeout = (err: unknown): boolean => /HTTP 50[234]\b|timeout|timed out/i.test((err as Error).message ?? "");
 const MAX_BACKOFF_MS = 15 * 60_000;
 
 export class PollTooSoonError extends Error {
@@ -48,7 +53,8 @@ export class PollTooSoonError extends Error {
   }
 }
 
-/** One cycle's request(s), the diff, and the schedule around it. Never more than 2 GraphQL requests per directory per tick. */
+/** One cycle's request(s), the diff, and the schedule around it. Never more than 2 GraphQL requests per directory per tick,
+ * except that a lists query GitHub times out on is retried as two smaller ones. */
 export function createPrPoller(options: PollerOptions) {
   const { db, gh } = options;
   const now = options.now ?? (() => new Date());
@@ -86,6 +92,20 @@ export function createPrPoller(options: PollerOptions) {
 
   const ghOptions = (dir: string | null) => (dir === null ? undefined : { cwd: dir });
 
+  /** The combined lists query, or, when GitHub times out on it, each list on its own with a smaller page. */
+  async function fetchLists(dir: string | null): Promise<ListsResponse> {
+    try {
+      return (await gh.graphql(listsQuery(), ghOptions(dir))) as ListsResponse;
+    } catch (err) {
+      if (!isGatewayTimeout(err)) throw err;
+      log(`${dir ?? "default dir"}: lists query timed out (${(err as Error).message}); retrying one list at a time, ${FALLBACK_LIST_PAGE} per list`);
+    }
+    const one = async (list: ListName) => (await gh.graphql(listQuery(list, FALLBACK_LIST_PAGE), ghOptions(dir))) as Partial<ListsResponse>;
+    const mine = await one("mine");
+    const reviewRequested = await one("review_requested");
+    return { mine: mine.mine!, review_requested: reviewRequested.review_requested!, rateLimit: reviewRequested.rateLimit! };
+  }
+
   async function processNode(node: PrNode, lists: string[], globalIgnored: string[], fetchedAt: string, events: PrEventDraft[], dir: string | null): Promise<void> {
     const previous = db.github.findPrByUrl(node.url);
     const parsed = finalize(parsePrNode(node, { ignored_checks: previous?.ignored_checks ?? [], watched: previous?.watched ?? false, item_id: previous?.item_id ?? null, lists, source_dir: dir }, fetchedAt), globalIgnored);
@@ -121,7 +141,7 @@ export function createPrPoller(options: PollerOptions) {
       for (const dir of dirs) {
         let listsData: ListsResponse;
         try {
-          listsData = (await gh.graphql(listsQuery(), ghOptions(dir))) as ListsResponse;
+          listsData = await fetchLists(dir);
         } catch (err) {
           failures.push(`${dir ?? "default dir"}: ${(err as Error).message}`);
           continue;

@@ -35,16 +35,38 @@ const PR_FRAGMENT = `fragment prFields on PullRequest {\n${PR_FIELDS}\n}`;
 /** Escapes a string for inclusion in a double-quoted GraphQL string literal. */
 const gqlString = (value: string): string => JSON.stringify(value);
 
+export type ListName = "mine" | "review_requested";
+
+const LIST_SEARCH: Record<ListName, string> = {
+  mine: "is:pr is:open author:@me",
+  review_requested: "is:pr is:open review-requested:@me",
+};
+
+/**
+ * One search list on its own with a smaller page, plus rateLimit. The poller falls back to
+ * this when the combined lists query times out on GitHub's side (HTTP 502/504), which
+ * happens for accounts with many open PRs that each carry hundreds of check contexts.
+ */
+export function listQuery(list: ListName, first: number): string {
+  return `query {
+  ${list}: search(query: ${gqlString(LIST_SEARCH[list])}, type: ISSUE, first: ${first}) {
+    nodes { ... on PullRequest { ...prFields } }
+  }
+  rateLimit { remaining resetAt }
+}
+${PR_FRAGMENT}`;
+}
+
 /**
  * Both search lists (`is:pr is:open author:@me` and `is:pr is:open review-requested:@me`,
  * first 50 each) plus rateLimit, as one GraphQL document.
  */
 export function listsQuery(): string {
   return `query {
-  mine: search(query: ${gqlString("is:pr is:open author:@me")}, type: ISSUE, first: 50) {
+  mine: search(query: ${gqlString(LIST_SEARCH.mine)}, type: ISSUE, first: 50) {
     nodes { ... on PullRequest { ...prFields } }
   }
-  review_requested: search(query: ${gqlString("is:pr is:open review-requested:@me")}, type: ISSUE, first: 50) {
+  review_requested: search(query: ${gqlString(LIST_SEARCH.review_requested)}, type: ISSUE, first: 50) {
     nodes { ... on PullRequest { ...prFields } }
   }
   rateLimit { remaining resetAt }
