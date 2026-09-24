@@ -5,6 +5,7 @@ import { getLinksOpenIn, setLinksOpenIn, type LinksOpenIn } from "../context-men
 import { useSidecarStatus } from "../hooks/useSidecarStatus.ts";
 import { PathField } from "../components/PathField.tsx";
 import "../operational.css";
+import "../forms.css";
 import { getTerminalOptionAsAlt, setTerminalOptionAsAlt, type TerminalOptionAsAlt } from "../terminal/GhosttyTerminal.tsx";
 
 export default function Settings() {
@@ -74,103 +75,121 @@ export default function Settings() {
     <div>
       <div className="page-header"><h1>Settings</h1></div>
 
-      <h2>Homepage</h2>
-      <select value={settings.home_portfolio_id ?? ""} onChange={event => setHome(event.target.value)}>
-        <option value="">None</option>
-        {portfolios.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-      </select>
-
-      <h2 style={{ marginTop: "1.5rem" }}>External links</h2>
-      <div className="field-row">
-        <label><input type="radio" name="links" checked={linksOpenIn === "in-app"} onChange={() => changeLinks("in-app")} /> Open in in-app browser</label>
-        <label><input type="radio" name="links" checked={linksOpenIn === "system"} onChange={() => changeLinks("system")} /> Open in system browser</label>
-      </div>
-
-      <h2 style={{ marginTop: "1.5rem" }}>Terminal</h2>
-      <label>Option key acts as Alt
-        <select value={optionAsAlt} onChange={event => changeOptionAsAlt(event.target.value as TerminalOptionAsAlt)}>
-          <option value="false">Off</option>
-          <option value="true">On</option>
-          <option value="left">Left only</option>
-          <option value="right">Right only</option>
+      <section className="settings-section">
+        <h2>Homepage</h2>
+        <p className="settings-section-description">The portfolio shown when the app opens.</p>
+        <select value={settings.home_portfolio_id ?? ""} onChange={event => setHome(event.target.value)}>
+          <option value="">None</option>
+          {portfolios.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
-      </label>
-      <p style={{ color: "var(--text2)" }}>On lets Option+key send Alt sequences (Meta) to shells and editors instead of typing special characters.</p>
+      </section>
 
-      <h2 style={{ marginTop: "1.5rem" }}>Pastry</h2>
-      <label><input type="checkbox" checked={settings.pastry_enabled} onChange={event => setPastry(event.target.checked)} /> Enable pastry</label>
+      <section className="settings-section">
+        <h2>External links</h2>
+        <div className="field-row">
+          <label><input type="radio" name="links" checked={linksOpenIn === "in-app"} onChange={() => changeLinks("in-app")} /> Open in in-app browser</label>
+          <label><input type="radio" name="links" checked={linksOpenIn === "system"} onChange={() => changeLinks("system")} /> Open in system browser</label>
+        </div>
+      </section>
 
-      <h2 style={{ marginTop: "1.5rem" }}>GitHub</h2>
-      <form className="simple-form" onSubmit={saveGithub}>
-        <label>Ignored checks (one glob per line, e.g. codecov/*)
-          <textarea value={ignoredChecksText} onChange={event => setIgnoredChecksText(event.target.value)} rows={4} />
+      <section className="settings-section">
+        <h2>Terminal</h2>
+        <label className="settings-field">Option key acts as Alt
+          <select value={optionAsAlt} onChange={event => changeOptionAsAlt(event.target.value as TerminalOptionAsAlt)}>
+            <option value="false">Off</option>
+            <option value="true">On</option>
+            <option value="left">Left only</option>
+            <option value="right">Right only</option>
+          </select>
         </label>
-        <label>Poll every (minutes)<input type="number" min={1} value={pollMinutes} onChange={event => setPollMinutes(event.target.value)} /></label>
-        <button className="primary" type="submit" disabled={savingGithub}>Save GitHub settings</button>
-      </form>
+        <p className="settings-section-description">On lets Option+key send Alt sequences (Meta) to shells and editors instead of typing special characters.</p>
+      </section>
 
-      <h3 style={{ marginTop: "1.25rem" }}>PR check directories</h3>
-      <p style={{ color: "var(--text2)", margin: "0 0 0.6rem" }}>gh runs from each directory in turn, so each one's git remote decides which host and credentials answer. Empty means the API's own directory.</p>
-      <form className="field-row" onSubmit={addGithubDir}>
-        <PathField label="Path" kind="dir" value={newGithubDir} onChange={setNewGithubDir} placeholder="~/work/carrot" />
-        <button className="secondary" type="submit">Add</button>
-      </form>
-      {githubDirError ? <p className="operational-error">{githubDirError}</p> : null}
-      <table className="data-table">
-        <thead><tr><th>Path</th><th></th></tr></thead>
-        <tbody>
-          {githubDirs.map(dir => (
-            <tr key={dir}>
-              <td><code>{dir}</code></td>
-              <td><button type="button" className="danger" onClick={() => void saveGithubDirs(githubDirs.filter(entry => entry !== dir))}>Remove</button></td>
-            </tr>
-          ))}
-          {!githubDirs.length ? <tr><td colSpan={2} className="empty-table-cell">None. gh runs from the API's own directory.</td></tr> : null}
-        </tbody>
-      </table>
+      <section className="settings-section">
+        <h2>Pastry</h2>
+        <label className="form-checkbox"><input type="checkbox" checked={settings.pastry_enabled} onChange={event => setPastry(event.target.checked)} /> Enable pastry</label>
+      </section>
 
-      <h2 style={{ marginTop: "1.5rem" }}>Watched directories</h2>
-      <form className="field-row" onSubmit={addWatchDir}>
-        <PathField label="Path" kind="dir" value={newWatchDir} onChange={setNewWatchDir} placeholder="~/proj" />
-        <button className="secondary" type="submit">Add</button>
-      </form>
-      <table className="data-table">
-        <thead><tr><th>Path</th><th>Recursive</th><th></th></tr></thead>
-        <tbody>
-          {settings.watched_directories.map(dir => (
-            <tr key={dir.id}>
-              <td><code>{dir.path}</code></td>
-              <td>{dir.recursive ? "yes" : "no"}</td>
-              <td><button type="button" className="danger" onClick={() => removeWatchedDirectory(dir.id).then(load)}>Remove</button></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <section className="settings-section">
+        <h2>GitHub</h2>
+        <form className="form-panel" onSubmit={saveGithub}>
+          <label>Ignored checks (one glob per line, e.g. codecov/*)
+            <textarea value={ignoredChecksText} onChange={event => setIgnoredChecksText(event.target.value)} rows={4} />
+          </label>
+          <label>Poll every (minutes)<input type="number" min={1} value={pollMinutes} onChange={event => setPollMinutes(event.target.value)} /></label>
+          <div className="form-actions">
+            <button className="primary" type="submit" disabled={savingGithub}>Save GitHub settings</button>
+          </div>
+        </form>
 
-      <h2 style={{ marginTop: "1.5rem" }}>Project parents</h2>
-      <form className="field-row" onSubmit={addParentDir}>
-        <PathField label="Path" kind="dir" value={newParentDir} onChange={setNewParentDir} placeholder="~/proj" />
-        <button className="secondary" type="submit">Add</button>
-      </form>
-      <table className="data-table">
-        <thead><tr><th>Path</th><th>Projects</th><th></th></tr></thead>
-        <tbody>
-          {settings.project_parents.map(parent => (
-            <tr key={parent.id}>
-              <td><code>{parent.path}</code></td>
-              <td>{parent.count}</td>
-              <td><button type="button" className="danger" onClick={() => removeProjectParent(parent.id).then(load)}>Remove</button></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+        <h3>PR check directories</h3>
+        <p className="settings-section-description">gh runs from each directory in turn, so each one's git remote decides which host and credentials answer. Empty means the API's own directory.</p>
+        <form className="field-row" onSubmit={addGithubDir}>
+          <PathField label="Path" kind="dir" value={newGithubDir} onChange={setNewGithubDir} placeholder="~/work/carrot" />
+          <button className="secondary" type="submit">Add</button>
+        </form>
+        {githubDirError ? <p className="operational-error">{githubDirError}</p> : null}
+        <table className="data-table">
+          <thead><tr><th>Path</th><th></th></tr></thead>
+          <tbody>
+            {githubDirs.map(dir => (
+              <tr key={dir}>
+                <td><code>{dir}</code></td>
+                <td><button type="button" className="danger" onClick={() => void saveGithubDirs(githubDirs.filter(entry => entry !== dir))}>Remove</button></td>
+              </tr>
+            ))}
+            {!githubDirs.length ? <tr><td colSpan={2} className="empty-table-cell">None. gh runs from the API's own directory.</td></tr> : null}
+          </tbody>
+        </table>
+      </section>
 
-      <h2 style={{ marginTop: "1.5rem" }}>Sidecar</h2>
-      <div className="sidecar-status">
-        <span className={`sidecar-dot ${status === "ok" ? "ok" : status === "down" ? "down" : ""}`} />
-        <span>{status === "ok" ? "Connected" : status === "down" ? "Offline" : "Checking…"}</span>
-      </div>
+      <section className="settings-section">
+        <h2>Watched directories</h2>
+        <form className="field-row" onSubmit={addWatchDir}>
+          <PathField label="Path" kind="dir" value={newWatchDir} onChange={setNewWatchDir} placeholder="~/proj" />
+          <button className="secondary" type="submit">Add</button>
+        </form>
+        <table className="data-table">
+          <thead><tr><th>Path</th><th>Recursive</th><th></th></tr></thead>
+          <tbody>
+            {settings.watched_directories.map(dir => (
+              <tr key={dir.id}>
+                <td><code>{dir.path}</code></td>
+                <td>{dir.recursive ? "yes" : "no"}</td>
+                <td><button type="button" className="danger" onClick={() => removeWatchedDirectory(dir.id).then(load)}>Remove</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
 
+      <section className="settings-section">
+        <h2>Project parents</h2>
+        <form className="field-row" onSubmit={addParentDir}>
+          <PathField label="Path" kind="dir" value={newParentDir} onChange={setNewParentDir} placeholder="~/proj" />
+          <button className="secondary" type="submit">Add</button>
+        </form>
+        <table className="data-table">
+          <thead><tr><th>Path</th><th>Projects</th><th></th></tr></thead>
+          <tbody>
+            {settings.project_parents.map(parent => (
+              <tr key={parent.id}>
+                <td><code>{parent.path}</code></td>
+                <td>{parent.count}</td>
+                <td><button type="button" className="danger" onClick={() => removeProjectParent(parent.id).then(load)}>Remove</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      <section className="settings-section">
+        <h2>Sidecar</h2>
+        <div className="sidecar-status">
+          <span className={`sidecar-dot ${status === "ok" ? "ok" : status === "down" ? "down" : ""}`} />
+          <span>{status === "ok" ? "Connected" : status === "down" ? "Offline" : "Checking…"}</span>
+        </div>
+      </section>
     </div>
   );
 }

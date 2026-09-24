@@ -9,6 +9,9 @@ import { isWails } from "../lib/wails.ts";
 import { home, pickDirectory, pickFile } from "../native.ts";
 import { BrowsePicker } from "../components/BrowsePicker.tsx";
 import { CollectionToolbar, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
+import { AddTextarea } from "../components/AddTextarea.tsx";
+import { useConfirm } from "../components/ConfirmDialog.tsx";
+import "../forms.css";
 
 type SortKey = "name" | "members";
 
@@ -23,6 +26,7 @@ export default function Categories() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const { confirm, dialog } = useConfirm();
 
   const query = params.get("q") ?? "";
   const kindFilter = params.get("kind") ?? "";
@@ -93,9 +97,9 @@ export default function Categories() {
       .finally(() => setBusy(false));
   };
 
-  const deleteSelected = () => {
+  const deleteSelected = async () => {
     if (!selectedIds.length) return;
-    if (!window.confirm(`Delete ${selectedIds.length} categor${selectedIds.length === 1 ? "y" : "ies"}? Items and disk files are preserved.`)) return;
+    if (!(await confirm({ title: `Delete ${selectedIds.length} categor${selectedIds.length === 1 ? "y" : "ies"}?`, body: "Items and disk files are preserved." }))) return;
     setBusy(true);
     setError("");
     Promise.allSettled(selectedIds.map(deleteCategory))
@@ -108,22 +112,30 @@ export default function Categories() {
       .finally(() => setBusy(false));
   };
 
+  const deleteOne = async (category: CategorySummary) => {
+    if (!(await confirm({ title: `Delete ${category.name}?`, body: "Items and disk files are preserved." }))) return;
+    deleteCategory(category.id).then(load).catch(error => setError((error as Error).message));
+  };
+
   return (
     <div>
       <div className="page-header"><h1>Categories</h1></div>
-      <form className="simple-form" onSubmit={submit}>
-        <label>Name<input value={name} onChange={event => setName(event.target.value)} required /></label>
-        <label>Kind
-          <select value={kind} onChange={event => setKind(event.target.value as ItemType)}>
-            {ITEM_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
-          </select>
-        </label>
+      {dialog}
+      <form className="form-panel" onSubmit={submit}>
+        <div className="form-row">
+          <label>Name<AddTextarea value={name} onChange={setName} required /></label>
+          <label>Kind
+            <select value={kind} onChange={event => setKind(event.target.value as ItemType)}>
+              {ITEM_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+            </select>
+          </label>
+        </div>
         <label>Slots (one per line: name | kind | path)<textarea value={slots} onChange={event => setSlots(event.target.value)} placeholder={"tasks | file | TASKS.md\nlogs | dir | ~/Library/Logs/thing"} /></label>
-        <div className="page-actions">
+        <div className="form-actions">
+          <button className="primary" type="submit" disabled={busy}>Create category</button>
           <button type="button" className="secondary" onClick={() => insertSlotPath("dir")}>Insert directory…</button>
           <button type="button" className="secondary" onClick={() => insertSlotPath("file")}>Insert file…</button>
         </div>
-        <button className="primary" type="submit" disabled={busy}>Create category</button>
       </form>
       {browsing ? (
         <BrowsePicker kind="dir" onClose={() => setBrowsing(false)} onPick={path => { insertSlotLine("dir", path); setBrowsing(false); }} />
@@ -168,7 +180,7 @@ export default function Categories() {
                 <td><Link to={`/categories/${category.id}`}>{category.name}</Link></td>
                 <td>{category.kind}</td>
                 <td>{category.member_count}</td>
-                <td><button type="button" className="danger" onClick={() => window.confirm(`Delete ${category.name}? Items and disk files are preserved.`) && deleteCategory(category.id).then(load).catch(error => setError((error as Error).message))}>Delete</button></td>
+                <td><button type="button" className="danger" onClick={() => void deleteOne(category)}>Delete</button></td>
               </tr>
             ))}
           </tbody>

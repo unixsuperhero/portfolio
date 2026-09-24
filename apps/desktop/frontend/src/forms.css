@@ -1,0 +1,141 @@
+/*
+ * Shared form styling for Categories, Reminders, and Settings.
+ * Labels sit above fields (matching packages/ui/src/cards.css .card-form), on the
+ * existing tokens/radius — this is a layout refinement, not a new visual system.
+ */
+
+.form-panel {
+  display: grid;
+  gap: .7rem;
+  max-width: 34rem;
+  margin-bottom: 1.5rem;
+}
+
+.form-panel label {
+  display: grid;
+  gap: .3rem;
+  color: var(--text2);
+  font-size: .78rem;
+  font-weight: 600;
+}
+
+.form-panel input,
+.form-panel select,
+.form-panel textarea,
+.form-panel .add-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  padding: .55rem .7rem;
+}
+:root[data-theme="light"] .form-panel input,
+:root[data-theme="light"] .form-panel select,
+:root[data-theme="light"] .form-panel textarea,
+:root[data-theme="light"] .form-panel .add-textarea {
+  background: var(--surface);
+}
+
+.form-panel textarea { min-height: 4.5rem; font-family: var(--mono); resize: vertical; }
+.form-panel .add-textarea { min-height: 2.4rem; font-family: inherit; resize: none; }
+
+.form-panel.form-panel-wide { max-width: none; }
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: .6rem;
+  align-items: start;
+}
+
+.form-actions {
+  display: flex;
+  gap: .5rem;
+  align-items: center;
+  margin-top: .1rem;
+}
+
+.form-checkbox {
+  display: flex !important;
+  flex-direction: row;
+  align-items: center;
+  gap: .5rem;
+  font-weight: 400 !important;
+  align-self: end;
+  padding-bottom: .55rem;
+}
+.form-checkbox input { width: auto; accent-color: var(--accent); }
+
+.form-weekdays {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  flex-wrap: wrap;
+}
+.form-weekdays > span {
+  color: var(--text2);
+  font-size: .78rem;
+  font-weight: 600;
+}
+
+.form-hint {
+  margin: -.2rem 0 0;
+  color: var(--text3);
+  font-size: .78rem;
+  font-weight: 400;
+}
+
+/* Category slot list */
+.slot-list {
+  display: grid;
+  gap: .3rem;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+  color: var(--text2);
+  font-size: .85rem;
+}
+.slot-list li { display: flex; gap: .5rem; align-items: baseline; }
+.slot-list code { color: var(--text); font-family: var(--mono); font-size: .82rem; }
+.category-kind { margin: -.5rem 0 1rem; color: var(--text3); font-size: .85rem; }
+
+/* Settings sections */
+.settings-section {
+  padding: 1.25rem 0;
+  border-top: 1px solid var(--border);
+}
+.settings-section:first-of-type { border-top: none; padding-top: 0; }
+.settings-section h2 { margin: 0 0 .3rem; font-size: 1rem; }
+.settings-section h3 { margin: 1.4rem 0 .3rem; font-size: .88rem; color: var(--text2); }
+.settings-section-description {
+  margin: 0 0 .9rem;
+  max-width: 60ch;
+  color: var(--text3);
+  font-size: .82rem;
+}
+.settings-section .data-table { margin-top: .5rem; }
+.settings-section .form-row + .data-table,
+.settings-section .field-row + .data-table {
+  margin-top: .75rem;
+}
+
+.settings-field {
+  display: grid;
+  gap: .35rem;
+  max-width: 20rem;
+  margin-bottom: .5rem;
+  color: var(--text2);
+  font-size: .85rem;
+}
+.settings-field select {
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  color: var(--text);
+  padding: .5rem .65rem;
+  font: inherit;
+}
+:root[data-theme="light"] .settings-field select { background: var(--surface); }

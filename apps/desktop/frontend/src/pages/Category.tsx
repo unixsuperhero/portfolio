@@ -5,6 +5,7 @@ import { ITEM_TYPES } from "@portfolio/core";
 import type { Category as CategoryType, ItemView } from "@portfolio/core";
 import { getCategory, toggleItem } from "../api.ts";
 import { CollectionToolbar, ItemBulkActions, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
+import "../forms.css";
 
 type SortKey = "title" | "created" | "updated" | "type";
 
@@ -64,9 +65,9 @@ export default function Category() {
   return (
     <div>
       <div className="page-header"><h1>{category.name}</h1></div>
-      <p style={{ color: "var(--text2)" }}>Kind: {category.kind}</p>
+      <p className="category-kind">Kind: {category.kind}</p>
       {category.slots.length ? (
-        <ul>{category.slots.map(slot => <li key={slot.name}><code>{slot.name}</code> ({slot.kind}) — {slot.path}</li>)}</ul>
+        <ul className="slot-list">{category.slots.map(slot => <li key={slot.name}><code>{slot.name}</code><span>({slot.kind}) — {slot.path}</span></li>)}</ul>
       ) : null}
       <CollectionToolbar
         query={query}

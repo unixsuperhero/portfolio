@@ -5,7 +5,9 @@ import { completeReminder, createReminder, deleteReminder, getTodayReminders, li
 import { CollectionToolbar, SelectionBar, useSelection } from "../components/CollectionTools.tsx";
 import { MarkdownContent } from "../components/MarkdownContent.tsx";
 import { AllDone, StreakBadge } from "../components/Completion.tsx";
+import { AddTextarea } from "../components/AddTextarea.tsx";
 import "../operational.css";
+import "../forms.css";
 
 type ReminderSort = "time" | "title";
 
@@ -72,41 +74,48 @@ function ScheduleEditor({ draft, onChange }: { draft: Draft; onChange: (draft: D
   };
 
   return <>
-    <label>Recurrence
-      <select value={draft.recurrence} onChange={event => setRecurrence(event.target.value as Recurrence)}>
-        <option value="daily">Daily</option>
-        <option value="once">Once</option>
-      </select>
-    </label>
-    {draft.recurrence === "once" ? (
-      <label>When<input type="datetime-local" value={draft.at} onChange={event => onChange({ ...draft, at: event.target.value })} required /></label>
-    ) : (
-      <div className="reminder-row-edit">
+    <div className="form-row">
+      <label>Recurrence
+        <select value={draft.recurrence} onChange={event => setRecurrence(event.target.value as Recurrence)}>
+          <option value="daily">Daily</option>
+          <option value="once">Once</option>
+        </select>
+      </label>
+      {draft.recurrence === "once" ? (
+        <label>When<input type="datetime-local" value={draft.at} onChange={event => onChange({ ...draft, at: event.target.value })} required /></label>
+      ) : (
         <label>Time<input type="time" value={draft.at} onChange={event => onChange({ ...draft, at: event.target.value })} required /></label>
+      )}
+    </div>
+    {draft.recurrence === "daily" ? (
+      <div className="form-weekdays">
+        <span>Days</span>
         <div className="weekday-toggles" aria-label="Reminder weekdays">
           {WEEKDAY_LABELS.map((label, day) => (
             <button type="button" key={day} className={`weekday-toggle ${draft.days.includes(day) ? "active" : ""}`} onClick={() => toggleDay(day)}>{label}</button>
           ))}
         </div>
       </div>
-    )}
+    ) : null}
   </>;
 }
 
 function ReminderForm({ draft, tasks, submitLabel, onChange, onSubmit, onCancel }: { draft: Draft; tasks: TaskView[]; submitLabel: string; onChange: (draft: Draft) => void; onSubmit: () => void; onCancel?: () => void }) {
   return (
-    <div className="simple-form" style={{ maxWidth: "none" }}>
-      <label>Title<input value={draft.title} onChange={event => onChange({ ...draft, title: event.target.value })} required /></label>
+    <div className="form-panel form-panel-wide">
+      <label>Title<AddTextarea value={draft.title} onChange={value => onChange({ ...draft, title: value })} onSubmit={onSubmit} required /></label>
       <label>Notes<textarea value={draft.notes} onChange={event => onChange({ ...draft, notes: event.target.value })} /></label>
       <ScheduleEditor draft={draft} onChange={onChange} />
-      <label>Task
-        <select value={draft.task_id ?? ""} onChange={event => onChange({ ...draft, task_id: event.target.value ? Number(event.target.value) : null })}>
-          <option value="">No task</option>
-          {tasks.map(task => <option key={task.id} value={task.id}>{task.title}</option>)}
-        </select>
-      </label>
-      <label><input type="checkbox" checked={draft.active} onChange={event => onChange({ ...draft, active: event.target.checked })} /> Active</label>
-      <div className="page-actions">
+      <div className="form-row">
+        <label>Task
+          <select value={draft.task_id ?? ""} onChange={event => onChange({ ...draft, task_id: event.target.value ? Number(event.target.value) : null })}>
+            <option value="">No task</option>
+            {tasks.map(task => <option key={task.id} value={task.id}>{task.title}</option>)}
+          </select>
+        </label>
+        <label className="form-checkbox"><input type="checkbox" checked={draft.active} onChange={event => onChange({ ...draft, active: event.target.checked })} /> Active</label>
+      </div>
+      <div className="form-actions">
         <button type="button" className="primary" onClick={onSubmit}>{submitLabel}</button>
         {onCancel ? <button type="button" className="secondary" onClick={onCancel}>Cancel</button> : null}
       </div>
@@ -226,7 +235,7 @@ export default function Reminders() {
       )) : <p style={{ color: "var(--text2)" }}>Nothing due today.</p>}
       {today.length && today.every(reminder => reminder.completed_today) ? <AllDone /> : null}
       <h2 style={{ marginTop: "1.5rem" }}>Add reminder</h2>
-      <form className="simple-form" onSubmit={event => { event.preventDefault(); submit(); }}>
+      <form onSubmit={event => { event.preventDefault(); submit(); }}>
         <ReminderForm draft={draft} tasks={tasks} submitLabel="Add reminder" onChange={setDraft} onSubmit={submit} />
       </form>
 
