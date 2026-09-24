@@ -199,7 +199,7 @@ Hiiro.run(*ARGV, plugins: [Pins]) {
     system 'wails3', 'package' 
   }
 
-  add_subcmd(:app) { |*args|
+  add_subcmd(:run) { |*args|
     system 'open', APP_PATH
   }
 
