@@ -1,5 +1,5 @@
 {
-  "viewer": { "login": "jearsh" },
+  "viewer": { "id": "U_jearsh" },
   "mine": {
     "issueCount": 1,
     "nodes": [
@@ -53,7 +53,7 @@
         "repository": { "owner": { "login": "acme" }, "name": "app" },
         "reviewRequests": {
           "nodes": [
-            { "requestedReviewer": { "__typename": "User", "login": "jearsh" } }
+            { "requestedReviewer": { "__typename": "User", "id": "U_jearsh" } }
           ]
         },
         "comments": { "totalCount": 0 },

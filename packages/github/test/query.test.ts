@@ -6,9 +6,9 @@ describe("PR list queries", () => {
     const query = listQuery("review_requested", 20);
 
     expect(query).toContain('search(query: "is:pr is:open -is:draft review-requested:@me"');
-    expect(query).toContain("viewer { login }");
+    expect(query).toContain("viewer { id }");
     expect(query).toContain("reviewRequests(first: 100)");
-    expect(query).toContain("... on User { login }");
+    expect(query).toContain("... on User { id }");
   });
 
   test("requests result counts so complete lists can be reconciled", () => {
