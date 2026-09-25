@@ -369,8 +369,10 @@ Polling (in `packages/api/src/server.ts`, started only when `gh auth status` suc
   remote). With no entries it runs from the API's own cwd. A PR belongs to the first directory that returns it (`source_dir`);
   a directory that fails is reported in `prStatus.error` and skipped, and the tick fails only when every directory fails.
 - Per directory, one GraphQL request refreshes both search lists: `search(query:"is:pr is:open author:@me")` and
-  `search(query:"is:pr is:open -is:draft user-review-requested:@me")` as two aliases, first 50 each, plus `rateLimit { remaining resetAt }`.
-  `issueCount` identifies complete review results so memberships removed from GitHub are removed locally without truncating a larger result set.
+  `search(query:"is:pr is:open -is:draft review-requested:@me")` as two aliases, first 50 each, plus the viewer login,
+  each candidate's `reviewRequests`, and `rateLimit { remaining resetAt }`. A review candidate enters `review_requested`
+  only when its requested reviewers contain a `User` whose login equals the viewer login; team requests are excluded.
+  `issueCount` identifies complete search results so removed memberships are reconciled without truncating a larger result set.
 - One GraphQL request refreshes every watched PR not already in those results: `repository(owner,name){ pullRequest(number) }`
   aliases, batched (≤ 25 per request) and grouped by the PR's `source_dir`, so each batch runs from its own directory.
 - Cadence: every `github_poll_minutes` (2) when at least one PR is watched, else every 10 minutes; also on

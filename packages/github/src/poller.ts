@@ -118,7 +118,10 @@ export function createPrPoller(options: PollerOptions) {
     }
     const mine = await fetchList(dir, "mine");
     const reviewRequested = await fetchList(dir, "review_requested");
-    return { mine: mine.mine!, review_requested: reviewRequested.review_requested!, rateLimit: reviewRequested.rateLimit! };
+    if (!mine.mine || !reviewRequested.viewer || !reviewRequested.review_requested || !reviewRequested.rateLimit) {
+      throw new Error("GitHub returned an incomplete pull request search response");
+    }
+    return { viewer: reviewRequested.viewer, mine: mine.mine, review_requested: reviewRequested.review_requested, rateLimit: reviewRequested.rateLimit };
   }
 
   /** A hidden PR (its own flag, or an ignored repo) is still stored, but never raises events. */
@@ -133,14 +136,19 @@ export function createPrPoller(options: PollerOptions) {
   }
 
   /** Remove review-list memberships that a complete direct-review search no longer returns. */
-  function reconcileReviewRequests(dir: string | null, list: ListsResponse["review_requested"]): void {
-    if (list.issueCount !== list.nodes.length) return;
-    const currentUrls = new Set(list.nodes.map(node => node.url));
+  function reconcileReviewRequests(dir: string | null, currentNodes: PrNode[], complete: boolean): void {
+    if (!complete) return;
+    const currentUrls = new Set(currentNodes.map(node => node.url));
     for (const pr of db.github.listPrs({ list: "review_requested", dir })) {
       if (currentUrls.has(pr.url)) continue;
       const { id: _id, ignored: _ignored, ...draft } = pr;
       db.github.upsertPr({ ...draft, lists: draft.lists.filter(name => name !== "review_requested") });
     }
+  }
+
+  function directlyRequests(node: PrNode, login: string): boolean {
+    return node.reviewRequests?.nodes.some(({ requestedReviewer }) =>
+      requestedReviewer.__typename === "User" && requestedReviewer.login.toLowerCase() === login.toLowerCase()) ?? false;
   }
 
   async function tick(): Promise<void> {
@@ -175,10 +183,12 @@ export function createPrPoller(options: PollerOptions) {
           failures.push(`${dir ?? "default dir"}: ${(err as Error).message}`);
           continue;
         }
-        reconcileReviewRequests(dir, listsData.review_requested);
+        const reviewSearch = listsData.review_requested;
+        const directReviewNodes = reviewSearch.nodes.filter(node => directlyRequests(node, listsData.viewer.login));
+        reconcileReviewRequests(dir, directReviewNodes, reviewSearch.issueCount === reviewSearch.nodes.length);
         const byUrl = new Map<string, { node: PrNode; lists: string[] }>();
         for (const node of listsData.mine.nodes) byUrl.set(node.url, { node, lists: [...(byUrl.get(node.url)?.lists ?? []), "mine"] });
-        for (const node of listsData.review_requested.nodes) byUrl.set(node.url, { node, lists: [...(byUrl.get(node.url)?.lists ?? []), "review_requested"] });
+        for (const node of directReviewNodes) byUrl.set(node.url, { node, lists: [...(byUrl.get(node.url)?.lists ?? []), "review_requested"] });
         for (const { node, lists } of byUrl.values()) {
           if (seenUrls.has(node.url)) continue; // first directory to return a PR owns it
           seenUrls.add(node.url);

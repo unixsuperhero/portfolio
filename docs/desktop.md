@@ -88,7 +88,8 @@ See [data-model.md](data-model.md) for the full shapes and
 The PRs page uses one full-width list, deduplicated by PR ID. The Collection
 selector switches between visible PRs, Mine, My Reviews, Watched, Ignored,
 and all loaded PRs including ignored ones. **My Reviews** includes only open,
-non-draft PRs where GitHub directly requested the signed-in user, not their teams.
+non-draft PRs whose live review-request records contain the signed-in GitHub
+username as a `User`; team requests do not qualify.
 
 Lifecycle badges pair text and SVG icons with semantic colors and matching row
 borders: **Draft** is muted with a dashed border, **Open** is green, **Merged** is

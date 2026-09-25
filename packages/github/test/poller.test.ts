@@ -82,8 +82,8 @@ describe("createPrPoller.tick", () => {
       graphql: async (query: string) => {
         calls.push(query);
         if (calls.length === 1) throw new Error("gh: HTTP 504");
-        if (query.includes("mine: search")) return { mine: listsFixture.mine, rateLimit: listsFixture.rateLimit };
-        return { review_requested: listsFixture.review_requested, rateLimit: listsFixture.rateLimit };
+        if (query.includes("mine: search")) return { viewer: listsFixture.viewer, mine: listsFixture.mine, rateLimit: listsFixture.rateLimit };
+        return { viewer: listsFixture.viewer, review_requested: listsFixture.review_requested, rateLimit: listsFixture.rateLimit };
       },
     };
     const logged: string[] = [];
@@ -107,9 +107,9 @@ describe("createPrPoller.tick", () => {
       graphql: async (query: string) => {
         calls.push(query);
         if (query.includes("review_requested: search") && query.includes("first: 5)")) {
-          return { review_requested: listsFixture.review_requested, rateLimit: listsFixture.rateLimit };
+          return { viewer: listsFixture.viewer, review_requested: listsFixture.review_requested, rateLimit: listsFixture.rateLimit };
         }
-        if (query.includes("mine: search") && !query.includes("review_requested")) return { mine: listsFixture.mine, rateLimit: listsFixture.rateLimit };
+        if (query.includes("mine: search") && !query.includes("review_requested")) return { viewer: listsFixture.viewer, mine: listsFixture.mine, rateLimit: listsFixture.rateLimit };
         throw new Error("gh: HTTP 502");
       },
     };
@@ -175,6 +175,19 @@ describe("createPrPoller.tick", () => {
 
     expect(store.github.getPr(staleId)?.lists).toEqual([]);
     expect(store.github.listPrs({ list: "review_requested" }).map(pr => pr.number)).toEqual([20]);
+  });
+
+  test("excludes team-only requests even when GitHub search returns them", async () => {
+    const store = openStore(":memory:");
+    const teamOnly = structuredClone(listsFixture);
+    Object.assign(teamOnly.review_requested.nodes[0], {
+      reviewRequests: { nodes: [{ requestedReviewer: { __typename: "Team", slug: "platform" } }] },
+    });
+    const poller = createPrPoller({ db: store, gh: fakeGh([teamOnly]), now: () => new Date("2026-09-22T14:05:00Z") });
+
+    await poller.tick();
+
+    expect(store.github.listPrs({ list: "review_requested" })).toEqual([]);
   });
 
   test("1 request when the only watched PR is already inside the lists", async () => {

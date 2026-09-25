@@ -30,6 +30,16 @@ const PR_FIELDS = `
   }
 `;
 
+const REVIEW_REQUEST_FIELDS = `
+    reviewRequests(first: 100) {
+      nodes {
+        requestedReviewer {
+          __typename
+          ... on User { login }
+        }
+      }
+    }`;
+
 const PR_FRAGMENT = `fragment prFields on PullRequest {\n${PR_FIELDS}\n}`;
 
 /** Escapes a string for inclusion in a double-quoted GraphQL string literal. */
@@ -39,7 +49,7 @@ export type ListName = "mine" | "review_requested";
 
 const LIST_SEARCH: Record<ListName, string> = {
   mine: "is:pr is:open author:@me",
-  review_requested: "is:pr is:open -is:draft user-review-requested:@me",
+  review_requested: "is:pr is:open -is:draft review-requested:@me",
 };
 
 /**
@@ -48,10 +58,12 @@ const LIST_SEARCH: Record<ListName, string> = {
  * happens for accounts with many open PRs that each carry hundreds of check contexts.
  */
 export function listQuery(list: ListName, first: number): string {
+  const reviewRequests = list === "review_requested" ? REVIEW_REQUEST_FIELDS : "";
   return `query {
+  viewer { login }
   ${list}: search(query: ${gqlString(LIST_SEARCH[list])}, type: ISSUE, first: ${first}) {
     issueCount
-    nodes { ... on PullRequest { ...prFields } }
+    nodes { ... on PullRequest { ...prFields${reviewRequests} } }
   }
   rateLimit { remaining resetAt }
 }
@@ -59,19 +71,19 @@ ${PR_FRAGMENT}`;
 }
 
 /**
- * Both search lists (`is:pr is:open author:@me` and
- * `is:pr is:open -is:draft user-review-requested:@me`, first 50 each) plus
- * rateLimit, as one GraphQL document.
+ * Both open search lists, with review requests fetched on review candidates so the
+ * poller can distinguish a direct user request from a team request.
  */
 export function listsQuery(): string {
   return `query {
+  viewer { login }
   mine: search(query: ${gqlString(LIST_SEARCH.mine)}, type: ISSUE, first: 50) {
     issueCount
     nodes { ... on PullRequest { ...prFields } }
   }
   review_requested: search(query: ${gqlString(LIST_SEARCH.review_requested)}, type: ISSUE, first: 50) {
     issueCount
-    nodes { ... on PullRequest { ...prFields } }
+    nodes { ... on PullRequest { ...prFields${REVIEW_REQUEST_FIELDS} } }
   }
   rateLimit { remaining resetAt }
 }

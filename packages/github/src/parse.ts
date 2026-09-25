@@ -16,6 +16,7 @@ export interface PrNode {
   comments: { totalCount: number };
   reviews: { totalCount: number };
   commits: { nodes: { commit: { statusCheckRollup: { contexts: { nodes: CheckContextNode[] } } | null } }[] };
+  reviewRequests?: { nodes: ReviewRequestNode[] };
 }
 
 interface CheckContextNode {
@@ -27,6 +28,10 @@ interface CheckContextNode {
   context?: string;
   state?: string;
   targetUrl?: string | null;
+}
+
+interface ReviewRequestNode {
+  requestedReviewer: { __typename: "User"; login: string } | { __typename: "Team" };
 }
 
 const CHECK_RUN_CONCLUSION: Record<string, CheckStatus> = {
@@ -102,7 +107,12 @@ interface SearchList {
   nodes: PrNode[];
 }
 
+interface Viewer {
+  login: string;
+}
+
 export interface ListsResponse {
+  viewer: Viewer;
   mine: SearchList;
   review_requested: SearchList;
   rateLimit: RateLimit;
