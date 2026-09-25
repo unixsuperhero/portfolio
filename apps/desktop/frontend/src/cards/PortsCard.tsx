@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { PortEntryWithProject } from "../types.ts";
 import { getPorts, killPort } from "../api.ts";
-import { openInApp } from "../native.ts";
+import { openSystem } from "../native.ts";
 
 export function PortsCard({ projectId }: { projectId?: number }) {
   const [ports, setPorts] = useState<PortEntryWithProject[] | null>(null);
@@ -24,7 +24,7 @@ export function PortsCard({ projectId }: { projectId?: number }) {
         <div className="port-row" key={`${entry.pid}-${entry.port}`}>
           <span>{entry.port}</span>
           <span style={{ color: "var(--text2)" }}>{entry.command}</span>
-          <button type="button" className="secondary" onClick={() => void openInApp(`http://${entry.host || "127.0.0.1"}:${entry.port}`)}>Open</button>
+          <button type="button" className="secondary" onClick={() => void openSystem(`http://${entry.host || "127.0.0.1"}:${entry.port}`)}>Open</button>
           <button type="button" className="danger" onClick={() => kill(entry.pid)}>Kill</button>
         </div>
       ))}

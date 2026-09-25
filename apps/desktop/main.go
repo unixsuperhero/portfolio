@@ -35,7 +35,6 @@ func main() {
 		Services: []application.Service{
 			application.NewService(&SidecarService{}),
 			application.NewService(&PtyService{}),
-			application.NewService(&BrowserService{}),
 			application.NewService(&NativeService{}),
 		},
 		Assets: application.AssetOptions{

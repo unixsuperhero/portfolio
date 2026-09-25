@@ -4,7 +4,7 @@ import type { PortEntryWithProject, ProjectView } from "../types.ts";
 import { getPorts, getProject, killPort } from "../api.ts";
 import { CollectionToolbar, SelectionBar, useSelection } from "@portfolio/ui/collections";
 import { useConfirm } from "../components/ConfirmDialog.tsx";
-import { copyText, openInApp, openPath, reveal } from "../native.ts";
+import { copyText, openSystem, openPath, reveal } from "../native.ts";
 import { openTerminal } from "../terminal/store.ts";
 
 type ServiceSort = "name" | "command";
@@ -174,7 +174,7 @@ export default function Project() {
                 <td>{port.command}</td>
                 <td>{port.pid}</td>
                 <td>
-                  <button type="button" className="secondary" onClick={() => void openInApp(`http://${port.host || "127.0.0.1"}:${port.port}`)}>Open</button>{" "}
+                  <button type="button" className="secondary" onClick={() => void openSystem(`http://${port.host || "127.0.0.1"}:${port.port}`)}>Open</button>{" "}
                   <button type="button" className="danger" onClick={async () => { if (await confirm({ title: `Kill process ${port.pid}?`, confirmLabel: "Kill" })) killPort(port.pid).then(loadPorts).catch(error => setError((error as Error).message)); }}>Kill</button>
                 </td>
               </tr>

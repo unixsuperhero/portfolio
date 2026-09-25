@@ -6,7 +6,7 @@ first and telling the others.
 
 ```text
 apps/desktop/
-  main.go, sidecar.go, pty.go, browser.go, native.go     Go (Wails v3) — owner: "go"
+  main.go, sidecar.go, pty.go, native.go                 Go (Wails v3) — owner: "go"
   frontend/src/terminal/**                                 Terminal — owner: "terminal"
   frontend/src/** (everything else)                        React shell — owner: "frontend"
 packages/api, packages/db, packages/watch, packages/ports, packages/client, packages/core
@@ -221,7 +221,7 @@ existing methods keep working against the new server.
 ## Go: services and events
 
 Package `main`, module `portfolio-desktop`. Every service is registered in `main.go` and
-bindings are generated with `wails3 generate bindings` into `frontend/bindings/portfolio-desktop/`.
+bindings are generated with `wails3 generate bindings -ts -i` into `frontend/bindings/portfolio-desktop/`.
 
 ```go
 // sidecar.go
@@ -244,13 +244,6 @@ func (p *PtyService) List() []PtyInfo                         // { Id, Cwd, Comm
 //   "pty:data" → { Id string; Data string }   Data is base64 of the raw bytes read from the pty (binary safe)
 //   "pty:exit" → { Id string; Code int }
 
-// browser.go
-type BrowserService struct{}
-func (b *BrowserService) Open(url string) (string, error)    // new WebviewWindow at url, 1280x900, title = url host; returns window name
-func (b *BrowserService) List() []BrowserWindow              // { Name, Url, Title }
-func (b *BrowserService) Close(name string) error
-// Windows share the default WKWebsiteDataStore, so a GitHub login in one window carries to the next.
-
 // native.go
 type NativeService struct{}
 func (n *NativeService) Reveal(path string) error            // open -R
@@ -263,7 +256,7 @@ func (n *NativeService) Home() string                        // $HOME
 ```
 
 `main.go` opens one main window titled "Portfolio", 1400x900, URL "/", hidden-inset title bar.
-Bindings live at `frontend/bindings/portfolio-desktop/{sidecarservice,ptyservice,browserservice,nativeservice}.ts`.
+Bindings live at `frontend/bindings/portfolio-desktop/{sidecarservice,ptyservice,nativeservice}.ts`.
 
 ## Frontend
 
@@ -274,8 +267,8 @@ Vite + React 19 + TypeScript, `react-router` v7 with a hash router, CSS from `@p
 frontend/src/
   main.tsx, App.tsx                 router + layout: left sidebar, top search, content, bottom terminal dock
   api.ts                            one PortfolioClient at http://127.0.0.1:4388 (override: VITE_PORTFOLIO_API)
-  native.ts                         wrappers over the Go bindings that fall back to window.open / clipboard API
-                                    when `window.wails`/`window._wails` is absent, so `bun run dev` in a browser works
+  native.ts                         Go binding wrappers; browser-only window.open / clipboard APIs
+                                    use URL-based Wails detection, so `bun run dev` also works in a browser
   context-menu/                     the right-click menu; see below
   pages/{Home,Portfolio,Library,Item,Categories,Category,Projects,Project,Ports,Reminders,Notifications,Settings}.tsx
   cards/{QueryCard,TilesCard,TasksCard,RemindersCard,PortsCard,ClockCard,NoteCard,ServicesCard}.tsx   one per card kind
@@ -285,15 +278,22 @@ frontend/src/
 Context menu rules (document-level `contextmenu` listener, one component):
 
 ```js
-// Any <a href="http…"> or element with data-url:
-["Open in in-app browser", "Open in system browser", "Copy link"]
+// External links and elements with an external data-url:
+["Open in system browser", "Copy link"]
 // Any element with data-path (item rows, slot rows, project rows):
 ["Copy path", "Reveal in Finder", "Open", "Open terminal here", ...(data-kind==="file" ? ["Create if missing"] : [])]
 // Any element with data-item (an item id): the above plus
 ["Pin/Unpin", "Star/Unstar", "Edit"]
-// Left-click on an external link inside the app opens the in-app browser by default
-// (setting: links_open_in = "in-app" | "system", stored in localStorage, default "in-app").
+// External links always use the system browser. No embedded-browser preference.
+// Normal, modified, and middle clicks must never navigate the main screen away.
 ```
+
+Only navigation within the current app document, including hash-router links, remains
+in the main screen. Same-origin content paths are external destinations, not app routes.
+Native content URLs are mapped to the sidecar's HTTP address. All URL-opening buttons
+and terminal hyperlinks use `openSystem`, which calls `NativeService.OpenUrl` in Wails
+and opens a separate tab in the web version. Native binding failures do not fall back
+to `window.open`. The obsolete browser service and its generated bindings are removed.
 
 Terminal contract (the frontend imports only these two modules from `terminal/`):
 

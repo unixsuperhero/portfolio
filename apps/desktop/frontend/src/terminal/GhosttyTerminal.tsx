@@ -9,6 +9,7 @@ import { readGhosttyFontFamily, readGhosttyTheme } from "./theme";
 import { createPtySession, type PtySession } from "./pty";
 import { isMacPlatform } from "./shims/platform";
 import { setTabExited, setTabPtyId, useTerminalStore, type TerminalTab } from "./store";
+import { openSystem } from "../native.ts";
 import "./terminal.css";
 
 export type TerminalOptionAsAlt = "false" | "true" | "left" | "right";
@@ -79,7 +80,7 @@ export function GhosttyTerminal({ tab }: { tab: TerminalTab }) {
       onSelectionChange: () => {},
       beforeKey: () => true,
       onLinkActivate: text => {
-        if (/^https?:\/\//i.test(text)) window.open(text, "_blank", "noopener,noreferrer");
+        if (/^https?:\/\//i.test(text)) void openSystem(text).catch(error => console.error("Cannot open terminal link", error));
       },
       // onContextMenu omitted: the event bubbles to the app's document-level context menu.
     }).then(surface => {

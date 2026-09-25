@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { openTerminal } from "../terminal/store.ts";
-import { copyText, openInApp, openPath, openSystem, reveal } from "../native.ts";
+import { copyText, openPath, openSystem, reveal } from "../native.ts";
 import { pathAction, toggleItem } from "../api.ts";
 
-export type LinksOpenIn = "in-app" | "system";
-
-export const getLinksOpenIn = (): LinksOpenIn => (localStorage.getItem("links_open_in") === "system" ? "system" : "in-app");
-export const setLinksOpenIn = (value: LinksOpenIn) => localStorage.setItem("links_open_in", value);
+import { externalLinkUrl } from "../lib/navigation.ts";
 
 interface MenuAction { label: string; run: () => void; danger?: boolean }
 interface MenuState { x: number; y: number; actions: MenuAction[] }
@@ -18,10 +15,8 @@ function dirname(path: string): string {
 }
 
 /**
- * Mounted once in App. Implements the contract's right-click menu (data-url / http links,
- * data-path with data-kind, data-item with data-pinned/data-starred) and the left-click
- * interceptor that opens external links per the `links_open_in` setting instead of navigating
- * the webview away.
+ * Mounted once in App. External links always use the system browser; only navigation
+ * within the current app document is allowed to reach the main webview.
  */
 export function ContextMenuProvider() {
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -31,23 +26,25 @@ export function ContextMenuProvider() {
 
   useEffect(() => {
     const onContextMenu = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null;
+      const target = event.target instanceof Element ? event.target : null;
       if (!target) return;
-
-      const urlEl = target.closest<HTMLElement>("a[href^='http'], [data-url]");
+      const urlEl = target.closest<HTMLElement>("a[href], [data-url]");
+      const rawUrl = urlEl?.dataset.url ?? urlEl?.getAttribute("href");
+      let url: string | null = null;
+      try { if (rawUrl) url = externalLinkUrl(rawUrl, window.location.href); }
+      catch (error) { console.error("Cannot open link", error); }
       const pathEl = target.closest<HTMLElement>("[data-path]");
       const itemEl = target.closest<HTMLElement>("[data-item]");
-      if (!urlEl && !pathEl && !itemEl) return;
+      if (!url && !pathEl && !itemEl) return;
 
       event.preventDefault();
       const actions: MenuAction[] = [];
 
-      if (urlEl) {
-        const url = urlEl.dataset.url ?? (urlEl as HTMLAnchorElement).href;
+      if (url) {
+        const destination = url;
         actions.push(
-          { label: "Open in in-app browser", run: () => void openInApp(url) },
-          { label: "Open in system browser", run: () => void openSystem(url) },
-          { label: "Copy link", run: () => void copyText(url) },
+          { label: "Open in system browser", run: () => void openSystem(destination).catch(error => console.error("Cannot open system browser", error)) },
+          { label: "Copy link", run: () => void copyText(destination) },
         );
       }
 
@@ -85,15 +82,22 @@ export function ContextMenuProvider() {
     };
 
     const onClickCapture = (event: MouseEvent) => {
-      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      const target = event.target as HTMLElement | null;
+      if (event.type === "click" ? event.button !== 0 : event.button !== 1) return;
+      const target = event.target instanceof Element ? event.target : null;
       const anchor = target?.closest<HTMLAnchorElement>("a[href]");
-      // Only genuinely external links leave the page. In a plain browser the app's own links also
-      // resolve to http://…, so compare origins rather than trusting the scheme.
-      if (!anchor || !/^https?:\/\//.test(anchor.href) || anchor.origin === window.location.origin) return;
-      event.preventDefault();
-      if (getLinksOpenIn() === "system") void openSystem(anchor.href);
-      else void openInApp(anchor.href).catch(err => { console.error("in-app browser failed, opening in the system browser", err); return openSystem(anchor.href); });
+      if (!anchor) return;
+      try {
+        const destination = externalLinkUrl(anchor.getAttribute("href") ?? "", window.location.href);
+        if (destination === null) return;
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+        void openSystem(destination).catch(error => console.error("Cannot open system browser", error));
+      } catch (error) {
+        event.preventDefault();
+        event.stopPropagation();
+        console.error("Cannot open link", error);
+      }
     };
 
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
@@ -102,12 +106,14 @@ export function ContextMenuProvider() {
 
     document.addEventListener("contextmenu", onContextMenu);
     document.addEventListener("click", onClickCapture, true);
+    document.addEventListener("auxclick", onClickCapture, true);
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("scroll", onScroll, true);
     document.addEventListener("click", onClick);
     return () => {
       document.removeEventListener("contextmenu", onContextMenu);
       document.removeEventListener("click", onClickCapture, true);
+      document.removeEventListener("auxclick", onClickCapture, true);
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("scroll", onScroll, true);
       document.removeEventListener("click", onClick);

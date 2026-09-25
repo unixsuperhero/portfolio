@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { completeReminder } from "../api.ts";
-import { openInApp } from "../native.ts";
+import { openSystem } from "../native.ts";
 import { dismissNotifications, NOTIFICATION_POPUP_MS, useNotifications, visibleNotifications } from "../lib/notifications.ts";
 import type { AppNotification } from "../lib/notifications.ts";
 
@@ -20,7 +20,7 @@ export function NotificationActions({ item }: { item: AppNotification }) {
   };
   return <>
     <div className="page-actions">
-      {item.kind === "pr" ? prUrl ? <button type="button" className="primary" onClick={() => { void openInApp(prUrl).catch(error => setError(String(error))); }}>Open PR</button> : <Link to="/prs">View pull requests</Link> : <>
+      {item.kind === "pr" ? prUrl ? <button type="button" className="primary" onClick={() => { void openSystem(prUrl).catch(error => setError(String(error))); }}>Open PR</button> : <Link to="/prs">View pull requests</Link> : <>
         <Link to={`/reminders?q=${encodeURIComponent(item.title)}`}>Open reminder</Link>
         {item.task_id !== null ? <Link to={`/tasks/${item.task_id}`}>Linked task</Link> : null}
         {item.dismissed_at === null ? <button type="button" className="primary" disabled={busy} onClick={() => void complete()}>{busy ? "Completing…" : "Done"}</button> : null}

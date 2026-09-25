@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import type { PortfolioSummary, SettingsView as SettingsType } from "../types.ts";
 import { addProjectParent, addWatchedDirectory, getSettings, listPortfolios, patchSettings, removeProjectParent, removeWatchedDirectory } from "../api.ts";
-import { getLinksOpenIn, setLinksOpenIn, type LinksOpenIn } from "../context-menu/ContextMenu.tsx";
 import { useSidecarStatus } from "../hooks/useSidecarStatus.ts";
 import { PathField } from "../components/PathField.tsx";
 import "../operational.css";
@@ -11,7 +10,6 @@ import { getTerminalOptionAsAlt, setTerminalOptionAsAlt, type TerminalOptionAsAl
 export default function Settings() {
   const [settings, setSettings] = useState<SettingsType | null>(null);
   const [portfolios, setPortfolios] = useState<PortfolioSummary[]>([]);
-  const [linksOpenIn, setLinks] = useState<LinksOpenIn>(getLinksOpenIn());
   const [optionAsAlt, setOptionAsAltState] = useState<TerminalOptionAsAlt>(getTerminalOptionAsAlt());
   const [newWatchDir, setNewWatchDir] = useState("");
   const [newParentDir, setNewParentDir] = useState("");
@@ -36,7 +34,6 @@ export default function Settings() {
 
   const setHome = (value: string) => patchSettings({ home_portfolio_id: value ? Number(value) : null }).then(load).catch(() => {});
   const setPastry = (value: boolean) => patchSettings({ pastry_enabled: value }).then(load).catch(() => {});
-  const changeLinks = (value: LinksOpenIn) => { setLinksOpenIn(value); setLinks(value); };
   const changeOptionAsAlt = (value: TerminalOptionAsAlt) => { setTerminalOptionAsAlt(value); setOptionAsAltState(value); };
 
   const addWatchDir = (event: React.FormEvent) => {
@@ -91,10 +88,7 @@ export default function Settings() {
 
       <section className="settings-section">
         <h2>External links</h2>
-        <div className="settings-choices">
-          <label className="form-checkbox"><input type="radio" name="links" checked={linksOpenIn === "in-app"} onChange={() => changeLinks("in-app")} /> Open in in-app browser</label>
-          <label className="form-checkbox"><input type="radio" name="links" checked={linksOpenIn === "system"} onChange={() => changeLinks("system")} /> Open in system browser</label>
-        </div>
+        <p className="settings-section-description">Links open in your system browser, never over the main screen. In a regular browser, they open in a separate tab.</p>
       </section>
 
       <section className="settings-section">

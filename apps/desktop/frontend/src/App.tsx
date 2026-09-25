@@ -240,7 +240,7 @@ function TopBar() {
         Commands <span aria-hidden="true">⌘K</span>
       </button>
       <button type="button" className="topbar-browser" onClick={() => void openCurrentPage()} disabled={browserBusy}>
-        {browserBusy ? "Opening…" : "Open in browser"}
+        {browserBusy ? "Opening…" : "Open in system browser"}
       </button>
       {browserError ? <span className="topbar-error" role="alert">{browserError}</span> : null}
       <Link className="topbar-notifications" to="/notifications">Notifications ({newNotifications}){storageError || pollingError ? " · Error" : ""}</Link>

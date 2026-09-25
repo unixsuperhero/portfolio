@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import type { PortEntryWithProject } from "../types.ts";
 import { getPorts, killPort } from "../api.ts";
-import { openInApp } from "../native.ts";
+import { openSystem } from "../native.ts";
 import { CollectionToolbar, SelectionBar, useSelection } from "@portfolio/ui/collections";
 import { useConfirm } from "../components/ConfirmDialog.tsx";
 import "../operational.css";
@@ -145,7 +145,7 @@ export default function Ports() {
                 <td>{entry.project ? <Link to={`/projects/${entry.project.id}`}>{entry.project.title}</Link> : "—"}</td>
                 <td>{entry.elapsed ?? "—"}</td>
                 <td className="page-actions">
-                  <button type="button" className="secondary" onClick={() => void openInApp(`http://${entry.host || "127.0.0.1"}:${entry.port}`)}>Open</button>
+                  <button type="button" className="secondary" onClick={() => void openSystem(`http://${entry.host || "127.0.0.1"}:${entry.port}`)}>Open</button>
                   <button type="button" className="danger" onClick={() => kill(entry)} disabled={busy}>Kill</button>
                 </td>
               </tr>
