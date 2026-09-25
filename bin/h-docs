@@ -194,7 +194,6 @@ Hiiro.run(*ARGV, plugins: [Pins]) {
     matching_items(opts, limit: count).each { |item| puts item_label(item) }
   }
 
-
   add_subcmd(:open) { |*args|
     opts = open_opts.parse(args)
     if opts.args.empty? && !opts.html && !opts.md && !opts.all
