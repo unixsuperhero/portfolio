@@ -190,6 +190,19 @@ describe("createPrPoller.tick", () => {
     expect(store.github.listPrs({ list: "review_requested" })).toEqual([]);
   });
 
+  test("matches the requested GitHub account ID rather than a username string", async () => {
+    const store = openStore(":memory:");
+    const otherAccount = structuredClone(listsFixture);
+    Object.assign(otherAccount.review_requested.nodes[0], {
+      reviewRequests: { nodes: [{ requestedReviewer: { __typename: "User", id: "U_someone_else", login: "jearsh" } }] },
+    });
+    const poller = createPrPoller({ db: store, gh: fakeGh([otherAccount]), now: () => new Date("2026-09-22T14:05:00Z") });
+
+    await poller.tick();
+
+    expect(store.github.listPrs({ list: "review_requested" })).toEqual([]);
+  });
+
   test("1 request when the only watched PR is already inside the lists", async () => {
     const store = openStore(":memory:");
     const id = seedWatched(store, { url: "https://github.com/acme/app/pull/12", number: 12 });

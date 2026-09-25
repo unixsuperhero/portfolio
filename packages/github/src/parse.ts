@@ -31,7 +31,7 @@ interface CheckContextNode {
 }
 
 interface ReviewRequestNode {
-  requestedReviewer: { __typename: "User"; login: string } | { __typename: "Team" };
+  requestedReviewer: { __typename: "User"; id: string } | { __typename: "Team" };
 }
 
 const CHECK_RUN_CONCLUSION: Record<string, CheckStatus> = {
@@ -108,7 +108,7 @@ interface SearchList {
 }
 
 interface Viewer {
-  login: string;
+  id: string;
 }
 
 export interface ListsResponse {

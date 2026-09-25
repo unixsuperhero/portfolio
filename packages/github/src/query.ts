@@ -35,7 +35,7 @@ const REVIEW_REQUEST_FIELDS = `
       nodes {
         requestedReviewer {
           __typename
-          ... on User { login }
+          ... on User { id }
         }
       }
     }`;
@@ -60,7 +60,7 @@ const LIST_SEARCH: Record<ListName, string> = {
 export function listQuery(list: ListName, first: number): string {
   const reviewRequests = list === "review_requested" ? REVIEW_REQUEST_FIELDS : "";
   return `query {
-  viewer { login }
+  viewer { id }
   ${list}: search(query: ${gqlString(LIST_SEARCH[list])}, type: ISSUE, first: ${first}) {
     issueCount
     nodes { ... on PullRequest { ...prFields${reviewRequests} } }
@@ -76,7 +76,7 @@ ${PR_FRAGMENT}`;
  */
 export function listsQuery(): string {
   return `query {
-  viewer { login }
+  viewer { id }
   mine: search(query: ${gqlString(LIST_SEARCH.mine)}, type: ISSUE, first: 50) {
     issueCount
     nodes { ... on PullRequest { ...prFields } }

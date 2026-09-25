@@ -146,9 +146,9 @@ export function createPrPoller(options: PollerOptions) {
     }
   }
 
-  function directlyRequests(node: PrNode, login: string): boolean {
+  function directlyRequests(node: PrNode, viewerId: string): boolean {
     return node.reviewRequests?.nodes.some(({ requestedReviewer }) =>
-      requestedReviewer.__typename === "User" && requestedReviewer.login.toLowerCase() === login.toLowerCase()) ?? false;
+      requestedReviewer.__typename === "User" && requestedReviewer.id === viewerId) ?? false;
   }
 
   async function tick(): Promise<void> {
@@ -184,7 +184,7 @@ export function createPrPoller(options: PollerOptions) {
           continue;
         }
         const reviewSearch = listsData.review_requested;
-        const directReviewNodes = reviewSearch.nodes.filter(node => directlyRequests(node, listsData.viewer.login));
+        const directReviewNodes = reviewSearch.nodes.filter(node => directlyRequests(node, listsData.viewer.id));
         reconcileReviewRequests(dir, directReviewNodes, reviewSearch.issueCount === reviewSearch.nodes.length);
         const byUrl = new Map<string, { node: PrNode; lists: string[] }>();
         for (const node of listsData.mine.nodes) byUrl.set(node.url, { node, lists: [...(byUrl.get(node.url)?.lists ?? []), "mine"] });
