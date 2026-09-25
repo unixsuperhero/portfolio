@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CardEditor } from "@portfolio/ui";
-import { CARD_KINDS, isCardKind } from "@portfolio/core";
+import { CARD_KINDS, isCardKind } from "@portfolio/core/constants";
 import type { CardSpec } from "@portfolio/core";
 import type { PortfolioView } from "../types.ts";
 import type { CardInput } from "../api.ts";

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import { ITEM_TYPES } from "@portfolio/core";
+import { ITEM_TYPES } from "@portfolio/core/constants";
 import type { Detection, ItemType } from "@portfolio/core";
 import { AddTextarea } from "./AddTextarea.tsx";
 import { BrowsePicker } from "./BrowsePicker.tsx";

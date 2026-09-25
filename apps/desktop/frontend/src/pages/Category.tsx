@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router";
 import { ItemRow } from "@portfolio/ui";
-import { ITEM_TYPES } from "@portfolio/core";
+import { ITEM_TYPES } from "@portfolio/core/constants";
 import type { Category as CategoryType, ItemView } from "@portfolio/core";
 import { getCategory, toggleItem } from "../api.ts";
 import { CollectionToolbar, SelectionBar, useSelection } from "@portfolio/ui/collections";

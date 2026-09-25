@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
-import { CARD_SORT_LABELS, ITEM_TYPES, BLANK_CARD, normalizeCard } from "@portfolio/core";
+import { BLANK_CARD, normalizeCard } from "@portfolio/core/cards";
+import { CARD_SORT_LABELS, ITEM_TYPES } from "@portfolio/core/constants";
 import type { CardSpec, ItemType } from "@portfolio/core";
 
 export interface CardFormProps {

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { isExternal } from "@portfolio/core";
+import { isExternal } from "@portfolio/core/items";
 import type { ItemView } from "@portfolio/core";
 import { KindBadge } from "./badges.tsx";
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { EmptyState, ItemRow } from "@portfolio/ui";
-import { ITEM_TYPES, isItemType } from "@portfolio/core";
+import { ITEM_TYPES, isItemType } from "@portfolio/core/constants";
 import type { ItemType, ItemView } from "@portfolio/core";
 import { detect, listItems, quickAdd, toggleItem } from "../api.ts";
 import { BrowsePicker } from "../components/BrowsePicker.tsx";

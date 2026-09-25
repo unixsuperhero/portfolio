@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { kindLabel } from "@portfolio/core";
+import { kindLabel } from "@portfolio/core/items";
 import type { ItemType } from "@portfolio/core";
 
 /** The small mono badge that says DOC, NOTE, LINK, PR, FILE, or DIR. */

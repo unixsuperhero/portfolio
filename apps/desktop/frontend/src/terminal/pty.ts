@@ -4,6 +4,7 @@
 // plain browser), the same pattern src/native.ts uses for its own bindings.
 
 import { isWails as inWails } from "../lib/wails.ts";
+import { Events } from "@wailsio/runtime";
 
 async function ptyService() {
   try {
@@ -14,13 +15,6 @@ async function ptyService() {
   }
 }
 
-async function events() {
-  try {
-    return await import("@wailsio/runtime");
-  } catch {
-    return null;
-  }
-}
 
 export interface PtyCreateOptions {
   cwd?: string;
@@ -63,10 +57,6 @@ async function ensureSubscribed(): Promise<void> {
   dataListeners = new Map();
   exitListeners = new Map();
   decoders = new Map();
-
-  const runtime = await events();
-  if (!runtime) return;
-  const { Events } = runtime as typeof import("@wailsio/runtime");
 
   Events.On("pty:data", (event: { data: PtyDataEventPayload }) => {
     const { Id, Data } = event.data;

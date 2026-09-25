@@ -8,7 +8,7 @@ import { useSidecarStatus } from "../hooks/useSidecarStatus.ts";
 import { PathField } from "../components/PathField.tsx";
 import "../operational.css";
 import "../forms.css";
-import { getTerminalOptionAsAlt, setTerminalOptionAsAlt, type TerminalOptionAsAlt } from "../terminal/GhosttyTerminal.tsx";
+import { getTerminalOptionAsAlt, setTerminalOptionAsAlt, type TerminalOptionAsAlt } from "../terminal/settings.ts";
 
 export default function Settings() {
   const [params, setParams] = useSearchParams();

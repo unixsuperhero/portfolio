@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CARD_KINDS } from "@portfolio/core";
+import { CARD_KINDS } from "@portfolio/core/constants";
 import type { CardKind } from "@portfolio/core";
 import type { PortfolioCardResult } from "../types.ts";
 import type { PrList } from "../types.ts";

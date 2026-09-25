@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useSearchParams } from "react-router";
-import { ITEM_TYPES } from "@portfolio/core";
+import { ITEM_TYPES } from "@portfolio/core/constants";
 import type { ItemType } from "@portfolio/core";
 import type { CategorySummary } from "../types.ts";
 import { createCategory, deleteCategory, listCategories, patchCategory } from "../api.ts";

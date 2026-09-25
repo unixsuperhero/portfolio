@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { CARD_SORT_LABELS } from "@portfolio/core";
+import { CARD_SORT_LABELS } from "@portfolio/core/constants";
 import type { CardSpec, ItemView } from "@portfolio/core";
 import { KindBadge, Tag } from "./badges.tsx";
 import { RailSection } from "./rail.tsx";

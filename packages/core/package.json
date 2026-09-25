@@ -5,6 +5,11 @@
   "description": "Pure domain logic for Portfolio: item types, detection, paths, slots, cards, text helpers. No database, no server.",
   "main": "src/index.ts",
   "types": "src/index.ts",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts",
+    "./cards": "./src/cards.ts",
+    "./constants": "./src/constants.ts",
+    "./items": "./src/items.ts"
+  },
   "scripts": { "test": "bun test" }
 }

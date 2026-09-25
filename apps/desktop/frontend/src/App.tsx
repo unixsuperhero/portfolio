@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Detection, ItemType } from "@portfolio/core";
 import { createHashRouter, Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { RouterProvider } from "react-router/dom";
-import { TerminalDock } from "./terminal/TerminalDock.tsx";
 import { useTerminalStore } from "./terminal/store.ts";
 import { ContextMenuProvider } from "./context-menu/ContextMenu.tsx";
 import { CommandPalette } from "./components/CommandPalette.tsx";
@@ -19,22 +18,23 @@ import { home, openSystem, pickDirectory, pickFile } from "./native.ts";
 import { isWails } from "./lib/wails.ts";
 import "./shell.css";
 
-import Home from "./pages/Home.tsx";
-import Portfolios from "./pages/Portfolios.tsx";
-import Portfolio from "./pages/Portfolio.tsx";
-import Library from "./pages/Library.tsx";
-import Item from "./pages/Item.tsx";
-import Categories from "./pages/Categories.tsx";
-import Category from "./pages/Category.tsx";
-import Projects from "./pages/Projects.tsx";
-import Project from "./pages/Project.tsx";
-import Ports from "./pages/Ports.tsx";
-import Herdr from "./pages/Herdr.tsx";
-import Reminders from "./pages/Reminders.tsx";
-import Tasks from "./pages/Tasks.tsx";
-import PullRequests from "./pages/PullRequests.tsx";
-import Settings from "./pages/Settings.tsx";
-import Notifications from "./pages/Notifications.tsx";
+const TerminalDock = lazy(() => import("./terminal/TerminalDock.tsx").then(module => ({ default: module.TerminalDock })));
+const Home = lazy(() => import("./pages/Home.tsx"));
+const Portfolios = lazy(() => import("./pages/Portfolios.tsx"));
+const Portfolio = lazy(() => import("./pages/Portfolio.tsx"));
+const Library = lazy(() => import("./pages/Library.tsx"));
+const Item = lazy(() => import("./pages/Item.tsx"));
+const Categories = lazy(() => import("./pages/Categories.tsx"));
+const Category = lazy(() => import("./pages/Category.tsx"));
+const Projects = lazy(() => import("./pages/Projects.tsx"));
+const Project = lazy(() => import("./pages/Project.tsx"));
+const Ports = lazy(() => import("./pages/Ports.tsx"));
+const Herdr = lazy(() => import("./pages/Herdr.tsx"));
+const Reminders = lazy(() => import("./pages/Reminders.tsx"));
+const Tasks = lazy(() => import("./pages/Tasks.tsx"));
+const PullRequests = lazy(() => import("./pages/PullRequests.tsx"));
+const Settings = lazy(() => import("./pages/Settings.tsx"));
+const Notifications = lazy(() => import("./pages/Notifications.tsx"));
 
 const NAV_ITEMS = [
   { to: "/", label: "Home", end: true },
@@ -308,11 +308,11 @@ function Layout() {
         <div className="main-area">
           <TopBar />
           <div className="content">
-            <Outlet />
+            <Suspense fallback={<p role="status">Loading…</p>}><Outlet /></Suspense>
           </div>
         </div>
         <div className="terminal-dock-shell">
-          <TerminalDock />
+          {terminal.open ? <Suspense fallback={null}><TerminalDock /></Suspense> : null}
         </div>
         <ContextMenuProvider />
         <ToastStack />
