@@ -194,9 +194,12 @@ const settings = {
   pastry_enabled: false,
   watched_directories: [{ id: 1, path: "/Users/me/notes/docs", recursive: true }],
   project_parents: [{ id: 1, path: "/Users/me/proj", count: 12 }],
-  github_ignored_checks: ["codecov/*"],   // global glob patterns; a PR's own ignored_checks add to these
+  github_ignored_check_rules: [{ repo: "acme/app", check: "codecov/*" }],
   github_ignored_repos: ["acme/*"],       // owner/repo globs; matching PRs are hidden from every list and never notify
   github_poll_minutes: 2,                 // cadence while at least one PR is watched; 10 minutes fixed otherwise
+  github_dirs: ["/Users/me/work/acme"],
+  github_pr_views: [{ id: "reviews", label: "Reviews", query: "collection=review_requested&state=open" }],
+  github_pr_default_view: "reviews",
 };
 ```
 
@@ -215,7 +218,7 @@ const pr = {
   comments: 4,                                       // issue comments + review comments + reviews
   checks: [{ name: "ci/test", status: "success", url: "…", ignored: false }],
   checks_summary: "success",                          // "success" | "failure" | "pending" | "none", over non-ignored checks only
-  watched: true, ignored_checks: ["codecov/patch"],   // per PR; settings.github_ignored_checks is global
+  watched: true, ignored_checks: ["codecov/patch"],   // matching repository rules applied during the latest refresh
   ignored: false,                                      // hidden everywhere when true; only PATCH /api/prs/:id sets it, polling never does
   lists: ["mine"],                                     // which search lists it currently appears in ([] for watched-only)
   item_id: 42,                                         // the library `pr` item, created when watched (or null)

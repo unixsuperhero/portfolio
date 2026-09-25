@@ -1,17 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { PortfolioApiError } from "@portfolio/client";
-import type { Pr, PrsResponse } from "../types.ts";
-import { getPrs, getSettings, patchPr, patchSettings, refreshPrs, watchPr } from "../api.ts";
+import type { GithubIgnoredCheckRule, GithubPrView, Pr, SettingsView } from "../types.ts";
+import { getSettings, patchPr, patchSettings, watchPr } from "../api.ts";
 import { PrRow, confirmIgnorePr, confirmIgnoreRepo, ignoreRepo } from "../components/PrRow.tsx";
 import { PrStatusIcon } from "../components/PrStatus.tsx";
 import { CollectionToolbar, SelectionBar, useSelection } from "@portfolio/ui/collections";
 import { useConfirm } from "../components/ConfirmDialog.tsx";
-import { CHECK_FILTERS, lifecycle, matchesPr, PR_FILTER_KEYS, PR_FILTERS, PR_SORTS, sortPrs } from "../lib/pr-collection.ts";
+import { BUILTIN_PR_VIEWS, CHECK_FILTERS, lifecycle, matchesPr, normalizePrViewQuery, PR_FILTER_KEYS, PR_FILTERS, PR_SORTS, sortPrs } from "../lib/pr-collection.ts";
 import type { PrFilter } from "../lib/pr-collection.ts";
+import { usePrData } from "../hooks/usePrData.tsx";
 import "../operational.css";
 
-const EMPTY: PrsResponse = { mine: [], review_requested: [], watched: [], ignored: [], status: { last_poll_at: null, next_poll_at: null, rate: null, polling: false, error: null, gh_ok: true, login: null } };
 const COLLECTIONS = [
   { value: "visible", label: "Visible PRs" }, { value: "mine", label: "Mine" }, { value: "review_requested", label: "Review requested" },
   { value: "watched", label: "Watched" }, { value: "ignored", label: "Ignored" }, { value: "all", label: "All, including ignored" },
@@ -22,15 +22,17 @@ const errorMessage = (error: unknown) => error instanceof PortfolioApiError ? er
 
 export default function PullRequests() {
   const [params, setParams] = useSearchParams();
-  const [data, setData] = useState<PrsResponse>(EMPTY);
-  const [loading, setLoading] = useState(true);
-  const [offline, setOffline] = useState(false);
+  const { data, loading, offline, reload, refresh: refreshData } = usePrData();
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
-  const [ignoredText, setIgnoredText] = useState("");
-  const [ignoredRepos, setIgnoredRepos] = useState<string[]>([]);
+  const [settings, setSettings] = useState<SettingsView | null>(null);
+  const [viewName, setViewName] = useState("");
+  const [includeAllChecks, setIncludeAllChecks] = useState(false);
+  const [selectedCheckRule, setSelectedCheckRule] = useState("");
+  const initialQuery = useRef(params.size > 0);
+  const defaultApplied = useRef(false);
   const { confirm, dialog } = useConfirm();
   const query = params.get("q") ?? "";
   const sort = params.get("sort") ?? "updated";
@@ -42,6 +44,11 @@ export default function PullRequests() {
     if (value) next.set(key, value); else next.delete(key);
     setParams(next, { replace: true, flushSync: true });
   };
+  const applyView = (view: Pick<GithubPrView, "query">) => {
+    setParams(new URLSearchParams(view.query), { replace: true, flushSync: true });
+    selection.clear();
+  };
+  const toggleWatching = () => update("collection", params.get("collection") === "watched" ? "" : "watched");
   const toggleMyReviews = () => {
     const next = new URLSearchParams(params);
     if (params.get("collection") === "review_requested") {
@@ -62,13 +69,20 @@ export default function PullRequests() {
     selection.clear();
   };
   const load = () => {
-    getPrs().then(result => { setData(result); setOffline(false); }).catch(() => setOffline(true)).finally(() => setLoading(false));
-    getSettings().then(settings => setIgnoredRepos(settings.github_ignored_repos ?? [])).catch(() => {});
+    void reload().catch(() => {});
+    getSettings().then(setSettings).catch(() => {});
   };
-  useEffect(load, []);
+  useEffect(() => { getSettings().then(setSettings).catch(() => {}); }, []);
+  useEffect(() => {
+    if (!settings || defaultApplied.current) return;
+    defaultApplied.current = true;
+    if (initialQuery.current) return;
+    const view = [...BUILTIN_PR_VIEWS, ...settings.github_pr_views].find(candidate => candidate.id === settings.github_pr_default_view);
+    if (view?.query) setParams(new URLSearchParams(view.query), { replace: true });
+  }, [settings, setParams]);
   const refresh = () => {
     setRefreshing(true); setRefreshError(null);
-    refreshPrs().then(result => { setData(result); setOffline(false); })
+    refreshData()
       .catch(error => setRefreshError(errorMessage(error))).finally(() => setRefreshing(false));
   };
   const allPrs = useMemo(() => [...new Map([...data.mine, ...data.review_requested, ...data.watched, ...data.ignored].map(pr => [pr.id, pr])).values()], [data]);
@@ -86,6 +100,52 @@ export default function PullRequests() {
     pr.lists.includes("review_requested")
     && lifecycle(pr) === "open"
     && matchesPr(pr, withoutMyReviews, hiddenIds.has(pr.id)));
+  const withoutWatching = new URLSearchParams(params);
+  withoutWatching.delete("collection");
+  const watchingCandidates = allPrs.filter(pr => pr.watched && matchesPr(pr, withoutWatching, hiddenIds.has(pr.id)));
+  const currentViewQuery = normalizePrViewQuery(params);
+  const saveCurrentView = () => {
+    const label = viewName.trim();
+    if (!label || !settings) return;
+    const view: GithubPrView = { id: crypto.randomUUID(), label, query: currentViewQuery };
+    patchSettings({ github_pr_views: [...settings.github_pr_views, view] })
+      .then(next => { setSettings(next); setViewName(""); })
+      .catch(error => setRefreshError(errorMessage(error)));
+  };
+  const ignoredCheckRules = settings?.github_ignored_check_rules ?? [];
+  const ignoredRuleQuery = params.get("ignored_rule_q") ?? "";
+  const ignoredRuleSort = params.get("ignored_rule_sort") ?? "repo";
+  const ignoredRuleRepo = params.get("ignored_rule_repo") ?? "";
+  const ignoredRuleRepos = [...new Set(ignoredCheckRules.map(rule => rule.repo))].sort();
+  const visibleIgnoredCheckRules = ignoredCheckRules
+    .filter(rule => (!ignoredRuleRepo || rule.repo === ignoredRuleRepo) && `${rule.repo} ${rule.check}`.toLowerCase().includes(ignoredRuleQuery.toLowerCase()))
+    .sort((left, right) => ignoredRuleSort === "check" ? left.check.localeCompare(right.check) || left.repo.localeCompare(right.repo) : left.repo.localeCompare(right.repo) || left.check.localeCompare(right.check));
+  const checkRuleOptions = useMemo(() => {
+    const options = new Map<string, { repo: string; check: string; failing: boolean }>();
+    for (const pr of allPrs) {
+      const repo = `${pr.owner}/${pr.repo}`;
+      for (const check of pr.checks) {
+        const failing = check.status === "failure" || check.status === "cancelled";
+        const key = JSON.stringify([repo, check.name]);
+        if (!options.has(key)) options.set(key, { repo, check: check.name, failing });
+      }
+    }
+    const existing = new Set(ignoredCheckRules.map(rule => JSON.stringify([rule.repo, rule.check])));
+    return [...options.entries()]
+      .filter(([key, option]) => !existing.has(key) && (includeAllChecks || option.failing))
+      .sort(([, left], [, right]) => Number(right.failing) - Number(left.failing) || left.repo.localeCompare(right.repo) || left.check.localeCompare(right.check));
+  }, [allPrs, ignoredCheckRules, includeAllChecks]);
+  const saveIgnoredCheckRules = (github_ignored_check_rules: GithubIgnoredCheckRule[]) =>
+    patchSettings({ github_ignored_check_rules }).then(next => {
+      setSettings(next);
+      setSelectedCheckRule("");
+      void reload().catch(() => {});
+    }).catch(error => setRefreshError(errorMessage(error)));
+  const addIgnoredCheckRule = () => {
+    if (!selectedCheckRule) return;
+    const [repo, check] = JSON.parse(selectedCheckRule) as [string, string];
+    void saveIgnoredCheckRules([...ignoredCheckRules, { repo, check }]);
+  };
   const activeFilters = PR_FILTER_KEYS.filter(key => params.get(key) && !(key === "collection" && params.get(key) === "visible"));
   const primaryKeys = PR_FILTERS.filter(filter => filter.group === "Primary").map(filter => filter.key);
   const advancedCount = activeFilters.filter(key => !["q", "collection", ...primaryKeys].includes(key)).length;
@@ -119,6 +179,7 @@ export default function PullRequests() {
   };
   const repoQuery = params.get("repo_q") ?? "";
   const repoSort = params.get("repo_sort") ?? "asc";
+  const ignoredRepos = settings?.github_ignored_repos ?? [];
   const visibleRepos = ignoredRepos.filter(repo => repo.toLowerCase().includes(repoQuery.toLowerCase())).sort((a, b) => (repoSort === "desc" ? -1 : 1) * a.localeCompare(b));
   const repoSelection = useSelection(visibleRepos);
   const restoreRepos = (repos: readonly string[]) => patchSettings({ github_ignored_repos: ignoredRepos.filter(repo => !repos.includes(repo)) })
@@ -137,7 +198,13 @@ export default function PullRequests() {
       <button type="button" aria-pressed={!params.get("state")} onClick={() => update("state", "")}>All states <span>{stateCandidates.length}</span></button>
       {(["draft", "open", "merged", "closed"] as const).map(state => <button type="button" className={`pr-tone-${state}`} key={state} aria-pressed={params.get("state") === state} onClick={() => update("state", params.get("state") === state ? "" : state)}><PrStatusIcon kind={state} />{state[0].toUpperCase() + state.slice(1)}<span>{stateCandidates.filter(pr => lifecycle(pr) === state).length}</span></button>)}
       <button type="button" className="pr-tone-review_required" aria-pressed={params.get("collection") === "review_requested"} onClick={toggleMyReviews}><PrStatusIcon kind="review_required" />My Reviews <span>{myReviewCandidates.length}</span></button>
+      <button type="button" className="pr-tone-watched" aria-pressed={params.get("collection") === "watched"} onClick={toggleWatching}><PrStatusIcon kind="watched" />Watching <span>{watchingCandidates.length}</span></button>
+      {settings?.github_pr_views.map(view => <button type="button" key={view.id} aria-pressed={currentViewQuery === normalizePrViewQuery(view.query)} onClick={() => applyView(view)}>{view.label}</button>)}
     </div>
+    <form className="pr-save-view" onSubmit={event => { event.preventDefault(); saveCurrentView(); }}>
+      <label>Save current filters as a shortcut<input value={viewName} onChange={event => setViewName(event.target.value)} placeholder="View name" /></label>
+      <button type="submit" className="secondary" disabled={!viewName.trim()}>Save view</button>
+    </form>
     <CollectionToolbar query={query} onQueryChange={value => update("q", value)} sort={sort} onSortChange={value => update("sort", value)} sortOptions={PR_SORTS}>
       <label>Collection<select name="collection" value={collection} onChange={event => update("collection", event.target.value)}>{COLLECTIONS.map(option => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
       {PR_FILTERS.filter(filter => filter.group === "Primary").map(renderFilter)}
@@ -157,14 +224,35 @@ export default function PullRequests() {
       <fieldset><legend>Individual checks</legend><p className="pr-ignore-hint">These conditions must match the same check, including ignored checks.</p><div className="pr-filter-grid">{CHECK_FILTERS.map(filter => <label key={filter.key}>{filter.label}{filter.input === "select" ? <select name={filter.key} value={params.get(filter.key) ?? ""} onChange={event => update(filter.key, event.target.value)}><option value="">Any</option>{filter.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : <input name={filter.key} type="text" value={params.get(filter.key) ?? ""} onChange={event => update(filter.key, event.target.value)} />}</label>)}</div></fieldset>
     </div>
 
+    <details className="pr-ignored-check-rules">
+      <summary>Ignored check failures ({ignoredCheckRules.length})</summary>
+      <p className="pr-ignore-hint">Rules apply only to the named repository. Matching failures stay visible and counted, but do not make the effective checks status fail.</p>
+      <CollectionToolbar query={ignoredRuleQuery} onQueryChange={value => update("ignored_rule_q", value)} sort={ignoredRuleSort} onSortChange={value => update("ignored_rule_sort", value)} sortOptions={[
+        { value: "repo", label: "Repository" }, { value: "check", label: "Check name" },
+      ]}>
+        <label>Repository<select value={ignoredRuleRepo} onChange={event => update("ignored_rule_repo", event.target.value)}><option value="">All repositories</option>{ignoredRuleRepos.map(repo => <option key={repo} value={repo}>{repo}</option>)}</select></label>
+      </CollectionToolbar>
+      <div className="pr-ignore-check-controls">
+        <label>Repository check<select value={selectedCheckRule} onChange={event => setSelectedCheckRule(event.target.value)}>
+          <option value="">{checkRuleOptions.length ? "Choose a check…" : includeAllChecks ? "No checks available" : "No failing checks available"}</option>
+          {checkRuleOptions.map(([value, option]) => <option key={value} value={value}>{option.repo} — {option.check}{option.failing ? " (failing)" : ""}</option>)}
+        </select></label>
+        <label className="form-checkbox"><input type="checkbox" checked={includeAllChecks} onChange={event => setIncludeAllChecks(event.target.checked)} /> Include all checks</label>
+        <button type="button" className="secondary" disabled={!selectedCheckRule} onClick={addIgnoredCheckRule}>Ignore failure</button>
+      </div>
+      <div className="pr-ignored-check-rule-list" aria-label="Repository ignored-check rules">
+        {visibleIgnoredCheckRules.map(rule => <button type="button" className="secondary" key={`${rule.repo}:${rule.check}`} onClick={() => void saveIgnoredCheckRules(ignoredCheckRules.filter(item => item !== rule))} aria-label={`Remove ignored check rule ${rule.repo} ${rule.check}`}>{rule.repo} — {rule.check} ×</button>)}
+        {!visibleIgnoredCheckRules.length ? <span className="pr-ignore-hint">{ignoredCheckRules.length ? "No rules match these filters." : "No ignored check failures."}</span> : null}
+      </div>
+    </details>
+
     <SelectionBar count={selection.selected.size} total={visiblePrs.length} allSelected={selection.allSelected} onToggleAll={selection.toggleAll} onClear={selection.clear} busy={bulkBusy}>
       <button type="button" className="secondary" onClick={() => runBulk("Watch", pr => watchPr(pr.url, true))}>Watch</button>
       <button type="button" className="secondary" onClick={() => runBulk("Unwatch", pr => watchPr(pr.url, false))}>Unwatch</button>
       <button type="button" className="secondary" onClick={() => void bulkIgnore()}>Ignore</button>
       <button type="button" className="secondary" disabled={!selectedPrs.some(pr => pr.ignored)} onClick={() => runBulk("Unignore", pr => patchPr(pr.id, { ignored: false }))}>Unignore PRs</button>
       <button type="button" className="secondary" onClick={() => void bulkIgnoreRepos()}>Ignore repos</button>
-      <label className="bulk-inline-field">Ignored-check patterns<textarea value={ignoredText} onChange={event => setIgnoredText(event.target.value)} rows={2} placeholder="one glob per line" /></label>
-      <button type="button" className="secondary" onClick={() => runBulk("Ignored checks", pr => patchPr(pr.id, { ignored_checks: ignoredText.split("\n").map(line => line.trim()).filter(Boolean) }))}>Apply ignored checks</button>
+      
     </SelectionBar>
     {bulkMessage ? <p role="status" className={bulkMessage.includes("failed") ? "operational-error" : "operational-status"}>{bulkMessage}</p> : null}
     {loading ? <p className="pr-status" role="status">Loading pull requests…</p> : <div className="pr-list" aria-label="Pull requests">

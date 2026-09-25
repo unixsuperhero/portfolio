@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Pr } from "@portfolio/core";
 import { openStore } from "@portfolio/db";
 import { createPrPoller } from "../src/poller.ts";
+import type { ListsResponse } from "../src/parse.ts";
 import listsFixture from "./fixtures/lists-response.json";
 import watchedFixture from "./fixtures/watched-response.json";
 
@@ -35,6 +36,28 @@ describe("createPrPoller.tick", () => {
     const status = poller.status();
     expect(status.rate).toEqual({ remaining: 4998, reset_at: "2026-09-22T15:00:00Z" });
     expect(status.error).toBeNull();
+  });
+
+  test("repository check rules do not ignore the same check name in another repository", async () => {
+    const store = openStore(":memory:");
+    store.settings.setGithubIgnoredCheckRules([{ repo: "acme/app", check: "ci/test" }]);
+    const response = structuredClone(listsFixture) as unknown as ListsResponse;
+    const other = response.review_requested.nodes[0];
+    other.url = "https://github.com/beta/app/pull/20";
+    other.repository.owner.login = "beta";
+    other.commits.nodes[0].commit.statusCheckRollup!.contexts.nodes = [
+      { "__typename": "CheckRun", name: "ci/test", conclusion: "FAILURE", status: "COMPLETED", detailsUrl: "https://ci/beta" },
+    ];
+    const poller = createPrPoller({ db: store, gh: fakeGh([response]), now: () => new Date("2026-09-22T14:05:00Z") });
+
+    await poller.tick();
+
+    const acme = store.github.listPrs().find(pr => pr.owner === "acme")!;
+    const beta = store.github.listPrs().find(pr => pr.owner === "beta")!;
+    expect(acme.checks.find(check => check.name === "ci/test")?.ignored).toBe(true);
+    expect(acme.checks_summary).toBe("pending");
+    expect(beta.checks.find(check => check.name === "ci/test")?.ignored).toBe(false);
+    expect(beta.checks_summary).toBe("failure");
   });
 
   /** Tick once to seed every PR, then store each as closed so the next tick's open state would raise an event for any visible one. */

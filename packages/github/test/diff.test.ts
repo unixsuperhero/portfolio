@@ -104,9 +104,4 @@ describe("diffPr", () => {
     expect(diffPr(before, after, ["codecov/*"], "t2")).toEqual([]);
   });
 
-  test("per-PR ignored_checks also silences a checks event", () => {
-    const before = pr({ ignored_checks: ["codecov/*"], checks: [{ name: "codecov/patch", status: "pending", url: "", ignored: true }] });
-    const after = pr({ ignored_checks: ["codecov/*"], checks: [{ name: "codecov/patch", status: "failure", url: "", ignored: true }] });
-    expect(diffPr(before, after, [], "t2")).toEqual([]);
-  });
 });

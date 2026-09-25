@@ -248,17 +248,30 @@ export interface ProjectView {
   slots: ResolvedSlot[];
 }
 
+export interface GithubIgnoredCheckRule {
+  repo: string;
+  check: string;
+}
+
+export interface GithubPrView {
+  id: string;
+  label: string;
+  query: string;
+}
+
 export interface Settings {
   home_portfolio_id: number | null;
   pastry_enabled: boolean;
   watched_directories: { id: number; path: string; recursive: boolean }[];
   project_parents: { id: number; path: string; count: number }[];
-  github_ignored_checks: string[];
+  github_ignored_check_rules: GithubIgnoredCheckRule[];
   /** owner/repo globs (e.g. "acme/*") whose PRs are hidden from every list and raise no events. */
   github_ignored_repos: string[];
   github_poll_minutes: number;
   /** Directories gh runs from when polling, in order. Empty means the API's own cwd. */
   github_dirs: string[];
+  github_pr_views: GithubPrView[];
+  github_pr_default_view: string;
 }
 
 export type PrState = "open" | "closed" | "merged";
@@ -294,7 +307,7 @@ export interface Pr {
   /** Over non-ignored checks only. */
   checks_summary: ChecksSummary;
   watched: boolean;
-  /** Per-PR ignored check name patterns; settings.github_ignored_checks is global. */
+  /** Repository-scoped ignored check names applied during the latest refresh. */
   ignored_checks: string[];
   /** Hidden from every list and raises no events. Set by PATCH /api/prs/:id { ignored }; never touched by polling. */
   ignored: boolean;

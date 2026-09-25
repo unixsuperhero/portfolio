@@ -115,9 +115,9 @@ describe("end to end against createApi", () => {
     });
     expect((await client.prs()).mine).toHaveLength(1);
 
-    const patched = await client.setPrIgnoredChecks(id, ["codecov/*"]);
-    expect(patched.ignored_checks).toEqual(["codecov/*"]);
-    expect(patched.checks[0].ignored).toBe(true);
+    const settings = await client.updateSettings({ github_ignored_check_rules: [{ repo: "acme/app", check: "codecov/*" }], github_poll_minutes: 5 });
+    expect(settings).toMatchObject({ github_ignored_check_rules: [{ repo: "acme/app", check: "codecov/*" }], github_poll_minutes: 5 });
+    expect(store.github.getPr(id)?.checks[0].ignored).toBe(true);
 
     store.github.insertEvents([{ pr_id: id, kind: "checks", message: "acme/app#12 checks none", at: "t2" }]);
     const { events } = await client.prEvents();
@@ -125,8 +125,6 @@ describe("end to end against createApi", () => {
     expect(await client.markPrEventsSeen([events[0].id])).toEqual({ ok: true });
     expect((await client.prEvents()).events).toHaveLength(0);
 
-    const settings = await client.updateSettings({ github_ignored_checks: ["ci/*"], github_poll_minutes: 5 });
-    expect(settings).toMatchObject({ github_ignored_checks: ["ci/*"], github_poll_minutes: 5 });
 
     await expect(client.watchPr("https://github.com/acme/app", true)).rejects.toBeInstanceOf(PortfolioApiError);
   });

@@ -85,30 +85,29 @@ describe("prs", () => {
     expect(store.github.getPr(id)?.watched).toBe(false);
   });
 
-  test("PATCH /api/prs/:id sets ignored_checks, 404 for unknown id", async () => {
+  test("PATCH settings applies repository check rules to existing PRs", async () => {
     const store = openStore(":memory:");
-    const id = store.github.upsertPr({ url: "https://github.com/acme/app/pull/3", owner: "acme", repo: "app", number: 3, title: "C", author: "x", is_draft: false, state: "open", review_decision: null, updated_at: "t", comments: 0, checks: [{ name: "codecov/patch", status: "pending", url: "", ignored: false }], checks_summary: "pending", watched: false, ignored_checks: [], lists: [], item_id: null, source_dir: null, fetched_at: "t" });
-    const api = createApi(store, {});
-    const res = await send(api, "PATCH", `/api/prs/${id}`, { ignored_checks: ["codecov/*"] });
+    const id = store.github.upsertPr({ url: "https://github.com/acme/app/pull/3", owner: "acme", repo: "app", number: 3, title: "C", author: "x", is_draft: false, state: "open", review_decision: null, updated_at: "t", comments: 0, checks: [{ name: "codecov/patch", status: "failure", url: "", ignored: false }], checks_summary: "failure", watched: false, ignored_checks: [], lists: ["mine"], item_id: null, source_dir: null, fetched_at: "t" });
+    const api = createApi(store, { prPoller: fakePoller(store) });
+    const rules = [{ repo: "acme/app", check: "codecov/patch" }];
+    const res = await send(api, "PATCH", "/api/settings", { github_ignored_check_rules: rules });
     expect(res.status).toBe(200);
-    const pr = await res.json();
-    expect(pr.ignored_checks).toEqual(["codecov/*"]);
+    expect((await res.json()).github_ignored_check_rules).toEqual(rules);
+    const pr = store.github.getPr(id)!;
     expect(pr.checks[0].ignored).toBe(true);
-    expect((await send(api, "PATCH", "/api/prs/999", { ignored_checks: [] })).status).toBe(404);
+    expect(pr.checks_summary).toBe("none");
   });
 
-  test("PATCH /api/prs/:id { ignored } moves a PR between the lists and the ignored list, keeping ignored_checks", async () => {
+  test("PATCH /api/prs/:id { ignored } moves a PR between the lists and the ignored list", async () => {
     const store = openStore(":memory:");
     const poller = fakePoller(store);
     const api = createApi(store, { prPoller: poller });
     const pr = await poller!.fetchOne({ owner: "acme", repo: "app", number: 12 });
-    store.github.setIgnoredChecks(pr.id, ["codecov/*"]);
-    await send(api, "PATCH", `/api/prs/${pr.id}`, { ignored_checks: ["codecov/*"] });
     store.github.setWatched(pr.id, true);
 
     let res = await send(api, "PATCH", `/api/prs/${pr.id}`, { ignored: true });
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ id: pr.id, ignored: true, ignored_checks: ["codecov/*"], watched: true });
+    expect(await res.json()).toMatchObject({ id: pr.id, ignored: true, watched: true });
     let view = await (await get(api, "/api/prs")).json();
     expect(view.watched).toEqual([]);
     expect(view.ignored.map((p: { id: number }) => p.id)).toEqual([pr.id]);
@@ -152,12 +151,22 @@ describe("prs", () => {
     expect((await res.json()).events).toHaveLength(0);
   });
 
-  test("settings GET/PATCH gain github_ignored_checks and github_poll_minutes", async () => {
+  test("settings GET/PATCH exposes repository check rules, PR views, default view, and poll cadence", async () => {
     const store = openStore(":memory:");
     const api = createApi(store, {});
     let res = await get(api, "/api/settings");
-    expect(await res.json()).toMatchObject({ github_ignored_checks: [], github_poll_minutes: 2 });
-    res = await send(api, "PATCH", "/api/settings", { github_ignored_checks: ["codecov/*"], github_poll_minutes: 5 });
-    expect(await res.json()).toMatchObject({ github_ignored_checks: ["codecov/*"], github_poll_minutes: 5 });
+    expect(await res.json()).toMatchObject({ github_ignored_check_rules: [], github_pr_views: [], github_pr_default_view: "all", github_poll_minutes: 2 });
+    res = await send(api, "PATCH", "/api/settings", {
+      github_ignored_check_rules: [{ repo: "acme/app", check: "codecov/*" }],
+      github_pr_views: [{ id: "reviews", label: "Reviews", query: "collection=review_requested" }],
+      github_pr_default_view: "reviews",
+      github_poll_minutes: 5,
+    });
+    expect(await res.json()).toMatchObject({
+      github_ignored_check_rules: [{ repo: "acme/app", check: "codecov/*" }],
+      github_pr_views: [{ id: "reviews", label: "Reviews", query: "collection=review_requested" }],
+      github_pr_default_view: "reviews",
+      github_poll_minutes: 5,
+    });
   });
 });

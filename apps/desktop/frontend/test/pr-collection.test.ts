@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Pr } from "../src/types";
-import { lifecycle, matchesPr, sortPrs } from "../src/lib/pr-collection";
+import { lifecycle, matchesPr, normalizePrViewQuery, sortPrs } from "../src/lib/pr-collection";
 
 const pr = (overrides: Partial<Pr> = {}): Pr => ({
   id: 1, number: 10, url: "https://github.com/acme/console/pull/10", owner: "acme", repo: "console", title: "Improve search", author: "alex",
@@ -70,6 +70,12 @@ describe("PR triage", () => {
     const closedReview = pr({ id: 7, lists: ["review_requested"], state: "closed" });
 
     expect(ids("collection=review_requested&state=open", [directReview, draftReview, closedReview])).toEqual([5]);
+  });
+
+  test("saved views retain collection filters and sorting but drop transient UI state", () => {
+    const query = new URLSearchParams("repo_q=acme&pr12_check_q=lint&filters=1&state=open&collection=watched&sort=updated&direction=desc");
+    expect(normalizePrViewQuery(query)).toBe("collection=watched&direction=desc&sort=updated&state=open");
+    expect(normalizePrViewQuery("collection=visible&q=fix")).toBe("q=fix");
   });
 
   test("search covers draft semantics and nested data without indexing property names", () => {

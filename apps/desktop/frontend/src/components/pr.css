@@ -39,6 +39,9 @@
 .pr-state-shortcuts button span { font-variant-numeric: tabular-nums; min-width: 1ch; }
 .pr-state-shortcuts button:hover, .pr-state-shortcuts button[aria-pressed="true"] { border-color: var(--pr-tone, var(--accent)); background: color-mix(in srgb, var(--pr-tone, var(--accent)) 12%, var(--surface)); }
 .pr-state-shortcuts button[aria-pressed="true"] { box-shadow: inset 0 -2px 0 var(--pr-tone, var(--accent)); }
+.pr-save-view { display: flex; align-items: end; gap: .5rem; margin: 0 0 1rem; }
+.pr-save-view label { display: flex; flex-direction: column; gap: .3rem; color: var(--text2); font-size: .78rem; }
+.pr-save-view input { min-width: 14rem; }
 .pr-page > .collection-toolbar .collection-search { flex-basis: 100%; }
 .pr-page > .collection-toolbar > label:not(.collection-search) { flex: 1 1 8rem; }
 .pr-page > .collection-toolbar select { width: 100%; }
@@ -66,6 +69,7 @@
 .pr-row-heading { display: flex; align-items: flex-start; gap: .75rem; }
 .pr-row-heading > .pr-badge { flex: 0 0 auto; }
 .pr-title { color: var(--text); font-size: 1rem; line-height: 1.5; font-weight: 600; text-decoration: none; overflow-wrap: anywhere; min-width: 0; }
+.pr-row-heading > .pr-tone-watched { color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--surface)); border-color: color-mix(in srgb, var(--accent) 72%, var(--border)); }
 .pr-title:hover { text-decoration: underline; text-underline-offset: .2em; }
 .pr-row-meta { display: flex; flex-wrap: wrap; gap: .35rem 1rem; color: var(--text2); font-size: .78rem; margin: .6rem 0 .75rem; overflow-wrap: anywhere; }
 .pr-repo { font-family: var(--mono); color: var(--text2); font-size: .78rem; }
@@ -85,7 +89,10 @@
 .pr-checks > summary::after { content: ""; width: .35rem; height: .35rem; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: rotate(45deg); margin: -.2rem .1rem 0 .35rem; }
 .pr-checks[open] { flex-basis: 100%; }
 .pr-checks[open] > summary::after { transform: rotate(225deg); margin-top: .15rem; }
-.pr-check-count { font-variant-numeric: tabular-nums; font-weight: 400; }
+.pr-row-check-stats { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; margin: -.3rem 0 .75rem; font-size: .75rem; font-variant-numeric: tabular-nums; }
+.pr-row-check-stats > span { display: inline-flex; align-items: center; gap: .25rem; color: var(--pr-tone, var(--text2)); background: color-mix(in srgb, var(--pr-tone, var(--text2)) 8%, var(--surface)); border: 1px solid color-mix(in srgb, var(--pr-tone, var(--text2)) 38%, var(--border)); border-radius: 999px; padding: .2rem .45rem; white-space: nowrap; }
+.pr-row-check-stats .pr-status-icon { width: .8rem; height: .8rem; flex-basis: .8rem; }
+.pr-row-check-stats .pr-check-ignored-failures { color: var(--pr-draft); }
 .pr-checks-panel { margin-top: .7rem; border-top: 1px solid var(--border); padding-top: .6rem; }
 .pr-checks-list { list-style: none; padding: 0; margin: 0; }
 .pr-checks-list li { display: flex; align-items: center; flex-wrap: wrap; gap: .6rem; padding: .55rem 0; border-bottom: 1px solid var(--border); }
@@ -96,6 +103,12 @@
 .pr-ignored-repos li, .pr-ignored-repos li label { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
 .pr-ignored-repos li { justify-content: space-between; padding: .6rem 0; border-bottom: 1px solid var(--border); }
 .pr-ignored-repos li label { overflow-wrap: anywhere; }
+.pr-ignored-check-rules { margin: 1rem 0; border: 1px solid var(--border); border-radius: var(--radius); padding: .75rem; background: var(--surface); }
+.pr-ignored-check-rules > summary { cursor: pointer; font-weight: 600; }
+.pr-ignore-check-controls { display: flex; align-items: end; flex-wrap: wrap; gap: .75rem; margin-top: .75rem; }
+.pr-ignore-check-controls > label:not(.form-checkbox) { display: flex; flex: 1 1 24rem; flex-direction: column; gap: .3rem; color: var(--text2); font-size: .78rem; }
+.pr-ignore-check-controls select { width: 100%; }
+.pr-ignored-check-rule-list { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
 @media (max-width: 900px) {
   .pr-advanced-filters { grid-template-columns: minmax(0, 1fr); }
   .pr-row-heading { flex-wrap: wrap; gap: .5rem; }

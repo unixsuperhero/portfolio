@@ -133,7 +133,7 @@ export class PortfolioClient {
   deleteCategory(id: number) { return this.request<{ ok: true }>(`/api/categories/${id}`, { method: "DELETE" }); }
 
   settings() { return this.request<Settings>("/api/settings"); }
-  updateSettings(patch: { home_portfolio_id?: number | null; pastry_enabled?: boolean; github_ignored_checks?: string[]; github_poll_minutes?: number }) { return this.request<Settings>("/api/settings", { method: "PATCH", json: patch }); }
+  updateSettings(patch: Partial<Pick<Settings, "home_portfolio_id" | "pastry_enabled" | "github_ignored_check_rules" | "github_ignored_repos" | "github_poll_minutes" | "github_dirs" | "github_pr_views" | "github_pr_default_view">>) { return this.request<Settings>("/api/settings", { method: "PATCH", json: patch }); }
   home() { return this.request<{ portfolio: PortfolioView | null }>("/api/home"); }
   directories(path: string, files = false) { return this.request<{ path: string; parent: string | null; directories: { name: string; path: string }[]; files?: { name: string; path: string }[] }>("/api/directories", { query: { path, files } }); }
 
@@ -164,7 +164,6 @@ export class PortfolioClient {
   prs() { return this.request<{ mine: Pr[]; review_requested: Pr[]; watched: Pr[]; ignored: Pr[]; status: PrStatus }>("/api/prs"); }
   refreshPrs() { return this.request<{ mine: Pr[]; review_requested: Pr[]; watched: Pr[]; ignored: Pr[]; status: PrStatus }>("/api/prs/refresh", { method: "POST" }); }
   watchPr(url: string, watched: boolean) { return this.request<Pr>("/api/prs/watch", { method: "POST", json: { url, watched } }); }
-  setPrIgnoredChecks(id: number, checks: string[]) { return this.request<Pr>(`/api/prs/${id}`, { method: "PATCH", json: { ignored_checks: checks } }); }
   setPrIgnored(id: number, ignored: boolean) { return this.request<Pr>(`/api/prs/${id}`, { method: "PATCH", json: { ignored } }); }
   prEvents(since = 0) { return this.request<{ events: PrEvent[] }>("/api/prs/events", { query: { since } }); }
   markPrEventsSeen(ids: number[]) { return this.request<{ ok: true }>("/api/prs/events/seen", { method: "POST", json: { ids } }); }

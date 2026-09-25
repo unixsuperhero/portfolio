@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import type { GithubIgnoredCheckRule, GithubPrView } from "@portfolio/core";
 
 export const getSetting = (db: Database, key: string, fallback = ""): string => db.query<{ value: string }, [string]>("SELECT value FROM settings WHERE key = ?").get(key)?.value ?? fallback;
 export const setSetting = (db: Database, key: string, value: string): void => { db.query("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value); };
@@ -16,8 +17,36 @@ export const setHomePortfolioId = (db: Database, id: number | null): void => {
   else setSetting(db, "home_portfolio_id", String(id));
 };
 
-export const getGithubIgnoredChecks = (db: Database): string[] => JSON.parse(getSetting(db, "github_ignored_checks", "[]"));
-export const setGithubIgnoredChecks = (db: Database, checks: string[]): void => setSetting(db, "github_ignored_checks", JSON.stringify(checks));
+
+export const getGithubIgnoredCheckRules = (db: Database): GithubIgnoredCheckRule[] =>
+  JSON.parse(getSetting(db, "github_ignored_check_rules", "[]"));
+
+export function setGithubIgnoredCheckRules(db: Database, rules: GithubIgnoredCheckRule[]): void {
+  const unique = new Map<string, GithubIgnoredCheckRule>();
+  for (const rule of rules) {
+    const repo = rule.repo.trim();
+    const check = rule.check.trim();
+    const key = `${repo.toLowerCase()}\0${check.toLowerCase()}`;
+    if (repo && check && !unique.has(key)) unique.set(key, { repo, check });
+  }
+  setSetting(db, "github_ignored_check_rules", JSON.stringify([...unique.values()]));
+}
+
+export const getGithubPrViews = (db: Database): GithubPrView[] =>
+  JSON.parse(getSetting(db, "github_pr_views", "[]"));
+
+export function setGithubPrViews(db: Database, views: GithubPrView[]): void {
+  const unique = new Map<string, GithubPrView>();
+  for (const view of views) {
+    const id = view.id.trim();
+    const label = view.label.trim();
+    if (id && label) unique.set(id, { id, label, query: view.query.replace(/^\?/, "") });
+  }
+  setSetting(db, "github_pr_views", JSON.stringify([...unique.values()]));
+}
+
+export const getGithubPrDefaultView = (db: Database): string => getSetting(db, "github_pr_default_view", "all");
+export const setGithubPrDefaultView = (db: Database, view: string): void => setSetting(db, "github_pr_default_view", view.trim() || "all");
 
 export const getGithubIgnoredRepos = (db: Database): string[] => JSON.parse(getSetting(db, "github_ignored_repos", "[]"));
 export const setGithubIgnoredRepos = (db: Database, repos: string[]): void => setSetting(db, "github_ignored_repos", JSON.stringify(Array.from(new Set(repos.map(repo => repo.trim()).filter(Boolean)))));

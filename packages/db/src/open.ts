@@ -113,6 +113,29 @@ export function migrateReminderEntities(db: Database): void {
   })();
 }
 
+/** Converts legacy global/per-PR ignored checks into repository-scoped rules once. */
+export function migrateGithubIgnoredChecks(db: Database): void {
+  const migrated = db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'github_ignored_check_rules'").get();
+  if (migrated) return;
+  const globalRow = db.query<{ value: string }, []>("SELECT value FROM settings WHERE key = 'github_ignored_checks'").get();
+  let global: string[] = [];
+  try { global = globalRow ? JSON.parse(globalRow.value) : []; } catch { global = []; }
+  const rows = db.query<{ owner: string; repo: string; ignored_checks: string }, []>("SELECT owner, repo, ignored_checks FROM github_prs").all();
+  const rules = new Map<string, { repo: string; check: string }>();
+  for (const row of rows) {
+    let local: string[] = [];
+    try { local = JSON.parse(row.ignored_checks); } catch { local = []; }
+    const repo = `${row.owner}/${row.repo}`;
+    for (const check of [...global, ...local]) {
+      const trimmed = check.trim();
+      if (trimmed) rules.set(`${repo.toLowerCase()}\0${trimmed.toLowerCase()}`, { repo, check: trimmed });
+    }
+  }
+  db.query("INSERT INTO settings(key, value) VALUES ('github_ignored_check_rules', ?)").run(JSON.stringify([...rules.values()]));
+  db.query("DELETE FROM settings WHERE key = 'github_ignored_checks'").run();
+}
+
+
 /** Opens (and creates) a Portfolio database and applies the schema. ":memory:" works for tests. */
 export function openDatabase(path: string = defaultDatabasePath(), options: OpenOptions = {}): Database {
   const db = options.readonly ? new Database(path, { readonly: true }) : new Database(path, { create: options.create ?? true, readwrite: true });
@@ -128,6 +151,7 @@ export function openDatabase(path: string = defaultDatabasePath(), options: Open
     db.exec("ALTER TABLE tasks ADD COLUMN parent_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL CHECK (parent_id != id)");
   }
   db.exec(schema);
+  migrateGithubIgnoredChecks(db);
   db.exec(`INSERT INTO items(type, task_id, title, content, created_at)
     SELECT 'task', tasks.id, tasks.title, tasks.notes, tasks.created_at FROM tasks
     WHERE NOT EXISTS (SELECT 1 FROM items WHERE items.task_id = tasks.id)`);

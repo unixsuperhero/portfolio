@@ -41,12 +41,6 @@ describe("parsePrNode", () => {
     expect(pr.review_decision).toBe("approved");
   });
 
-  test("marks checks ignored per the PR's own ignored_checks", () => {
-    const node = (listsFixture as ListsResponse).mine.nodes[0];
-    const pr = parsePrNode(node, { ignored_checks: ["codecov/*"] });
-    expect(pr.checks.find(c => c.name === "codecov/patch")?.ignored).toBe(true);
-    expect(pr.checks.find(c => c.name === "ci/test")?.ignored).toBe(false);
-  });
 
   test("no state, no review request, no comments falls back to empty/defaults", () => {
     const node = (listsFixture as ListsResponse).review_requested.nodes[0];

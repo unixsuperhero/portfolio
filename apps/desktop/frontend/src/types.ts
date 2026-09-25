@@ -12,6 +12,8 @@ export type {
   Completion,
   Item,
   ItemFilter,
+  GithubIgnoredCheckRule,
+  GithubPrView,
   ItemType,
   ItemView,
   Portfolio,
@@ -150,6 +152,4 @@ export interface PrsResponse {
   status: PrStatus;
 }
 
-/** Settings gains github_ignored_checks / github_poll_minutes; kept optional here since
- * @portfolio/core's Settings type may not have caught up yet. */
-export type SettingsView = Settings & { github_ignored_checks?: string[]; github_ignored_repos?: string[]; github_poll_minutes?: number; github_dirs?: string[] };
+export type SettingsView = Settings;
