@@ -11,6 +11,38 @@ import { PathField } from "../components/PathField.tsx";
 import { useConfirm } from "../components/ConfirmDialog.tsx";
 import Tasks from "./Tasks.tsx";
 
+function addCodeCopyButtons(frame: HTMLIFrameElement): void {
+  const document = frame.contentDocument;
+  if (!document) return;
+  document.querySelectorAll<HTMLElement>("article pre > code").forEach(code => {
+    const pre = code.closest("pre");
+    const host = pre?.parentElement?.matches("div.sourceCode") ? pre.parentElement : pre;
+    if (!host || host.querySelector(":scope > .copy-code-button")) return;
+
+    host.classList.add("copy-code-host");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "copy-code-button";
+    button.setAttribute("aria-label", "Copy code to clipboard");
+    button.textContent = "Copy";
+    button.addEventListener("click", () => {
+      void copyText(code.textContent.replace(/\n$/, "")).then(
+        () => {
+          button.textContent = "Copied";
+          button.classList.add("copied");
+        },
+        () => {
+          button.textContent = "Failed";
+        },
+      ).finally(() => window.setTimeout(() => {
+        button.textContent = "Copy";
+        button.classList.remove("copied");
+      }, 1400));
+    });
+    host.appendChild(button);
+  });
+}
+
 export default function Item() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -62,7 +94,7 @@ export default function Item() {
       {item.type === "task" && item.task_id !== null ? <Tasks taskId={item.task_id} onChange={load} /> : null}
 
       {(item.type === "document" || item.type === "note") ? (
-        <iframe title={item.title} sandbox="allow-same-origin" srcDoc={html ?? ""} style={{ width: "100%", height: "70vh", border: "1px solid var(--border)", borderRadius: "var(--radius)", background: "#fff" }} />
+        <iframe title={item.title} sandbox="allow-same-origin" srcDoc={html ?? ""} onLoad={event => addCodeCopyButtons(event.currentTarget)} style={{ width: "100%", height: "70vh", border: "1px solid var(--border)", borderRadius: "var(--radius)", background: "#fff" }} />
       ) : null}
 
       {(item.type === "file" || item.type === "dir") ? (
