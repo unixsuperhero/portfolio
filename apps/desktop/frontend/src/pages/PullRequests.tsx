@@ -50,6 +50,8 @@ export default function PullRequests() {
     } else {
       next.set("collection", "review_requested");
       next.set("state", "open");
+      next.set("sort", "updated");
+      next.set("direction", "desc");
     }
     setParams(next, { replace: true, flushSync: true });
   };

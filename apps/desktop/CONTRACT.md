@@ -368,15 +368,17 @@ Polling (in `packages/api/src/server.ts`, started only when `gh auth status` suc
 - `gh` runs from each `github_dirs` entry in turn (cwd only; gh resolves the host and credentials from that directory's git
   remote). With no entries it runs from the API's own cwd. A PR belongs to the first directory that returns it (`source_dir`);
   a directory that fails is reported in `prStatus.error` and skipped, and the tick fails only when every directory fails.
-- Per directory, one GraphQL request refreshes both search lists: `search(query:"is:pr is:open author:@me")` and
-  `search(query:"is:pr is:open -is:draft review-requested:@me")` as two aliases, first 50 each, plus the viewer ID,
-  each candidate's `reviewRequests`, and `rateLimit { remaining resetAt }`. A review candidate enters `review_requested`
-  only when its requested reviewers contain a `User` whose immutable ID equals the viewer ID; team requests are excluded.
-  `issueCount` identifies complete search results so removed memberships are reconciled without truncating a larger result set.
+- Per directory, the first GraphQL request refreshes both search lists. Review candidates use
+  `search(query:"is:pr is:open -is:draft review-requested:@me sort:updated-desc")`; every remaining
+  review page is fetched by cursor. Responses include the viewer ID, each candidate's `reviewRequests`,
+  page info, and `rateLimit { remaining resetAt }`. A candidate enters `review_requested` only when its
+  requested reviewers contain a `User` whose immutable ID equals the viewer ID; team requests are excluded.
+  `PullRequest.updatedAt` is non-null and persisted, so results remain updated-descending without a created-time fallback.
 - One GraphQL request refreshes every watched PR not already in those results: `repository(owner,name){ pullRequest(number) }`
   aliases, batched (≤ 25 per request) and grouped by the PR's `source_dir`, so each batch runs from its own directory.
 - Cadence: every `github_poll_minutes` (2) when at least one PR is watched, else every 10 minutes; also on
-  `POST /api/prs/refresh` (rate-limited to once per 30s). Never more than 2 requests per directory per cycle. If `rateLimit.remaining < 200`
+  `POST /api/prs/refresh` (rate-limited to once per 30s). A cycle uses the combined first-page request,
+  one request per remaining review page, and watched batches as needed. If `rateLimit.remaining < 200`
   skip cycles until `resetAt`. On error: exponential backoff up to 15 minutes, error surfaced in `prStatus`.
 - Diffing (pure, tested): compare the stored row to the new one and append events for: state change, review_decision change,
   comments increase (message says how many new), and checks_summary change computed over non-ignored checks (global + per PR).

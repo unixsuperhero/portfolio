@@ -2,6 +2,7 @@
   "viewer": { "id": "U_jearsh" },
   "mine": {
     "issueCount": 1,
+    "pageInfo": { "hasNextPage": false, "endCursor": "mine-1" },
     "nodes": [
       {
         "url": "https://github.com/acme/app/pull/12",
@@ -39,6 +40,7 @@
   },
   "review_requested": {
     "issueCount": 1,
+    "pageInfo": { "hasNextPage": false, "endCursor": "review-1" },
     "nodes": [
       {
         "url": "https://github.com/acme/app/pull/20",

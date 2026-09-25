@@ -87,9 +87,12 @@ See [data-model.md](data-model.md) for the full shapes and
 
 The PRs page uses one full-width list, deduplicated by PR ID. The Collection
 selector switches between visible PRs, Mine, My Reviews, Watched, Ignored,
-and all loaded PRs including ignored ones. **My Reviews** includes only open,
-non-draft PRs whose live review-request records contain the signed-in GitHub
-account's immutable user ID; team requests do not qualify.
+and all loaded PRs including ignored ones. **My Reviews** loads every search page
+across repositories visible to the signed-in GitHub account, then keeps only open,
+non-draft PRs whose live review-request records contain that account's immutable
+user ID; team requests do not qualify. Results sort by `updatedAt` descending.
+GitHub defines `PullRequest.updatedAt` as non-null, so a created-time fallback is
+not needed.
 
 Lifecycle badges pair text and SVG icons with semantic colors and matching row
 borders: **Draft** is muted with a dashed border, **Open** is green, **Merged** is
@@ -108,9 +111,9 @@ an explicit Ignored label when applicable. No checks and All checks ignored are
 different states. Check lists have their own URL-backed search, filters, and sort.
 
 Lifecycle shortcuts show counts within the other active filters. **My Reviews**
-is a matching shortcut that applies the direct-review collection and open,
-non-draft lifecycle together. The primary toolbar exposes lifecycle, draft flag,
-review, checks, collection, sort, and order.
+is a matching shortcut that applies the direct-review collection, open non-draft
+lifecycle, and updated-descending sort together. The primary toolbar exposes
+lifecycle, draft flag, review, checks, collection, sort, and order.
 **More filters** covers owner, repository, author, source directory (including the
 API directory), raw GitHub state, watched/ignored flags, list memberships, linked
 item IDs, PR IDs/numbers, title/URL text, comment ranges, updated/fetched time
