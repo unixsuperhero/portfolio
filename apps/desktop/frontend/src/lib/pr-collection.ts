@@ -1,6 +1,11 @@
-import type { Pr } from "../types.ts";
+import type { GithubIgnoredCheckRule, Pr } from "../types.ts";
 
 export const lifecycle = (pr: Pick<Pr, "state" | "is_draft">) => pr.state === "open" && pr.is_draft ? "draft" : pr.state;
+export const ignoredCheckRuleRepos = (
+  prs: readonly Pick<Pr, "owner" | "repo" | "checks">[],
+  rules: readonly Pick<GithubIgnoredCheckRule, "repo">[],
+): string[] => [...new Set([...prs.filter(pr => pr.checks.length).map(pr => `${pr.owner}/${pr.repo}`), ...rules.map(rule => rule.repo)])].sort();
+
 export const REVIEW_LABELS = { approved: "Approved", changes_requested: "Changes requested", review_required: "Review required", none: "No review decision" };
 export const CHECK_LABELS = { success: "Passed", failure: "Failed", pending: "Pending", skipped: "Skipped", cancelled: "Cancelled", neutral: "Neutral", none: "No pass/fail result" };
 const options = (labels: Record<string, string>) => Object.entries(labels).map(([value, label]) => ({ value, label }));

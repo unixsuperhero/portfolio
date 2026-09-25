@@ -7,7 +7,7 @@ import { PrRow, confirmIgnorePr, confirmIgnoreRepo, ignoreRepo } from "../compon
 import { PrStatusIcon } from "../components/PrStatus.tsx";
 import { CollectionToolbar, SelectionBar, useSelection } from "@portfolio/ui/collections";
 import { useConfirm } from "../components/ConfirmDialog.tsx";
-import { BUILTIN_PR_VIEWS, CHECK_FILTERS, lifecycle, matchesPr, normalizePrViewQuery, PR_FILTER_KEYS, PR_FILTERS, PR_SORTS, sortPrs } from "../lib/pr-collection.ts";
+import { BUILTIN_PR_VIEWS, CHECK_FILTERS, ignoredCheckRuleRepos, lifecycle, matchesPr, normalizePrViewQuery, PR_FILTER_KEYS, PR_FILTERS, PR_SORTS, sortPrs } from "../lib/pr-collection.ts";
 import type { PrFilter } from "../lib/pr-collection.ts";
 import { usePrData } from "../hooks/usePrData.tsx";
 import "../operational.css";
@@ -116,7 +116,7 @@ export default function PullRequests() {
   const ignoredRuleQuery = params.get("ignored_rule_q") ?? "";
   const ignoredRuleSort = params.get("ignored_rule_sort") ?? "repo";
   const ignoredRuleRepo = params.get("ignored_rule_repo") ?? "";
-  const ignoredRuleRepos = [...new Set(ignoredCheckRules.map(rule => rule.repo))].sort();
+  const ignoredRuleRepos = ignoredCheckRuleRepos(allPrs, ignoredCheckRules);
   const visibleIgnoredCheckRules = ignoredCheckRules
     .filter(rule => (!ignoredRuleRepo || rule.repo === ignoredRuleRepo) && `${rule.repo} ${rule.check}`.toLowerCase().includes(ignoredRuleQuery.toLowerCase()))
     .sort((left, right) => ignoredRuleSort === "check" ? left.check.localeCompare(right.check) || left.repo.localeCompare(right.repo) : left.repo.localeCompare(right.repo) || left.check.localeCompare(right.check));

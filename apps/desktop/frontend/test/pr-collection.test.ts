@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Pr } from "../src/types";
-import { lifecycle, matchesPr, normalizePrViewQuery, sortPrs } from "../src/lib/pr-collection";
+import { ignoredCheckRuleRepos, lifecycle, matchesPr, normalizePrViewQuery, sortPrs } from "../src/lib/pr-collection";
 
 const pr = (overrides: Partial<Pr> = {}): Pr => ({
   id: 1, number: 10, url: "https://github.com/acme/console/pull/10", owner: "acme", repo: "console", title: "Improve search", author: "alex",
@@ -15,6 +15,13 @@ const records = [ready, draft, merged, closedDraft];
 const ids = (query: string, input = records, hiddenIds = new Set([4])) => input.filter(item => matchesPr(item, new URLSearchParams(query), hiddenIds.has(item.id))).map(item => item.id);
 
 describe("PR triage", () => {
+  test("ignored-check repository options include repositories with PR checks before any rules exist", () => {
+    const acme = pr({ checks: [{ name: "ci/test", status: "failure", url: "", ignored: false }] });
+    const beta = pr({ id: 5, owner: "beta", repo: "api", checks: [{ name: "lint", status: "success", url: "", ignored: false }] });
+    expect(ignoredCheckRuleRepos([acme, beta, draft], [])).toEqual(["acme/console", "beta/api"]);
+    expect(ignoredCheckRuleRepos([acme, beta], [{ repo: "archived/worker", check: "ci/test" }])).toEqual(["acme/console", "archived/worker", "beta/api"]);
+  });
+
   test("terminal lifecycle wins over a retained draft flag", () => {
     expect(records.map(lifecycle)).toEqual(["open", "draft", "merged", "closed"]);
     expect(lifecycle(pr({ state: "merged", is_draft: true }))).toBe("merged");
