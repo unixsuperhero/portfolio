@@ -86,8 +86,9 @@ See [data-model.md](data-model.md) for the full shapes and
 ## Pull requests
 
 The PRs page uses one full-width list, deduplicated by PR ID. The Collection
-selector switches between visible PRs, Mine, Review requested, Watched, Ignored,
-and all loaded PRs including ignored ones.
+selector switches between visible PRs, Mine, My Reviews, Watched, Ignored,
+and all loaded PRs including ignored ones. **My Reviews** includes only open,
+non-draft PRs where GitHub directly requested the signed-in user, not their teams.
 
 Lifecycle badges pair text and SVG icons with semantic colors and matching row
 borders: **Draft** is muted with a dashed border, **Open** is green, **Merged** is
@@ -105,8 +106,10 @@ shows Passed, Failed, Pending, Skipped, Cancelled, or Neutral for each check, pl
 an explicit Ignored label when applicable. No checks and All checks ignored are
 different states. Check lists have their own URL-backed search, filters, and sort.
 
-Lifecycle shortcuts show counts within the other active filters. The primary
-toolbar exposes lifecycle, draft flag, review, checks, collection, sort, and order.
+Lifecycle shortcuts show counts within the other active filters. **My Reviews**
+is a matching shortcut that applies the direct-review collection and open,
+non-draft lifecycle together. The primary toolbar exposes lifecycle, draft flag,
+review, checks, collection, sort, and order.
 **More filters** covers owner, repository, author, source directory (including the
 API directory), raw GitHub state, watched/ignored flags, list memberships, linked
 item IDs, PR IDs/numbers, title/URL text, comment ranges, updated/fetched time

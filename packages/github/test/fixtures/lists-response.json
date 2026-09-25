@@ -1,5 +1,6 @@
 {
   "mine": {
+    "issueCount": 1,
     "nodes": [
       {
         "url": "https://github.com/acme/app/pull/12",
@@ -36,6 +37,7 @@
     ]
   },
   "review_requested": {
+    "issueCount": 1,
     "nodes": [
       {
         "url": "https://github.com/acme/app/pull/20",

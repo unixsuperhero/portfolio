@@ -97,9 +97,14 @@ export interface RateLimit {
 }
 
 /** The lists response's shape (mine/review_requested/rateLimit), pre-parse. */
+interface SearchList {
+  issueCount: number;
+  nodes: PrNode[];
+}
+
 export interface ListsResponse {
-  mine: { nodes: PrNode[] };
-  review_requested: { nodes: PrNode[] };
+  mine: SearchList;
+  review_requested: SearchList;
   rateLimit: RateLimit;
 }
 

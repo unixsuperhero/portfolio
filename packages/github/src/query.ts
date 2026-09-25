@@ -39,7 +39,7 @@ export type ListName = "mine" | "review_requested";
 
 const LIST_SEARCH: Record<ListName, string> = {
   mine: "is:pr is:open author:@me",
-  review_requested: "is:pr is:open review-requested:@me",
+  review_requested: "is:pr is:open -is:draft user-review-requested:@me",
 };
 
 /**
@@ -50,6 +50,7 @@ const LIST_SEARCH: Record<ListName, string> = {
 export function listQuery(list: ListName, first: number): string {
   return `query {
   ${list}: search(query: ${gqlString(LIST_SEARCH[list])}, type: ISSUE, first: ${first}) {
+    issueCount
     nodes { ... on PullRequest { ...prFields } }
   }
   rateLimit { remaining resetAt }
@@ -58,15 +59,18 @@ ${PR_FRAGMENT}`;
 }
 
 /**
- * Both search lists (`is:pr is:open author:@me` and `is:pr is:open review-requested:@me`,
- * first 50 each) plus rateLimit, as one GraphQL document.
+ * Both search lists (`is:pr is:open author:@me` and
+ * `is:pr is:open -is:draft user-review-requested:@me`, first 50 each) plus
+ * rateLimit, as one GraphQL document.
  */
 export function listsQuery(): string {
   return `query {
   mine: search(query: ${gqlString(LIST_SEARCH.mine)}, type: ISSUE, first: 50) {
+    issueCount
     nodes { ... on PullRequest { ...prFields } }
   }
   review_requested: search(query: ${gqlString(LIST_SEARCH.review_requested)}, type: ISSUE, first: 50) {
+    issueCount
     nodes { ... on PullRequest { ...prFields } }
   }
   rateLimit { remaining resetAt }

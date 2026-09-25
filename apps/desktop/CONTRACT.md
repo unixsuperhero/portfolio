@@ -369,7 +369,8 @@ Polling (in `packages/api/src/server.ts`, started only when `gh auth status` suc
   remote). With no entries it runs from the API's own cwd. A PR belongs to the first directory that returns it (`source_dir`);
   a directory that fails is reported in `prStatus.error` and skipped, and the tick fails only when every directory fails.
 - Per directory, one GraphQL request refreshes both search lists: `search(query:"is:pr is:open author:@me")` and
-  `search(query:"is:pr is:open review-requested:@me")` as two aliases, first 50 each, plus `rateLimit { remaining resetAt }`.
+  `search(query:"is:pr is:open -is:draft user-review-requested:@me")` as two aliases, first 50 each, plus `rateLimit { remaining resetAt }`.
+  `issueCount` identifies complete review results so memberships removed from GitHub are removed locally without truncating a larger result set.
 - One GraphQL request refreshes every watched PR not already in those results: `repository(owner,name){ pullRequest(number) }`
   aliases, batched (≤ 25 per request) and grouped by the PR's `source_dir`, so each batch runs from its own directory.
 - Cadence: every `github_poll_minutes` (2) when at least one PR is watched, else every 10 minutes; also on
@@ -390,7 +391,8 @@ GET/PATCH /api/settings                 gain github_ignored_checks: string[], gi
 ```
 
 Frontend: sidebar entry "PRs" → `/prs`, a single full-width list deduplicated by PR ID.
-Collection selects visible, mine, review-requested, watched, ignored, or all loaded PRs.
+Collection selects visible, mine, direct review-requested, watched, ignored, or all loaded PRs.
+The **My Reviews** shortcut selects direct requests plus the open, non-draft lifecycle.
 Lifecycle is Draft only when `state === "open" && is_draft`; merged/closed take precedence.
 Text, SVG icons, semantic color, and row borders distinguish Draft/Open/Merged/Closed.
 Draft uses a dashed border; terminal drafts retain a secondary Draft flag badge.
@@ -403,7 +405,7 @@ every PR data field: identifiers, text/URLs, people/repository/directory, flags,
 linked items, comments, timestamps, check counts, patterns, and individual-check fields.
 Combined individual-check predicates apply to the same check. Search indexes all PR data;
 sort/order and filters are URL-backed, including ignored PRs and null-valued fields.
-Lifecycle shortcuts show counts under the other active filters. Nested check filters use
+Lifecycle and My Reviews shortcuts show counts under the other active filters. Nested check filters use
 `pr<ID>_check_*` query keys so they do not change the page's PR filters.
 
 Watch/Unwatch is a row action. Manage exposes Ignore/Unignore, Ignore repo, and Ignore checks.

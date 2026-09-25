@@ -160,6 +160,23 @@ describe("createPrPoller.tick", () => {
     expect(store.github.listPrs()).toHaveLength(2);
   });
 
+  test("removes stale team-only review memberships after a complete direct-review search", async () => {
+    const store = openStore(":memory:");
+    const staleId = seedWatched(store, {
+      url: "https://github.com/acme/app/pull/99",
+      number: 99,
+      watched: false,
+      lists: ["review_requested"],
+    });
+    const gh = fakeGh([listsFixture]);
+    const poller = createPrPoller({ db: store, gh, now: () => new Date("2026-09-22T14:05:00Z") });
+
+    await poller.tick();
+
+    expect(store.github.getPr(staleId)?.lists).toEqual([]);
+    expect(store.github.listPrs({ list: "review_requested" }).map(pr => pr.number)).toEqual([20]);
+  });
+
   test("1 request when the only watched PR is already inside the lists", async () => {
     const store = openStore(":memory:");
     const id = seedWatched(store, { url: "https://github.com/acme/app/pull/12", number: 12 });

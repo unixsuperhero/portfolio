@@ -11,7 +11,7 @@ export interface PollerDb {
   github: {
     findPrByUrl(url: string): Pr | null;
     upsertPr(input: PrDraft): number;
-    listPrs(filter?: { watched?: boolean; hidden?: boolean }): Pr[];
+    listPrs(filter?: { list?: "mine" | "review_requested" | "watched"; watched?: boolean; hidden?: boolean; dir?: string | null }): Pr[];
     insertEvents(events: PrEventDraft[]): void;
   };
   settings: {
@@ -132,6 +132,17 @@ export function createPrPoller(options: PollerOptions) {
     if (!isHidden(next, db.settings.getGithubIgnoredRepos())) events.push(...diffPr(previous, next, globalIgnored, fetchedAt));
   }
 
+  /** Remove review-list memberships that a complete direct-review search no longer returns. */
+  function reconcileReviewRequests(dir: string | null, list: ListsResponse["review_requested"]): void {
+    if (list.issueCount !== list.nodes.length) return;
+    const currentUrls = new Set(list.nodes.map(node => node.url));
+    for (const pr of db.github.listPrs({ list: "review_requested", dir })) {
+      if (currentUrls.has(pr.url)) continue;
+      const { id: _id, ignored: _ignored, ...draft } = pr;
+      db.github.upsertPr({ ...draft, lists: draft.lists.filter(name => name !== "review_requested") });
+    }
+  }
+
   async function tick(): Promise<void> {
     if (state.inflight) return state.inflight;
     state.inflight = runTick().finally(() => { state.inflight = null; });
@@ -164,6 +175,7 @@ export function createPrPoller(options: PollerOptions) {
           failures.push(`${dir ?? "default dir"}: ${(err as Error).message}`);
           continue;
         }
+        reconcileReviewRequests(dir, listsData.review_requested);
         const byUrl = new Map<string, { node: PrNode; lists: string[] }>();
         for (const node of listsData.mine.nodes) byUrl.set(node.url, { node, lists: [...(byUrl.get(node.url)?.lists ?? []), "mine"] });
         for (const node of listsData.review_requested.nodes) byUrl.set(node.url, { node, lists: [...(byUrl.get(node.url)?.lists ?? []), "review_requested"] });

@@ -42,6 +42,17 @@ export default function PullRequests() {
     if (value) next.set(key, value); else next.delete(key);
     setParams(next, { replace: true, flushSync: true });
   };
+  const toggleMyReviews = () => {
+    const next = new URLSearchParams(params);
+    if (params.get("collection") === "review_requested") {
+      next.delete("collection");
+      next.delete("state");
+    } else {
+      next.set("collection", "review_requested");
+      next.set("state", "open");
+    }
+    setParams(next, { replace: true, flushSync: true });
+  };
   const clearFilters = () => {
     const next = new URLSearchParams(params);
     PR_FILTER_KEYS.forEach(key => next.delete(key));
@@ -66,6 +77,13 @@ export default function PullRequests() {
   const withoutState = new URLSearchParams(params);
   withoutState.delete("state");
   const stateCandidates = allPrs.filter(pr => matchesPr(pr, withoutState, hiddenIds.has(pr.id)));
+  const withoutMyReviews = new URLSearchParams(params);
+  withoutMyReviews.delete("collection");
+  withoutMyReviews.delete("state");
+  const myReviewCandidates = allPrs.filter(pr =>
+    pr.lists.includes("review_requested")
+    && lifecycle(pr) === "open"
+    && matchesPr(pr, withoutMyReviews, hiddenIds.has(pr.id)));
   const activeFilters = PR_FILTER_KEYS.filter(key => params.get(key) && !(key === "collection" && params.get(key) === "visible"));
   const primaryKeys = PR_FILTERS.filter(filter => filter.group === "Primary").map(filter => filter.key);
   const advancedCount = activeFilters.filter(key => !["q", "collection", ...primaryKeys].includes(key)).length;
@@ -113,9 +131,10 @@ export default function PullRequests() {
       : <p className="pr-status">{status.login ? `@${status.login} · ` : ""}Last poll {formatTime(status.last_poll_at)} · Next {formatTime(status.next_poll_at)}{status.rate ? ` · ${status.rate.remaining} API requests remaining` : ""}{status.error ? ` · ${status.error}` : ""}</p>}
     {refreshError ? <p className="pr-status pr-status-error" role="alert">{refreshError}</p> : null}
 
-    <div className="pr-state-shortcuts" aria-label="Filter by lifecycle">
+    <div className="pr-state-shortcuts" aria-label="Pull request shortcuts">
       <button type="button" aria-pressed={!params.get("state")} onClick={() => update("state", "")}>All states <span>{stateCandidates.length}</span></button>
       {(["draft", "open", "merged", "closed"] as const).map(state => <button type="button" className={`pr-tone-${state}`} key={state} aria-pressed={params.get("state") === state} onClick={() => update("state", params.get("state") === state ? "" : state)}><PrStatusIcon kind={state} />{state[0].toUpperCase() + state.slice(1)}<span>{stateCandidates.filter(pr => lifecycle(pr) === state).length}</span></button>)}
+      <button type="button" className="pr-tone-review_required" aria-pressed={params.get("collection") === "review_requested"} onClick={toggleMyReviews}><PrStatusIcon kind="review_required" />My Reviews <span>{myReviewCandidates.length}</span></button>
     </div>
     <CollectionToolbar query={query} onQueryChange={value => update("q", value)} sort={sort} onSortChange={value => update("sort", value)} sortOptions={PR_SORTS}>
       <label>Collection<select name="collection" value={collection} onChange={event => update("collection", event.target.value)}>{COLLECTIONS.map(option => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>

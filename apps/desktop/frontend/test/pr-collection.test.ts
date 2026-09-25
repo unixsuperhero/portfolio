@@ -64,6 +64,14 @@ describe("PR triage", () => {
     expect(ids("collection=review_requested")).toEqual([]);
   });
 
+  test("My Reviews combines direct-review membership with open, non-draft lifecycle", () => {
+    const directReview = pr({ id: 5, lists: ["review_requested"] });
+    const draftReview = pr({ id: 6, lists: ["review_requested"], is_draft: true });
+    const closedReview = pr({ id: 7, lists: ["review_requested"], state: "closed" });
+
+    expect(ids("collection=review_requested&state=open", [directReview, draftReview, closedReview])).toEqual([5]);
+  });
+
   test("search covers draft semantics and nested data without indexing property names", () => {
     expect(ids("collection=all&q=draft")).toEqual([2, 4]);
     expect(ids("q=blair")).toEqual([2]);
