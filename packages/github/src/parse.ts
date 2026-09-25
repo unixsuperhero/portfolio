@@ -104,6 +104,7 @@ export interface RateLimit {
 /** The lists response's shape (mine/review_requested/rateLimit), pre-parse. */
 interface SearchList {
   issueCount: number;
+  pageInfo: { hasNextPage: boolean; endCursor: string | null };
   nodes: PrNode[];
 }
 

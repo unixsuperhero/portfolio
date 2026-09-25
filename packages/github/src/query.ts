@@ -49,7 +49,7 @@ export type ListName = "mine" | "review_requested";
 
 const LIST_SEARCH: Record<ListName, string> = {
   mine: "is:pr is:open author:@me",
-  review_requested: "is:pr is:open -is:draft review-requested:@me",
+  review_requested: "is:pr is:open -is:draft review-requested:@me sort:updated-desc",
 };
 
 /**
@@ -57,12 +57,14 @@ const LIST_SEARCH: Record<ListName, string> = {
  * this when the combined lists query times out on GitHub's side (HTTP 502/504), which
  * happens for accounts with many open PRs that each carry hundreds of check contexts.
  */
-export function listQuery(list: ListName, first: number): string {
+export function listQuery(list: ListName, first: number, after: string | null = null): string {
   const reviewRequests = list === "review_requested" ? REVIEW_REQUEST_FIELDS : "";
+  const cursor = after === null ? "" : `, after: ${gqlString(after)}`;
   return `query {
   viewer { id }
-  ${list}: search(query: ${gqlString(LIST_SEARCH[list])}, type: ISSUE, first: ${first}) {
+  ${list}: search(query: ${gqlString(LIST_SEARCH[list])}, type: ISSUE, first: ${first}${cursor}) {
     issueCount
+    pageInfo { hasNextPage endCursor }
     nodes { ... on PullRequest { ...prFields${reviewRequests} } }
   }
   rateLimit { remaining resetAt }
@@ -79,10 +81,12 @@ export function listsQuery(): string {
   viewer { id }
   mine: search(query: ${gqlString(LIST_SEARCH.mine)}, type: ISSUE, first: 50) {
     issueCount
+    pageInfo { hasNextPage endCursor }
     nodes { ... on PullRequest { ...prFields } }
   }
   review_requested: search(query: ${gqlString(LIST_SEARCH.review_requested)}, type: ISSUE, first: 50) {
     issueCount
+    pageInfo { hasNextPage endCursor }
     nodes { ... on PullRequest { ...prFields${REVIEW_REQUEST_FIELDS} } }
   }
   rateLimit { remaining resetAt }

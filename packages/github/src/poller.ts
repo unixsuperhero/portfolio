@@ -93,35 +93,56 @@ export function createPrPoller(options: PollerOptions) {
 
   const ghOptions = (dir: string | null) => (dir === null ? undefined : { cwd: dir });
 
-  /** One list on its own, shrinking the page each time GitHub times out, until FALLBACK_LIST_PAGES runs out. */
-  async function fetchList(dir: string | null, list: ListName): Promise<Partial<ListsResponse>> {
+  /** One list page on its own, shrinking the page each time GitHub times out. */
+  async function fetchListPage(dir: string | null, list: ListName, after: string | null = null): Promise<Partial<ListsResponse>> {
     let lastError: Error | null = null;
     for (const first of FALLBACK_LIST_PAGES) {
       try {
-        return (await gh.graphql(listQuery(list, first), ghOptions(dir))) as Partial<ListsResponse>;
+        return (await gh.graphql(listQuery(list, first, after), ghOptions(dir))) as Partial<ListsResponse>;
       } catch (err) {
         if (!isGatewayTimeout(err)) throw err;
         lastError = err as Error;
         log(`${dir ?? "default dir"}: ${list} list of ${first} timed out (${lastError.message})`);
       }
     }
-    throw new Error(`${list} list still times out at ${FALLBACK_LIST_PAGES.at(-1)} per page: ${lastError!.message}`);
+    throw new Error(`${list} list still times out at ${FALLBACK_LIST_PAGES.at(-1)} per page: ${lastError?.message ?? "unknown error"}`);
   }
 
-  /** The combined lists query, or, when GitHub times out on it, each list on its own with ever smaller pages. */
+  async function fetchRemainingReviewPages(dir: string | null, initial: ListsResponse): Promise<ListsResponse> {
+    const nodes = [...initial.review_requested.nodes];
+    let pageInfo = initial.review_requested.pageInfo;
+    let rateLimit = initial.rateLimit;
+    const cursors = new Set<string>();
+    while (pageInfo.hasNextPage) {
+      if (!pageInfo.endCursor || cursors.has(pageInfo.endCursor)) throw new Error("GitHub returned an invalid pull request search cursor");
+      cursors.add(pageInfo.endCursor);
+      const page = await fetchListPage(dir, "review_requested", pageInfo.endCursor);
+      if (!page.viewer || !page.review_requested || !page.rateLimit || page.viewer.id !== initial.viewer.id) {
+        throw new Error("GitHub returned an incomplete pull request search response");
+      }
+      nodes.push(...page.review_requested.nodes);
+      pageInfo = page.review_requested.pageInfo;
+      if (page.rateLimit.remaining < rateLimit.remaining) rateLimit = page.rateLimit;
+    }
+    return { ...initial, review_requested: { ...initial.review_requested, nodes, pageInfo }, rateLimit };
+  }
+
+  /** The combined first page, or separate smaller first pages after a timeout, followed by every remaining review page. */
   async function fetchLists(dir: string | null): Promise<ListsResponse> {
+    let initial: ListsResponse;
     try {
-      return (await gh.graphql(listsQuery(), ghOptions(dir))) as ListsResponse;
+      initial = (await gh.graphql(listsQuery(), ghOptions(dir))) as ListsResponse;
     } catch (err) {
       if (!isGatewayTimeout(err)) throw err;
       log(`${dir ?? "default dir"}: lists query timed out (${(err as Error).message}); retrying one list at a time`);
+      const mine = await fetchListPage(dir, "mine");
+      const reviewRequested = await fetchListPage(dir, "review_requested");
+      if (!mine.mine || !reviewRequested.viewer || !reviewRequested.review_requested || !reviewRequested.rateLimit) {
+        throw new Error("GitHub returned an incomplete pull request search response");
+      }
+      initial = { viewer: reviewRequested.viewer, mine: mine.mine, review_requested: reviewRequested.review_requested, rateLimit: reviewRequested.rateLimit };
     }
-    const mine = await fetchList(dir, "mine");
-    const reviewRequested = await fetchList(dir, "review_requested");
-    if (!mine.mine || !reviewRequested.viewer || !reviewRequested.review_requested || !reviewRequested.rateLimit) {
-      throw new Error("GitHub returned an incomplete pull request search response");
-    }
-    return { viewer: reviewRequested.viewer, mine: mine.mine, review_requested: reviewRequested.review_requested, rateLimit: reviewRequested.rateLimit };
+    return fetchRemainingReviewPages(dir, initial);
   }
 
   /** A hidden PR (its own flag, or an ignored repo) is still stored, but never raises events. */

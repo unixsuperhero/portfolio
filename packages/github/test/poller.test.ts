@@ -160,6 +160,32 @@ describe("createPrPoller.tick", () => {
     expect(store.github.listPrs()).toHaveLength(2);
   });
 
+  test("loads every direct-review page in updated-descending order", async () => {
+    const store = openStore(":memory:");
+    const firstPage = structuredClone(listsFixture);
+    firstPage.review_requested.issueCount = 2;
+    firstPage.review_requested.pageInfo = { hasNextPage: true, endCursor: "review-1" };
+    const secondNode = structuredClone(listsFixture.review_requested.nodes[0]);
+    secondNode.url = "https://github.com/acme/app/pull/21";
+    secondNode.number = 21;
+    secondNode.title = "Newer direct review";
+    secondNode.updatedAt = "2026-09-22T14:30:00Z";
+    const secondPage = {
+      viewer: listsFixture.viewer,
+      review_requested: { issueCount: 2, pageInfo: { hasNextPage: false, endCursor: "review-2" }, nodes: [secondNode] },
+      rateLimit: { remaining: 4998, resetAt: listsFixture.rateLimit.resetAt },
+    };
+    const gh = fakeGh([firstPage, secondPage]);
+    const poller = createPrPoller({ db: store, gh, now: () => new Date("2026-09-22T14:35:00Z") });
+
+    await poller.tick();
+
+    expect(gh.calls).toHaveLength(2);
+    expect(gh.calls[1]).toContain('after: "review-1"');
+    expect(store.github.listPrs({ list: "review_requested" }).map(pr => pr.number)).toEqual([21, 20]);
+    expect(poller.status().rate?.remaining).toBe(4998);
+  });
+
   test("removes stale team-only review memberships after a complete direct-review search", async () => {
     const store = openStore(":memory:");
     const staleId = seedWatched(store, {
