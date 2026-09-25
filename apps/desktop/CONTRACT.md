@@ -345,7 +345,7 @@ const pr = {
   comments: 4,                            // issue comments + review comments + reviews
   checks: [{ name: "ci/test", status: "success" | "failure" | "pending" | "skipped" | "cancelled" | "neutral", url: "…", ignored: false }],
   checks_summary: "success" | "failure" | "pending" | "none",   // over NON-ignored checks only
-  watched: true, ignored_checks: ["codecov/patch"],             // per PR; settings.github_ignored_checks is global (glob patterns like "codecov/*")
+  watched: true, ignored_checks: ["codecov/patch"],             // repository-scoped rules applied during the latest refresh
   ignored: false,                         // hidden from every list and never raises events; polling never changes it
   lists: ["mine", "review_requested"],    // which search lists it currently appears in ([] for watched-only)
   item_id: 42 | null,                     // the library `pr` item, created when watched
@@ -358,11 +358,13 @@ const prStatus = { last_poll_at, next_poll_at, rate: { remaining, reset_at } | n
 
 Schema: `github_prs` (id, url UNIQUE, owner, repo, number, title, author, is_draft, state, review_decision, updated_at,
 comments, checks JSON, lists JSON, watched 0/1, ignored_checks JSON, ignored 0/1, item_id nullable FK, fetched_at) and
-`github_pr_events` (id, pr_id FK cascade, kind, message, at, seen 0/1). Settings keys: `github_ignored_checks` (JSON array),
-`github_ignored_repos` (JSON array of `owner/repo` globs like `acme/*`, default `[]`), `github_poll_minutes` (default 2),
-`github_dirs` (JSON array of absolute paths, default `[]`). A PR is *hidden* when its own `ignored` is set or its
-`owner/repo` matches a `github_ignored_repos` glob: hidden PRs stay stored and polled with the lists, but are left out of
-`mine`/`review_requested`/`watched`, raise no events, and are not sent in the watched batch.
+`github_pr_events` (id, pr_id FK cascade, kind, message, at, seen 0/1). Settings keys:
+`github_ignored_check_rules` (`[{ repo: "owner/name", check: "glob" }]`), `github_ignored_repos` (JSON array of
+`owner/repo` globs like `acme/*`, default `[]`), `github_poll_minutes` (default 2), `github_dirs` (JSON array of
+absolute paths, default `[]`), `github_pr_views` (`[{ id, label, query }]`), and `github_pr_default_view` (default `"all"`).
+A PR is *hidden* when its own `ignored` is set or its `owner/repo` matches a `github_ignored_repos` glob.
+Hidden PRs stay stored and polled with the lists, but are left out of `mine`/`review_requested`/`watched`,
+raise no events, and are not sent in the watched batch.
 
 Polling (in `packages/api/src/server.ts`, started only when `gh auth status` succeeds):
 - `gh` runs from each `github_dirs` entry in turn (cwd only; gh resolves the host and credentials from that directory's git
@@ -380,47 +382,53 @@ Polling (in `packages/api/src/server.ts`, started only when `gh auth status` suc
   `POST /api/prs/refresh` (rate-limited to once per 30s). A cycle uses the combined first-page request,
   one request per remaining review page, and watched batches as needed. If `rateLimit.remaining < 200`
   skip cycles until `resetAt`. On error: exponential backoff up to 15 minutes, error surfaced in `prStatus`.
-- Diffing (pure, tested): compare the stored row to the new one and append events for: state change, review_decision change,
-  comments increase (message says how many new), and checks_summary change computed over non-ignored checks (global + per PR).
+- Diffing (pure, tested): compare the stored row to the new one and append events for state, review decision,
+  comment-count increases, and effective check-summary changes. Repository rules exclude matching failures from that summary without removing them from stored check data.
 
 Routes:
 ```text
 GET    /api/prs                        → { mine: Pr[], review_requested: Pr[], watched: Pr[], ignored: Pr[], status: PrStatus }   (ignored = every hidden PR; pr.ignored false there means the repo is ignored)
 POST   /api/prs/refresh                → same as GET after a forced poll (429 { error } when called within 30s)
 POST   /api/prs/watch { url, watched }  → Pr        (creates the github_prs row from a URL if unknown, trying each github_dirs entry until one returns it; creates/links a library `pr` item when watched)
-PATCH  /api/prs/:id { ignored_checks?, ignored? }  → Pr   (each key applied only when present)
-GET    /api/prs/events?since=<id>      → { events: PrEvent[] }   (unseen and newer than since)
-POST   /api/prs/events/seen { ids }    → { ok }
-GET/PATCH /api/settings                 gain github_ignored_checks: string[], github_ignored_repos: string[], github_poll_minutes: number, and github_dirs: string[] (absolute paths; 422 otherwise)
+PATCH  /api/prs/:id { ignored? }          → Pr
+GET    /api/prs/events?since=<id>         → { events: PrEvent[] }   (unseen and newer than since)
+POST   /api/prs/events/seen { ids }       → { ok }
+GET/PATCH /api/settings                   gain github_ignored_check_rules, github_ignored_repos, github_poll_minutes, github_dirs, github_pr_views, and github_pr_default_view
 ```
 
-Frontend: sidebar entry "PRs" → `/prs`, a single full-width list deduplicated by PR ID.
+Frontend: sidebar entry "PRs" → `/prs`, a single full-width list deduplicated by PR ID. A Layout-owned
+PR data provider reads `GET /api/prs` every 30 seconds and publishes snapshots to both the page and `prs`
+cards. It never navigates or remounts the page, so filters, selection, expanded details, focus, and draft
+inputs survive background updates.
+
 Collection selects visible, mine, direct review-requested, watched, ignored, or all loaded PRs.
-The **My Reviews** shortcut selects direct requests plus the open, non-draft lifecycle.
-Lifecycle is Draft only when `state === "open" && is_draft`; merged/closed take precedence.
-Text, SVG icons, semantic color, and row borders distinguish Draft/Open/Merged/Closed.
-Draft uses a dashed border; terminal drafts retain a secondary Draft flag badge.
-Reviews, watch/ignore status, and checks have separate labeled indicators. Check details
-show all six check outcomes, ignored flags, and URL-backed collection controls; No checks
-and All checks ignored are explicit, distinct states.
+The **My Reviews** and **Watching** shortcuts select their matching collections. Custom shortcut buttons
+store normalized URL filters in `github_pr_views`; bare `/prs` navigation applies `github_pr_default_view`
+once, while explicit URL filters always win. Lifecycle is Draft only when `state === "open" && is_draft`;
+merged/closed take precedence. The watched eye badge appears beside lifecycle in the row header.
+Reviews, watch/ignore status, and checks have separate labeled indicators. A dedicated colored row directly
+below PR metadata shows complete, passing, failing, running, total, and ignored-failure counts; counts are
+not placed inside the expandable checks control. Raw failing counts include ignored failures; the effective
+summary excludes them. Check details retain every outcome and ignored flag.
 
 Primary filters cover lifecycle, draft flag, review, and checks summary. More filters cover
 every PR data field: identifiers, text/URLs, people/repository/directory, flags, memberships,
 linked items, comments, timestamps, check counts, patterns, and individual-check fields.
 Combined individual-check predicates apply to the same check. Search indexes all PR data;
 sort/order and filters are URL-backed, including ignored PRs and null-valued fields.
-Lifecycle and My Reviews shortcuts show counts under the other active filters. Nested check filters use
-`pr<ID>_check_*` query keys so they do not change the page's PR filters.
+Lifecycle, My Reviews, Watching, and custom shortcuts show or preserve URL-backed filters. Nested check
+filters use `pr<ID>_check_*` query keys and are excluded from saved custom views.
 
-Watch/Unwatch is a row action. Manage exposes Ignore/Unignore, Ignore repo, and Ignore checks.
-Every Ignore / Ignore repo action first uses the in-app confirmation dialog. The selection
-bar retains bulk actions and supports clearing individual PR ignore flags. Ignored repository
-rules have separate search, sort, selection, and restore controls. Links retain `data-url`;
-the `prs` dashboard card keeps using the same rows without changing its config contract.
+Watch/Unwatch is a row action. Manage exposes Ignore/Unignore and Ignore repo. Every Ignore / Ignore repo
+action first uses the in-app confirmation dialog. The selection bar retains bulk actions and supports
+clearing individual PR ignore flags. Repository-scoped ignored-check rules are managed in one PR-page
+selector; failing checks appear by default, Include all checks reveals the rest, labels are repository-qualified,
+and every rule is removable. Ignored repository rules retain separate search, sort, selection, and restore controls.
+Links retain `data-url`; the `prs` dashboard card uses the same Layout-owned snapshot.
 
-Notifications remain independent of the page: new events produce an expiring popup,
-native notification, and WebAudio ping, then delivery acknowledgment after history is saved.
-Settings keeps global ignored checks, ignored repositories, poll cadence, and GitHub directories.
+Notifications remain independent of the page: new events produce an expiring popup, native notification,
+and WebAudio ping, then delivery acknowledgment after history is saved. Settings manages ignored repositories,
+poll cadence, GitHub directories, custom PR shortcut names/order/deletion, and the default PR view.
 
 ## Native pickers, reminder days, projects filters (added 2026-09-22, round 2)
 

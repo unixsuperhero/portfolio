@@ -81,6 +81,26 @@ export const PR_SORTS: { value: string; label: string; read: (pr: Pr) => Scalar 
 ];
 export const PR_FILTER_KEYS = ["q", "collection", "membership", ...PR_FILTERS.map(filter => filter.key), ...CHECK_FILTERS.map(filter => filter.key)];
 
+export const PR_VIEW_KEYS = [...PR_FILTER_KEYS, "sort", "direction"] as const;
+export const BUILTIN_PR_VIEWS = [
+  { id: "all", label: "All PRs", query: "" },
+  { id: "my_reviews", label: "My Reviews", query: "collection=review_requested&state=open&sort=updated&direction=desc" },
+  { id: "watching", label: "Watching", query: "collection=watched" },
+  { id: "draft", label: "Draft", query: "state=draft" },
+  { id: "open", label: "Open", query: "state=open" },
+  { id: "merged", label: "Merged", query: "state=merged" },
+  { id: "closed", label: "Closed", query: "state=closed" },
+] as const;
+
+export function normalizePrViewQuery(input: URLSearchParams | string): string {
+  const source = typeof input === "string" ? new URLSearchParams(input) : input;
+  const allowed = new Set<string>(PR_VIEW_KEYS);
+  const entries = [...source.entries()]
+    .filter(([key, value]) => allowed.has(key) && value && !(key === "collection" && value === "visible"))
+    .sort(([leftKey, leftValue], [rightKey, rightValue]) => leftKey.localeCompare(rightKey) || leftValue.localeCompare(rightValue));
+  return new URLSearchParams(entries).toString();
+}
+
 export function matchesPr(pr: Pr, params: URLSearchParams, hidden: boolean): boolean {
   const collection = params.get("collection") ?? "visible";
   if (collection === "ignored" ? !hidden : collection !== "all" && hidden) return false;

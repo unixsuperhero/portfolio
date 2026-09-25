@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router";
 import { PortfolioApiError } from "@portfolio/client";
 import type { Pr } from "../types.ts";
 import { getSettings, patchPr, patchSettings, watchPr } from "../api.ts";
-import { PrChecks } from "./PrChecks.tsx";
+import { PrChecks, PrCheckStats } from "./PrChecks.tsx";
 import type { ConfirmOptions } from "./ConfirmDialog.tsx";
 import { lifecycle, REVIEW_LABELS } from "../lib/pr-collection.ts";
 import { PrStatus } from "./PrStatus.tsx";
@@ -28,9 +28,6 @@ export const ignoreRepo = (pr: Pick<Pr, "owner" | "repo">) =>
 
 /** Shared by the PR page and dashboard cards. */
 export function PrRow({ pr, onChanged, confirm, repoIgnored = false }: { pr: Pr; onChanged: () => void; confirm: Confirm; repoIgnored?: boolean }) {
-  const [editing, setEditing] = useState(false);
-  const [ignoredText, setIgnoredText] = useState(pr.ignored_checks.join("\n"));
-  const [saving, setSaving] = useState(false);
   const [watching, setWatching] = useState(false);
   const [hiding, setHiding] = useState(false);
   const [error, setError] = useState("");
@@ -45,7 +42,6 @@ export function PrRow({ pr, onChanged, confirm, repoIgnored = false }: { pr: Pr;
       .finally(() => setHiding(false));
   };
 
-  useEffect(() => { setIgnoredText(pr.ignored_checks.join("\n")); }, [pr.id, pr.ignored_checks]);
 
   const toggleWatch = () => {
     setWatching(true);
@@ -56,21 +52,12 @@ export function PrRow({ pr, onChanged, confirm, repoIgnored = false }: { pr: Pr;
       .finally(() => setWatching(false));
   };
 
-  const saveIgnored = (event: React.FormEvent) => {
-    event.preventDefault();
-    const ignored_checks = ignoredText.split("\n").map(line => line.trim()).filter(Boolean);
-    setSaving(true);
-    setError("");
-    patchPr(pr.id, { ignored_checks })
-      .then(() => { setEditing(false); onChanged(); })
-      .catch(err => setError(err instanceof PortfolioApiError ? err.message : "Could not save ignored checks."))
-      .finally(() => setSaving(false));
-  };
 
   return (
     <article className="pr-row" data-state={state}>
       <div className="pr-row-heading">
         <PrStatus kind={state} label={state[0].toUpperCase() + state.slice(1)} />
+        {pr.watched ? <PrStatus kind="watched" label="Watching" /> : null}
         <a className="pr-title" href={pr.url} data-url={pr.url}>{pr.title}</a>
       </div>
       <div className="pr-row-meta">
@@ -80,10 +67,10 @@ export function PrRow({ pr, onChanged, confirm, repoIgnored = false }: { pr: Pr;
         <time dateTime={pr.updated_at} title={new Date(pr.updated_at).toLocaleString()}>Updated {new Date(pr.updated_at).toLocaleDateString()}</time>
         <span title={pr.source_dir ?? "API directory"}>{pr.source_dir ? dirLabel(pr.source_dir) : "API directory"}</span>
       </div>
+      <PrCheckStats checks={pr.checks} />
       <div className="pr-row-signals">
         <PrStatus kind={pr.review_decision ?? "none"} label={REVIEW_LABELS[pr.review_decision ?? "none"]} />
         {pr.is_draft && state !== "draft" ? <PrStatus kind="draft" label="Draft flag" /> : null}
-        {pr.watched ? <PrStatus kind="watched" label="Watched" /> : null}
         {pr.ignored || repoIgnored ? <PrStatus kind="ignored" label={repoIgnored ? "Repository ignored" : "Ignored"} /> : null}
         <PrChecks pr={pr} />
       </div>
@@ -94,7 +81,6 @@ export function PrRow({ pr, onChanged, confirm, repoIgnored = false }: { pr: Pr;
             <button type="button" className="secondary" onClick={async () => { if (pr.ignored || await confirmIgnorePr(confirm, pr)) run(pr.ignored ? "unignore" : "ignore", () => patchPr(pr.id, { ignored: !pr.ignored })); }} disabled={hiding}>{pr.ignored ? "Unignore" : "Ignore"}</button>
             {pr.ignored ? null : <button type="button" className="secondary" onClick={async () => { if (await confirmIgnoreRepo(confirm, [`${pr.owner}/${pr.repo}`])) run("ignore repo", () => ignoreRepo(pr)); }} disabled={hiding}>Ignore repo</button>}
           </>}
-          <button type="button" className="secondary" onClick={() => setEditing(value => !value)}>Ignore checks…</button>
         </div></details>
         <details className="pr-metadata"><summary>Details</summary><dl>
           <dt>Record ID</dt><dd>{pr.id}</dd>
@@ -105,26 +91,10 @@ export function PrRow({ pr, onChanged, confirm, repoIgnored = false }: { pr: Pr;
           <dt>Updated</dt><dd>{new Date(pr.updated_at).toLocaleString()}</dd>
           <dt>Fetched</dt><dd>{new Date(pr.fetched_at).toLocaleString()}</dd>
           <dt>Library item</dt><dd>{pr.item_id === null ? "Not linked" : <Link to={`/items/${pr.item_id}`}>Item #{pr.item_id}</Link>}</dd>
-          <dt>Ignored-check patterns</dt><dd>{pr.ignored_checks.join(", ") || "None"}</dd>
+          <dt>Repository ignored-check rules</dt><dd>{pr.ignored_checks.join(", ") || "None"}</dd>
         </dl></details>
       </div>
       {error ? <p className="pr-status pr-status-error">{error}</p> : null}
-      {editing ? (
-        <form className="pr-ignore-form" onSubmit={saveIgnored}>
-          <textarea
-            aria-label={`Ignored-check patterns for ${prLabel(pr)}`}
-            value={ignoredText}
-            onChange={event => setIgnoredText(event.target.value)}
-            rows={3}
-            placeholder="one glob per line, e.g. codecov/*"
-          />
-          <div className="page-actions">
-            <button type="submit" className="primary" disabled={saving}>Save</button>
-            <button type="button" className="secondary" onClick={() => setEditing(false)}>Cancel</button>
-          </div>
-          <p className="pr-ignore-hint">Global patterns live in <Link to="/settings">Settings</Link>.</p>
-        </form>
-      ) : null}
     </article>
   );
 }

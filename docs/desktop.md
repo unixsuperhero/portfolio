@@ -69,7 +69,12 @@ const task = { recurrence: "daily" | "once", reminders: [{ at: "08:30" }], compl
 const reminder = { title: "Call the dentist", recurrence: "once", at: "2026-09-24T09:00", task_id: null };
 const project = { services: { runner: "bun", scripts: { dev: "…" } }, ports: [/* listeners in this dir */] };
 const pr = { state: "open", checks_summary: "success", watched: true, ignored: false, ignored_checks: ["codecov/*"], source_dir: "/Users/me/work/carrot" };
-const settings = { github_dirs: ["/Users/me/work/carrot", "/Users/me/proj"] };   // gh runs from each; empty = the API's own cwd
+const settings = {
+  github_dirs: ["/Users/me/work/carrot", "/Users/me/proj"],
+  github_ignored_check_rules: [{ repo: "acme/app", check: "codecov/*" }],
+  github_pr_views: [{ id: "mine-open", label: "Mine open", query: "collection=mine&state=open" }],
+  github_pr_default_view: "mine-open",
+};
 ```
 
 The `tasks` card shows active tasks with nested subtasks and completion checkboxes. Completion checkboxes on tasks and reminders draw a check and settle the title; a daily task or reminder with a streak of two or more days shows an `N-day streak` count that ticks up when it advances, and a list whose entries are all complete ends with an "All done today." line. Due-reminder toasts slide in; successful Done completes the reminder and dismisses its notification. Each task links to its task page. Note cards support GitHub-flavored Markdown and a plain-text Markdown editor. Widget bodies and tile cards use the same horizontal padding as query rows.
@@ -97,7 +102,7 @@ not needed.
 Lifecycle badges pair text and SVG icons with semantic colors and matching row
 borders: **Draft** is muted with a dashed border, **Open** is green, **Merged** is
 purple, and **Closed** is red. A terminal state takes precedence over the draft
-flag; a closed draft shows **Closed** plus a separate **Draft flag** badge.
+flag. Watched PRs show a stronger eye badge beside lifecycle in the row header.
 
 ```js
 const pr = { state: "closed", is_draft: true };
@@ -105,15 +110,18 @@ const pr = { state: "closed", is_draft: true };
 // Lifecycle=Draft selects only open drafts; Draft flag=Yes also finds closed drafts.
 ```
 
-Review decisions and checks have separate labeled indicators. Expanding checks
-shows Passed, Failed, Pending, Skipped, Cancelled, or Neutral for each check, plus
-an explicit Ignored label when applicable. No checks and All checks ignored are
-different states. Check lists have their own URL-backed search, filters, and sort.
+Review decisions and checks have separate labeled indicators. A dedicated colored row directly
+below `by`, comments, update time, and source directory shows complete, passing, failing,
+running, total, and ignored-failure counts. Counts are outside the expandable checks control
+and never use an unlabeled fraction. Ignored failures remain visible in raw counts and details
+but do not affect effective status. Expanding checks shows every result and explicit Ignored
+labels. No checks and All checks ignored remain distinct states.
 
 Lifecycle shortcuts show counts within the other active filters. **My Reviews**
-is a matching shortcut that applies the direct-review collection, open non-draft
-lifecycle, and updated-descending sort together. The primary toolbar exposes
-lifecycle, draft flag, review, checks, collection, sort, and order.
+applies the direct-review collection, open non-draft lifecycle, and updated-descending
+sort. **Watching** shows watched PRs. Save the current URL-backed filters as a named custom
+shortcut; Settings edits names, order, deletion, and the default view. The default applies
+only on bare `/prs` navigation, so explicit filter links always win.
 **More filters** covers owner, repository, author, source directory (including the
 API directory), raw GitHub state, watched/ignored flags, list memberships, linked
 item IDs, PR IDs/numbers, title/URL text, comment ranges, updated/fetched time
@@ -122,11 +130,17 @@ statuses, and ignored flags. Individual-check conditions must match the same
 check. Search covers the complete PR data; filters, sorting, and direction persist
 in the URL. Active filters can be removed individually or cleared together.
 
-Watch remains directly available on each row. **Manage** holds ignore and
-ignored-check controls; **Details** exposes full directory paths, timestamps,
-memberships, IDs, and linked items. Hidden PRs can be restored from the Ignored
-collection. Repository rules are managed separately under **Ignored repositories**:
-clearing a PR's own ignored flag does not override an ignored-repository rule.
+Watch remains directly available on each row. **Manage** holds PR/repository ignore controls;
+**Details** exposes full directory paths, timestamps, memberships, IDs, and linked items.
+Repository-scoped ignored-check rules use one selector above the list. It shows failing checks
+first as `owner/repo — check`; **Include all checks** reveals non-failures. Rules are removable.
+Hidden PRs can be restored from the Ignored collection. Hidden repository rules remain under
+**Ignored repositories**; clearing a PR's own ignored flag does not override one.
+
+The API sidecar owns GitHub polling. A provider mounted with the main app reads the stored PR
+snapshot every 30 seconds, so the open page and PR cards observe scheduled updates. Snapshot
+updates do not navigate or remount the page and therefore preserve URL filters, selection,
+expanded details, keyboard focus, and unfinished form text.
 
 ## Notifications
 

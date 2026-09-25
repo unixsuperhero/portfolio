@@ -58,7 +58,6 @@ export async function patchPrRoute(ctx: Ctx, request: Request, params: Record<st
   const id = Number(params.id);
   if (!ctx.store.github.getPr(id)) return notFound();
   const body = await readJson(request);
-  if ("ignored_checks" in body) ctx.store.github.setIgnoredChecks(id, Array.isArray(body.ignored_checks) ? body.ignored_checks.map(String) : []);
   if ("ignored" in body) ctx.store.github.setIgnored(id, Boolean(body.ignored));
   return json(ctx.store.github.getPr(id));
 }

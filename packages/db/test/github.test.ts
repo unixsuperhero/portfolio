@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Pr } from "@portfolio/core";
-import { getGithubIgnoredChecks, getGithubIgnoredRepos, getGithubPollMinutes, insertEvents, isPrHidden, listUnseenEvents, listPrs, markEventsSeen, openDatabase, setGithubIgnoredChecks, setGithubIgnoredRepos, setGithubPollMinutes, setIgnored, setIgnoredChecks, setWatched, upsertPr } from "../src/index.ts";
+import { applyIgnoredCheckRules, getGithubIgnoredCheckRules, getGithubIgnoredRepos, getGithubPollMinutes, getGithubPrDefaultView, getGithubPrViews, insertEvents, isPrHidden, listUnseenEvents, listPrs, markEventsSeen, migrateGithubIgnoredChecks, openDatabase, setGithubIgnoredCheckRules, setGithubIgnoredRepos, setGithubPollMinutes, setGithubPrDefaultView, setGithubPrViews, setIgnored, setWatched, upsertPr } from "../src/index.ts";
 
 const fresh = () => openDatabase(":memory:");
 
@@ -78,14 +78,18 @@ describe("github repo", () => {
     expect(pr.item_id).toBe(itemId); // re-linked, not duplicated
   });
 
-  test("setIgnoredChecks recomputes each check's ignored flag", () => {
+  test("repository ignored-check rules recompute only matching repository checks", () => {
     const db = fresh();
-    const id = newPr(db);
-    const pr = setIgnoredChecks(db, id, ["codecov/*"]);
-    expect(pr.ignored_checks).toEqual(["codecov/*"]);
-    expect(pr.checks.find(c => c.name === "codecov/patch")?.ignored).toBe(true);
-    expect(pr.checks.find(c => c.name === "ci/test")?.ignored).toBe(false);
-    expect(pr.checks_summary).toBe("failure"); // ci/test still active and failing
+    newPr(db);
+    newPr(db, { url: "https://github.com/beta/app/pull/3", owner: "beta", number: 3 });
+    const rules = [{ repo: "acme/app", check: "codecov/*" }];
+    setGithubIgnoredCheckRules(db, rules);
+    applyIgnoredCheckRules(db, rules);
+    const [acme, beta] = listPrs(db);
+    expect(acme.ignored_checks).toEqual(["codecov/*"]);
+    expect(acme.checks.find(check => check.name === "codecov/patch")?.ignored).toBe(true);
+    expect(beta.ignored_checks).toEqual([]);
+    expect(beta.checks.find(check => check.name === "codecov/patch")?.ignored).toBe(false);
   });
 
   test("events: insert, list unseen since an id, mark seen", () => {
@@ -102,13 +106,29 @@ describe("github repo", () => {
     expect(listUnseenEvents(db).map(e => e.id)).toEqual([events[1].id]);
   });
 
-  test("settings: github_ignored_checks and github_poll_minutes", () => {
+  test("GitHub check rules, views, default view, and poll cadence round-trip", () => {
     const db = fresh();
-    expect(getGithubIgnoredChecks(db)).toEqual([]);
+    expect(getGithubIgnoredCheckRules(db)).toEqual([]);
     expect(getGithubPollMinutes(db)).toBe(2);
-    setGithubIgnoredChecks(db, ["codecov/*", "vercel/*"]);
+    setGithubIgnoredCheckRules(db, [{ repo: " acme/app ", check: " codecov/* " }, { repo: "ACME/APP", check: "codecov/*" }]);
+    setGithubPrViews(db, [{ id: " review ", label: " Reviews ", query: "?state=open" }]);
+    setGithubPrDefaultView(db, "review");
     setGithubPollMinutes(db, 5);
-    expect(getGithubIgnoredChecks(db)).toEqual(["codecov/*", "vercel/*"]);
+    expect(getGithubIgnoredCheckRules(db)).toEqual([{ repo: "acme/app", check: "codecov/*" }]);
+    expect(getGithubPrViews(db)).toEqual([{ id: "review", label: "Reviews", query: "state=open" }]);
+    expect(getGithubPrDefaultView(db)).toBe("review");
     expect(getGithubPollMinutes(db)).toBe(5);
+  });
+
+  test("legacy global and per-PR ignored checks migrate into repository rules", () => {
+    const db = fresh();
+    newPr(db, { ignored_checks: ["local/*"] });
+    db.query("DELETE FROM settings WHERE key = 'github_ignored_check_rules'").run();
+    db.query("INSERT INTO settings(key, value) VALUES ('github_ignored_checks', ?)").run(JSON.stringify(["global/*"]));
+    migrateGithubIgnoredChecks(db);
+    expect(getGithubIgnoredCheckRules(db)).toEqual([
+      { repo: "acme/app", check: "global/*" },
+      { repo: "acme/app", check: "local/*" },
+    ]);
   });
 });

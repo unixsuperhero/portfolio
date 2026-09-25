@@ -1,5 +1,4 @@
 import type { CheckStatus, Pr, ReviewDecision } from "@portfolio/core";
-import { isIgnored } from "./diff.ts";
 
 /** The shape a `...prFields` fragment resolves to in the GraphQL response. */
 export interface PrNode {
@@ -62,17 +61,13 @@ export function parseCheck(node: CheckContextNode): { name: string; status: Chec
   return { name: node.name ?? "", status, url: node.detailsUrl ?? "" };
 }
 
-/** Parses a GraphQL `...prFields` node into the contract's Pr shape. `ignored_checks` and `watched` carry over from the stored row. */
+/** Parses a GraphQL `...prFields` node into the contract's PR shape. User-owned fields carry over from `existing`. */
 /** Everything polling can know about a PR: the row minus its id and the user-owned `ignored` flag. */
 export type PrDraft = Omit<Pr, "id" | "ignored">;
 
-export function parsePrNode(node: PrNode, existing: { ignored_checks?: string[]; watched?: boolean; lists?: string[]; item_id?: number | null; source_dir?: string | null } = {}, fetchedAt: string = new Date().toISOString()): PrDraft {
+export function parsePrNode(node: PrNode, existing: { watched?: boolean; lists?: string[]; item_id?: number | null; source_dir?: string | null } = {}, fetchedAt: string = new Date().toISOString()): PrDraft {
   const contexts = node.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes ?? [];
-  const ignored_checks = existing.ignored_checks ?? [];
-  const checks = contexts.map(context => {
-    const check = parseCheck(context);
-    return { ...check, ignored: isIgnored(check.name, ignored_checks) };
-  });
+  const checks = contexts.map(context => ({ ...parseCheck(context), ignored: false }));
   return {
     url: node.url,
     owner: node.repository.owner.login,
@@ -88,7 +83,7 @@ export function parsePrNode(node: PrNode, existing: { ignored_checks?: string[];
     checks,
     checks_summary: "none",
     watched: existing.watched ?? false,
-    ignored_checks,
+    ignored_checks: [],
     lists: existing.lists ?? [],
     item_id: existing.item_id ?? null,
     source_dir: existing.source_dir ?? null,

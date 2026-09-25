@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { ChecksSummary, Pr, PrCheck, PrEvent, PrList, ReviewDecision } from "@portfolio/core";
+import type { ChecksSummary, GithubIgnoredCheckRule, Pr, PrCheck, PrEvent, PrList, ReviewDecision } from "@portfolio/core";
 import { upsertItem } from "./items.ts";
 import { getGithubIgnoredRepos } from "./settings.ts";
 
@@ -134,13 +134,19 @@ export function setWatched(db: Database, id: number, watched: boolean): Pr {
   return getPr(db, id)!;
 }
 
-/** Replaces a PR's per-PR ignored-check patterns and recomputes each check's `ignored` flag. */
-export function setIgnoredChecks(db: Database, id: number, patterns: string[]): Pr {
-  const pr = getPr(db, id);
-  if (!pr) throw new Error("PR not found");
-  const checks = pr.checks.map(check => ({ ...check, ignored: patterns.some(pattern => matchesGlob(check.name, pattern)) }));
-  db.query("UPDATE github_prs SET ignored_checks = ?, checks = ? WHERE id = ?").run(JSON.stringify(patterns), JSON.stringify(checks), id);
-  return getPr(db, id)!;
+
+/** Recomputes stored check flags from repository-scoped rules so settings changes are visible immediately. */
+export function applyIgnoredCheckRules(db: Database, rules: GithubIgnoredCheckRule[]): void {
+  const update = db.query("UPDATE github_prs SET ignored_checks = ?, checks = ? WHERE id = ?");
+  const prs = listPrs(db);
+  db.transaction(() => {
+    for (const pr of prs) {
+      const repo = `${pr.owner}/${pr.repo}`;
+      const patterns = rules.filter(rule => rule.repo.toLowerCase() === repo.toLowerCase()).map(rule => rule.check);
+      const checks = pr.checks.map(check => ({ ...check, ignored: patterns.some(pattern => matchesGlob(check.name, pattern)) }));
+      update.run(JSON.stringify(patterns), JSON.stringify(checks), pr.id);
+    }
+  })();
 }
 
 /** Hides or shows one PR. Watch state and the library item are untouched. */

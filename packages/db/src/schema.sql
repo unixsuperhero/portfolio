@@ -196,7 +196,7 @@ CREATE TABLE IF NOT EXISTS github_prs (
   -- JSON array of "mine" | "review_requested"
   lists TEXT NOT NULL DEFAULT '[]',
   watched INTEGER NOT NULL DEFAULT 0 CHECK (watched IN (0, 1)),
-  -- JSON array of glob patterns, per PR; settings.github_ignored_checks is global
+  -- JSON array of repository-scoped check patterns applied during the latest refresh
   ignored_checks TEXT NOT NULL DEFAULT '[]',
   -- hidden from every list; settings.github_ignored_repos hides whole repos
   ignored INTEGER NOT NULL DEFAULT 0 CHECK (ignored IN (0, 1)),

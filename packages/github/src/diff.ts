@@ -36,11 +36,11 @@ export interface PrEventDraft {
 const prLabel = (pr: Pr): string => `${pr.owner}/${pr.repo}#${pr.number}`;
 
 /**
- * Compares the stored row to a freshly-parsed one and drafts events for state,
- * review_decision, comment-count increases, and checks_summary changes (computed
- * over the global + per-PR ignored patterns). No previous row means no events.
+ * Compares the stored row to a freshly parsed one and drafts events for state,
+ * review decision, comment-count increases, and effective check-summary changes.
+ * No previous row means no events.
  */
-export function diffPr(previous: Pr | null, next: Pr, globalIgnored: string[], at: string = new Date().toISOString()): PrEventDraft[] {
+export function diffPr(previous: Pr | null, next: Pr, ignoredPatterns: string[], at: string = new Date().toISOString()): PrEventDraft[] {
   if (!previous) return [];
   const events: PrEventDraft[] = [];
   const label = prLabel(next);
@@ -55,9 +55,8 @@ export function diffPr(previous: Pr | null, next: Pr, globalIgnored: string[], a
     events.push({ pr_id: next.id, kind: "comments", message: `${label} +${next.comments - previous.comments} comment${next.comments - previous.comments === 1 ? "" : "s"}`, at });
   }
 
-  const ignored = [...globalIgnored, ...next.ignored_checks];
-  const previousSummary = checksSummary(applyIgnored(previous.checks, ignored), ignored);
-  const nextSummary = checksSummary(applyIgnored(next.checks, ignored), ignored);
+  const previousSummary = checksSummary(applyIgnored(previous.checks, ignoredPatterns), ignoredPatterns);
+  const nextSummary = checksSummary(applyIgnored(next.checks, ignoredPatterns), ignoredPatterns);
   if (previousSummary !== nextSummary) events.push({ pr_id: next.id, kind: "checks", message: `${label} checks ${nextSummary}`, at });
 
   return events;

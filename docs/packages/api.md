@@ -39,11 +39,11 @@ Reminders use their own CRUD and completion endpoints under `/api/reminders`. `P
 | `GET /api/prs` | `{ mine, review_requested, watched, ignored, status }` from `store.github.listPrs()` (the three lists with `hidden: false`, `ignored` with `hidden: true`) and `prPoller.status()` |
 | `POST /api/prs/refresh` | forces a poll through `prPoller.refresh()`, then returns the same shape as `GET`; 429 when called again within 30s |
 | `POST /api/prs/watch { url, watched }` | `url` must match `github.com/:owner/:repo/pull/:number` (422 otherwise); an untracked PR is fetched once via `prPoller.fetchOne()` (503 with no poller), then `store.github.setWatched` links or creates the library `pr` item |
-| `PATCH /api/prs/:id { ignored_checks?, ignored? }` | `ignored_checks` → `store.github.setIgnoredChecks` (also recomputes each check's `ignored` flag); `ignored` → `store.github.setIgnored`; each only when the key is present |
+| `PATCH /api/prs/:id { ignored? }` | `ignored` → `store.github.setIgnored`; omitted keys leave the PR unchanged |
 | `GET /api/prs/events?since=<id>` | `store.github.listUnseenEvents(since)` |
 | `POST /api/prs/events/seen { ids }` | `store.github.markEventsSeen(ids)` |
 
-`server.ts` calls `ghAuth()` on startup; when it succeeds it builds a `createPrPoller` (wrapping `ghGraphql`) and starts it, and passes it to `createApi` as `prPoller`. `GET`/`PATCH /api/settings` carry `github_ignored_checks: string[]`, `github_ignored_repos: string[]` (`owner/repo` globs whose PRs are hidden), `github_poll_minutes: number`, and `github_dirs: string[]` (the directories gh runs from, absolute paths only; a relative path is a 422) alongside the existing keys.
+`server.ts` calls `ghAuth()` on startup; when it succeeds it builds and starts a `createPrPoller`, then passes it to `createApi`. `GET`/`PATCH /api/settings` carry `github_ignored_check_rules: { repo, check }[]`, `github_ignored_repos: string[]`, `github_poll_minutes: number`, `github_dirs: string[]`, `github_pr_views: { id, label, query }[]`, and `github_pr_default_view: string`. Updating check rules immediately reapplies ignored flags to stored PRs; later polls apply only rules whose exact repository matches.
 
 Errors are `{ error: string }` with a 4xx/5xx status. An uncaught handler error becomes a 500 with the error's message; `readJson` fails a bad JSON body the same way.
 

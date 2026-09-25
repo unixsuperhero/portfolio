@@ -1,6 +1,6 @@
 import { PortfolioClient } from "@portfolio/client";
 import { isWails, ownOrigin } from "./lib/wails.ts";
-import type { CardSpec, ItemFilter, Slot, TaskInput } from "@portfolio/core";
+import type { CardSpec, ItemFilter, Settings, Slot, TaskInput } from "@portfolio/core";
 import type {
   CategorySummary,
   Detection,
@@ -11,8 +11,12 @@ import type {
   PortsSnapshot,
   ProjectParentSummary,
   ProjectView,
+  Pr,
+  PrEvent,
+  PrsResponse,
   ReminderCreateInput,
   ReminderView,
+  SettingsView,
   TaskView,
 } from "./types.ts";
 
@@ -106,10 +110,10 @@ export const deleteCategory = (id: number) => api.request<{ ok: true }>(`/api/ca
 
 // -- Settings and directories ------------------------------------------------
 
-export const getSettings = () => api.request<import("./types.ts").SettingsView>("/api/settings");
+export const getSettings = () => api.request<SettingsView>("/api/settings");
 
-export const patchSettings = (patch: { home_portfolio_id?: number | null; pastry_enabled?: boolean; github_ignored_checks?: string[]; github_ignored_repos?: string[]; github_poll_minutes?: number; github_dirs?: string[] }) =>
-  api.request<import("./types.ts").SettingsView>("/api/settings", { method: "PATCH", json: patch });
+export const patchSettings = (patch: Partial<Pick<Settings, "home_portfolio_id" | "pastry_enabled" | "github_ignored_check_rules" | "github_ignored_repos" | "github_poll_minutes" | "github_dirs" | "github_pr_views" | "github_pr_default_view">>) =>
+  api.request<SettingsView>("/api/settings", { method: "PATCH", json: patch });
 
 export const getHome = () => api.request<{ portfolio: PortfolioView | null }>("/api/home");
 
@@ -201,18 +205,18 @@ export const health = () => api.request<{ ok: boolean; items: number }>("/health
 
 // -- Pull requests --------------------------------------------------------
 
-export const getPrs = () => api.request<import("./types.ts").PrsResponse>("/api/prs");
+export const getPrs = () => api.request<PrsResponse>("/api/prs");
 
-export const refreshPrs = () => api.request<import("./types.ts").PrsResponse>("/api/prs/refresh", { method: "POST" });
+export const refreshPrs = () => api.request<PrsResponse>("/api/prs/refresh", { method: "POST" });
 
 export const watchPr = (url: string, watched: boolean) =>
-  api.request<import("./types.ts").Pr>("/api/prs/watch", { method: "POST", json: { url, watched } });
+  api.request<Pr>("/api/prs/watch", { method: "POST", json: { url, watched } });
 
-export const patchPr = (id: number, patch: { ignored_checks?: string[]; ignored?: boolean }) =>
-  api.request<import("./types.ts").Pr>(`/api/prs/${id}`, { method: "PATCH", json: patch });
+export const patchPr = (id: number, patch: { ignored?: boolean }) =>
+  api.request<Pr>(`/api/prs/${id}`, { method: "PATCH", json: patch });
 
 export const getPrEvents = (since: number) =>
-  api.request<{ events: import("./types.ts").PrEvent[] }>("/api/prs/events", { query: { since } });
+  api.request<{ events: PrEvent[] }>("/api/prs/events", { query: { since } });
 
 export const markPrEventsSeen = (ids: number[]) =>
   api.request<{ ok: true }>("/api/prs/events/seen", { method: "POST", json: { ids } });

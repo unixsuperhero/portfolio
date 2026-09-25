@@ -13,6 +13,7 @@ import { createTask, detect, quickAdd } from "./api.ts";
 import { ToastStack } from "./components/ToastStack.tsx";
 import { useSidecarStatus } from "./hooks/useSidecarStatus.ts";
 import { useNotificationPolling } from "./hooks/useNotificationPolling.ts";
+import { PrDataProvider } from "./hooks/usePrData.tsx";
 import { dismissNotifications, useNotifications } from "./lib/notifications.ts";
 import { home, openSystem, pickDirectory, pickFile } from "./native.ts";
 import { isWails } from "./lib/wails.ts";
@@ -301,20 +302,22 @@ function Layout() {
   }, [terminal]);
 
   return (
-    <div className={`app-shell${isNativeMac() ? " native-macos" : ""}`}>
-      <Sidebar />
-      <div className="main-area">
-        <TopBar />
-        <div className="content">
-          <Outlet />
+    <PrDataProvider>
+      <div className={`app-shell${isNativeMac() ? " native-macos" : ""}`}>
+        <Sidebar />
+        <div className="main-area">
+          <TopBar />
+          <div className="content">
+            <Outlet />
+          </div>
         </div>
+        <div className="terminal-dock-shell">
+          <TerminalDock />
+        </div>
+        <ContextMenuProvider />
+        <ToastStack />
       </div>
-      <div className="terminal-dock-shell">
-        <TerminalDock />
-      </div>
-      <ContextMenuProvider />
-      <ToastStack />
-    </div>
+    </PrDataProvider>
   );
 }
 

@@ -1,6 +1,6 @@
 import { readdir, stat } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
-import type { Settings } from "@portfolio/core";
+import type { GithubIgnoredCheckRule, GithubPrView, Settings } from "@portfolio/core";
 import type { Ctx } from "./context.ts";
 import { error, json, readJson } from "./http.ts";
 
@@ -10,10 +10,12 @@ export function settingsView(ctx: Ctx): Settings {
     pastry_enabled: ctx.store.settings.getFlag("pastry_enabled"),
     watched_directories: ctx.store.watched.listWatchedDirectories().map(d => ({ id: d.id, path: d.path, recursive: Boolean(d.recursive) })),
     project_parents: ctx.store.projects.listProjectParents(),
-    github_ignored_checks: ctx.store.settings.getGithubIgnoredChecks(),
+    github_ignored_check_rules: ctx.store.settings.getGithubIgnoredCheckRules(),
     github_ignored_repos: ctx.store.settings.getGithubIgnoredRepos(),
     github_poll_minutes: ctx.store.settings.getGithubPollMinutes(),
     github_dirs: ctx.store.settings.getGithubDirs(),
+    github_pr_views: ctx.store.settings.getGithubPrViews(),
+    github_pr_default_view: ctx.store.settings.getGithubPrDefaultView(),
   };
 }
 
@@ -25,9 +27,24 @@ export async function patchSettingsRoute(ctx: Ctx, request: Request): Promise<Re
   const body = await readJson(request);
   if ("home_portfolio_id" in body) ctx.store.settings.setHomePortfolioId(body.home_portfolio_id === null ? null : Number(body.home_portfolio_id));
   if ("pastry_enabled" in body) ctx.store.settings.setFlag("pastry_enabled", Boolean(body.pastry_enabled));
-  if ("github_ignored_checks" in body) ctx.store.settings.setGithubIgnoredChecks(Array.isArray(body.github_ignored_checks) ? body.github_ignored_checks.map(String) : []);
+  if ("github_ignored_check_rules" in body) {
+    const rules: GithubIgnoredCheckRule[] = Array.isArray(body.github_ignored_check_rules)
+      ? body.github_ignored_check_rules.flatMap(value => value && typeof value === "object" && "repo" in value && "check" in value
+        ? [{ repo: String(value.repo), check: String(value.check) }] : [])
+      : [];
+    ctx.store.settings.setGithubIgnoredCheckRules(rules);
+    ctx.store.github.applyIgnoredCheckRules(rules);
+  }
   if ("github_ignored_repos" in body) ctx.store.settings.setGithubIgnoredRepos(Array.isArray(body.github_ignored_repos) ? body.github_ignored_repos.map(String) : []);
   if ("github_poll_minutes" in body) ctx.store.settings.setGithubPollMinutes(Number(body.github_poll_minutes));
+  if ("github_pr_views" in body) {
+    const views: GithubPrView[] = Array.isArray(body.github_pr_views)
+      ? body.github_pr_views.flatMap(value => value && typeof value === "object" && "id" in value && "label" in value && "query" in value
+        ? [{ id: String(value.id), label: String(value.label), query: String(value.query) }] : [])
+      : [];
+    ctx.store.settings.setGithubPrViews(views);
+  }
+  if ("github_pr_default_view" in body) ctx.store.settings.setGithubPrDefaultView(String(body.github_pr_default_view));
   if ("github_dirs" in body) {
     const dirs = Array.isArray(body.github_dirs) ? body.github_dirs.map(String).map(dir => dir.trim()).filter(Boolean) : [];
     const relative = dirs.find(dir => !isAbsolute(dir));
