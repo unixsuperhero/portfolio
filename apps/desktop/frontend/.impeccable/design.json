@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-26T03:05:35Z",
+  "title": "Design System: Portfolio desktop, Herdr",
+  "extensions": {
+    "typographyMeta": {
+      "body": { "displayName": "System app sans", "purpose": "Herdr body, controls, and tree." },
+      "page-title": { "displayName": "Herdr heading", "purpose": "Page title." },
+      "code": { "displayName": "Monospace", "purpose": "IDs, breadcrumbs, paths, code, and payloads." }
+    },
+    "shadows": [
+      { "name": "selected-row-inset", "value": "inset 0 0 0 1px var(--border2)", "purpose": "Selected Herdr explorer row only." }
+    ],
+    "motion": [
+      { "name": "button-colors", "value": "background-color 150ms ease-out, border-color 150ms ease-out", "purpose": "Herdr buttons; removed under prefers-reduced-motion: reduce." }
+    ],
+    "breakpoints": [
+      { "name": "herdr-stack", "value": "1150px" },
+      { "name": "herdr-tight", "value": "600px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Herdr primary button",
+      "kind": "button",
+      "refersTo": "herdr-button-primary",
+      "description": "Primary operation submit control on the dark Herdr page.",
+      "html": "<button type=\"button\" class=\"ds-herdr-primary\">Start agent</button>",
+      "css": ".ds-herdr-primary { padding: .5rem 1rem; border: 1px solid #9ec5ff; border-radius: 4px; background: #9ec5ff; color: #181c22; cursor: pointer; font-family: 'Avenir Next', 'Segoe UI', sans-serif; font-size: .8rem; font-weight: 600; transition: background-color 150ms ease-out, border-color 150ms ease-out; } .ds-herdr-primary:hover:not(:disabled) { background: #c7ddff; } .ds-herdr-primary:focus-visible { outline: 2px solid #9ec5ff; outline-offset: 3px; } .ds-herdr-primary:disabled { opacity: .55; cursor: not-allowed; } @media (prefers-reduced-motion: reduce) { .ds-herdr-primary { transition: none; } }"
+    },
+    {
+      "name": "Herdr secondary button",
+      "kind": "button",
+      "refersTo": "herdr-button-secondary",
+      "description": "Secondary workbench action on the dark Herdr page.",
+      "html": "<button type=\"button\" class=\"ds-herdr-secondary\">Refresh</button>",
+      "css": ".ds-herdr-secondary { padding: .5rem .75rem; border: 1px solid #515e6f; border-radius: 4px; background: #20252d; color: #e7edf5; cursor: pointer; font-family: 'Avenir Next', 'Segoe UI', sans-serif; font-size: .8rem; transition: background-color 150ms ease-out, border-color 150ms ease-out; } .ds-herdr-secondary:hover:not(:disabled) { border-color: #9ec5ff; background: #2a323d; } .ds-herdr-secondary:active:not(:disabled) { background: #343d49; } .ds-herdr-secondary:focus-visible { outline: 2px solid #9ec5ff; outline-offset: 3px; } .ds-herdr-secondary:disabled { opacity: .55; cursor: not-allowed; } @media (prefers-reduced-motion: reduce) { .ds-herdr-secondary { transition: none; } }"
+    },
+    {
+      "name": "Herdr text field",
+      "kind": "input",
+      "refersTo": "herdr-field",
+      "description": "Labeled workbench text field on the dark Herdr page.",
+      "html": "<label class=\"ds-herdr-label\">Search<input class=\"ds-herdr-field\" type=\"text\" placeholder=\"Search\"></label>",
+      "css": ".ds-herdr-label { display: flex; flex-direction: column; gap: .4rem; font-family: 'Avenir Next', 'Segoe UI', sans-serif; font-size: .8rem; color: #b6c1d0; } .ds-herdr-field { width: 100%; min-width: 0; padding: .55rem .65rem; box-sizing: border-box; border: 1px solid #515e6f; border-radius: 4px; background: #181c22; color: #e7edf5; caret-color: #9ec5ff; font: inherit; } .ds-herdr-field::placeholder { color: #b6c1d0; opacity: 1; } .ds-herdr-field:focus-visible { outline: 2px solid #9ec5ff; outline-offset: 3px; } .ds-herdr-field:disabled { opacity: .55; cursor: not-allowed; }"
+    },
+    {
+      "name": "Herdr selected entity row",
+      "kind": "custom",
+      "description": "Compact selected explorer row with text status on the dark Herdr page.",
+      "html": "<div class=\"ds-herdr-row\"><button type=\"button\" class=\"ds-herdr-disclosure\" aria-label=\"Expand pane\" aria-expanded=\"false\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 12 12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><path d=\"m4 3 3 3-3 3\" /></svg></button><button type=\"button\" class=\"ds-herdr-entity\">Pane</button><span class=\"ds-herdr-status\">running</span></div>",
+      "css": ".ds-herdr-row { display: flex; align-items: center; gap: .4rem; min-height: 2.5rem; padding: .2rem .65rem .2rem .3rem; background: #2a323d; box-shadow: inset 0 0 0 1px #515e6f; color: #e7edf5; font-family: 'Avenir Next', 'Segoe UI', sans-serif; font-size: .8rem; } .ds-herdr-row:hover { background: #2a323d; } .ds-herdr-disclosure { flex: 0 0 1.35rem; width: 1.35rem; height: 1.75rem; padding: 0; border: 0; background: none; color: #b6c1d0; cursor: pointer; } .ds-herdr-entity { flex: 1; min-width: 0; padding: .35rem 0; border: 0; border-radius: 2px; background: none; color: #e7edf5; text-align: left; font: inherit; cursor: pointer; } .ds-herdr-entity:hover { color: #9ec5ff; } .ds-herdr-status { font-size: .7rem; font-weight: 500; color: #9ec5ff; } .ds-herdr-row button:focus-visible { outline: 2px solid #9ec5ff; outline-offset: 3px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Debugger workbench",
+    "overview": "The Herdr page is a compact explorer and inspector for local sessions. It is a scoped design within Portfolio's existing app shell, not a redesign of the other routes. Browsing and inspection lead; pane actions remain available beside the selected entity.\n\nA restrained graphite palette in dark mode and cool paper in light mode distinguish Herdr from Portfolio's global dark navy and warm light tokens. Fine separators, compact disclosure rows, selection fill, and text statuses make hierarchy and state legible without large cards.",
+    "keyCharacteristics": [
+      "Compact session tree and adjacent inspector.",
+      "Herdr-scoped dark and light colors; the surrounding shell keeps the Portfolio palette.",
+      "Text statuses, visible focus, and direct pane controls."
+    ],
+    "rules": [],
+    "dos": [
+      "Do use the Herdr-local colors inside this page and keep Portfolio's global colors in the shell.",
+      "Do use compact disclosure rows, selection fill, fine borders, and text statuses to distinguish entities.",
+      "Do keep pane actions and their result near the inspector."
+    ],
+    "donts": [
+      "Don't apply Herdr's graphite or cool-paper colors to other routes.",
+      "Don't use color alone to convey an agent's status.",
+      "Don't animate button color changes when reduced motion is requested."
+    ]
+  }
+}

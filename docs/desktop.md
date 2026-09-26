@@ -204,20 +204,29 @@ const notification = {
 and named sessions, including stopped sessions, and shows live workspaces, tabs,
 panes, agents, layouts, process metadata, and complete snapshots. Search, sorting,
 attribute filters, selected entity, and selected control live in the URL.
-The entity list nests sessions → workspaces → tabs → panes → agents; layouts sit
-under their tabs. Sorting orders siblings without breaking the hierarchy. Search
-and filters retain ancestor rows as context; only matching rows participate in
-bulk selection.
 
-Select an entity to inspect all its fields and prefill the most specific control target.
-The control catalog comes from `herdr api schema --json` rather than a handwritten
-subset: the installed 0.8.2/protocol 20 release exposes 91 operations. It includes
-agent prompts/keys/start, pane input/output/layout, workspace/tab lifecycle,
-worktrees, plugins, integrations, notifications, and server controls. Scalar
+The compact explorer is a collapsible tree of sessions → workspaces → tabs → panes
+→ agents, with layouts under their tabs. Sorting orders siblings without breaking
+the hierarchy. Search and filters retain each matching row's full ancestor chain;
+only matching rows participate in bulk selection. Collection filters fold away
+behind **Filters**, while the inspector keeps the selected entity's breadcrumb,
+properties, and expandable raw details beside the tree.
+
+Selecting a pane or agent exposes **Start agent**, **Send prompt**, and **Read output**
+directly in the controls. The result appears below those controls in the detail
+column, with terminal output in a scrollable monospace block. **All operations**
+folds away the full control catalog from `herdr api schema --json`, not a
+handwritten subset. The installed 0.8.2/protocol 20 release exposes 91 operations,
+including agent prompts/keys/start, pane input/output/layout, workspace/tab
+lifecycle, worktrees, plugins, integrations, notifications, and server controls.
+The selected entity prefills the most specific target. Schema-derived forms show
+required fields first and optional fields under **Optional parameters**. Scalar
 parameters have form controls; structured parameters and explicit `null` values
-use JSON. Full schemas are available beside the form.
+use JSON. Full parameter schemas remain available beside the form.
 
-Every state-changing control shows the exact session and parameters for confirmation.
+Every state-changing operation shows the exact session, target, and parameters
+for confirmation before it runs.
+
 Session Start launches `herdr --session NAME server` without opening a TUI and leaves
 that session running after Portfolio exits. Stop terminates that session's processes;
 Delete removes a stopped named session's saved state. The default session cannot be
@@ -225,8 +234,9 @@ deleted. Verification and bulk commands resolve session-qualified IDs so `w1:p1`
 two sessions never means the same target.
 
 Live refresh runs every five seconds while the page is visible, without remounting
-forms or clearing drafts, selection, or focus. It can be paused. The event subscription
-control captures five seconds of events rather than opening an indefinite stream.
+forms or clearing drafts, selection, focus, or collapsed tree branches. It can be
+paused. The event subscription control captures five seconds of events rather than
+opening an indefinite stream.
 Requests are bounded to 1 MiB in, 16 MiB out, and 90 seconds; cancellation stops waiting,
 not an already accepted Herdr operation. Refresh before retrying a timed-out mutation.
 The raw binary `pane.graphics.stream` transport is not a JSON operation; graphics

@@ -9,6 +9,25 @@ const message = (error: unknown) => error instanceof Error ? error.message : Str
 const pretty = (value: unknown) => JSON.stringify(value, null, 2);
 type Draft = Record<string, string>;
 type Pending = { title: string; description: string; run: () => Promise<unknown> };
+const actionLabels: Record<string, string> = {
+  "agent.start": "Start agent", "agent.prompt": "Send prompt", "pane.read": "Read output",
+};
+const fieldLabels: Record<string, string> = {
+  kind: "Agent kind", name: "Agent name", pane_id: "Pane", target: "Target",
+  text: "Prompt", source: "Output source", args: "Arguments", timeout_ms: "Timeout (ms)",
+};
+
+function EntityIcon({ kind }: { kind: string }) {
+  const paths: Record<string, string> = {
+    session: "M3 4h14v12H3z M3 8h14 M6 6h.01 M9 6h.01",
+    workspace: "M2 5h6l2 2h8v10H2z",
+    tab: "M3 4h14v13H3z M3 8h14 M7 4v4",
+    pane: "M3 4h14v12H3z M6 8l2 2-2 2 M10 12h4",
+    agent: "M5 7h10v9H5z M10 3v4 M8 11h.01 M12 11h.01 M2 10v3 M18 10v3",
+    layout: "M3 4h14v12H3z M10 4v12 M10 10h7",
+  };
+  return <svg className="herdr-entity-icon" width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[kind] ?? paths.pane} /></svg>;
+}
 
 function terminalText(value: unknown): string {
   if (Array.isArray(value)) return value.map(terminalText).filter(Boolean).join("\n\n");
@@ -46,7 +65,7 @@ function ParameterField({ field, value, onChange }: { field: HerdrField; value: 
   const enabled = field.required || value !== undefined;
   return <div className="herdr-parameter">
     <div className="herdr-field-heading">
-      <label htmlFor={id}>{field.name}{field.required ? " *" : ""}</label>
+      <label htmlFor={id}>{fieldLabels[field.name] ?? field.name}{field.required ? " *" : ""}</label>
       {!field.required ? <label className="herdr-include"><input type="checkbox" checked={enabled} onChange={event => onChange(event.target.checked ? field.kind === "boolean" ? "false" : "" : undefined)} /> Include</label> : null}
     </div>
     {field.choices.length || field.kind === "boolean" ? <select id={id} disabled={!enabled} required={field.required} value={value ?? ""} onChange={event => onChange(event.target.value)}>
@@ -58,13 +77,20 @@ function ParameterField({ field, value, onChange }: { field: HerdrField; value: 
   </div>;
 }
 
-function EntityList({ all, visible, selected, selection, onPick }: {
+function EntityList({ all, visible, selected, selection, onPick, filtering }: {
   all: HerdrEntity[];
   visible: HerdrEntity[];
   selected: HerdrEntity | undefined;
   selection: { selected: Set<string>; toggle: (key: string) => void };
   onPick: (entity: HerdrEntity) => void;
+  filtering: boolean;
 }) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const toggle = (key: string) => setCollapsed(current => {
+    const next = new Set(current);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
   const byKey = new Map(all.map(entity => [entity.key, entity]));
   const parents = new Map<string, string>();
   const children = new Map<string, HerdrEntity[]>();
@@ -94,22 +120,30 @@ function EntityList({ all, visible, selected, selection, onPick }: {
     const rows = children.get(parentKey)?.filter(entity => included.has(entity.key));
     if (!rows?.length) return null;
     return <ul className="herdr-entity-list" aria-label={parentKey ? undefined : "Session hierarchy"}>
-      {rows.map(entity => <li key={entity.key}>
-        <div className="herdr-entity-row" data-selected={selected?.key === entity.key}>
-          <input type="checkbox" aria-label={`Select ${entity.kind} ${entity.label} in ${entity.session}`} disabled={!matches.has(entity.key)} checked={selection.selected.has(entity.key)} onChange={() => selection.toggle(entity.key)} />
-          <div className="herdr-entity-info">
-            <button type="button" className="herdr-entity-link" aria-current={selected?.key === entity.key ? "true" : undefined} onClick={() => onPick(entity)}>{entity.label}</button>
-            <small>{entity.kind} · {entity.id}{entity.focused ? " · focused" : ""}{!matches.has(entity.key) ? " · parent context" : ""}</small>
-            {entity.agent ? <small>{entity.agent}</small> : null}
-            {entity.cwd ? <small title={entity.cwd}>{entity.cwd}</small> : null}
+      {rows.map(entity => {
+        const hasChildren = children.get(entity.key)?.some(child => included.has(child.key));
+        const expanded = filtering || !collapsed.has(entity.key);
+        return <li key={entity.key}>
+          <div className="herdr-entity-row" data-selected={selected?.key === entity.key} data-kind={entity.kind}>
+            {hasChildren ? <button type="button" className="herdr-disclosure" aria-label={`${expanded ? "Collapse" : "Expand"} ${entity.kind} ${entity.label}`} aria-expanded={expanded} disabled={filtering} onClick={() => toggle(entity.key)}><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d={expanded ? "m3 4 3 3 3-3" : "m4 3 3 3-3 3"} /></svg></button> : <span className="herdr-disclosure-space" />}
+            <input type="checkbox" aria-label={`Select ${entity.kind} ${entity.label} in ${entity.session}`} disabled={!matches.has(entity.key)} checked={selection.selected.has(entity.key)} onChange={() => selection.toggle(entity.key)} />
+            <button type="button" className="herdr-entity-link" aria-current={selected?.key === entity.key ? "true" : undefined} title={`${entity.kind}: ${entity.label}\n${entity.id}${entity.cwd ? `\n${entity.cwd}` : ""}${!matches.has(entity.key) ? "\nParent context" : ""}`} onClick={() => onPick(entity)}>
+              <EntityIcon kind={entity.kind} />
+              <span className="herdr-entity-name">{entity.label}</span>
+              <span className="herdr-entity-kind">{entity.kind}</span>
+            </button>
+            {entity.focused ? <span className="herdr-focused" title="Focused pane or tab" aria-label="Focused" /> : null}
+            {entity.status && entity.status !== "unknown" ? <span className={`herdr-status herdr-status-${entity.status}`}>{entity.status}</span> : null}
           </div>
-          <span className={`herdr-status herdr-status-${entity.status}`}>{entity.status || "—"}</span>
-        </div>
-        {render(entity.key)}
-      </li>)}
+          {hasChildren ? <div hidden={!expanded}>{render(entity.key)}</div> : null}
+        </li>;
+      })}
     </ul>;
   };
-  return render("");
+  return <>
+    <div className="herdr-tree-tools"><span>Session hierarchy</span><div><button type="button" disabled={filtering} onClick={() => setCollapsed(new Set())}>Expand all</button><button type="button" disabled={filtering} onClick={() => setCollapsed(new Set(parents.values()))}>Collapse all</button></div></div>
+    {render("")}
+  </>;
 }
 
 export function HerdrPage({ client, params, onParamsChange }: {
@@ -175,6 +209,7 @@ export function HerdrPage({ client, params, onParamsChange }: {
   const attribute = params.get("attribute") ?? "";
   const attributeValue = params.get("value") ?? "";
   const sort = params.get("sort") ?? "hierarchy";
+  const filterCount = columns.slice(1).filter(column => params.get(column)).length + (attribute && attributeValue ? 1 : 0);
   const scalarKeys = [...new Set(all.flatMap(entity => Object.keys(entity.details).filter(key => !isObject(entity.details[key]) && !Array.isArray(entity.details[key]))))].sort();
   const scalar = (entity: HerdrEntity, key: string) => {
     const column = columns.find(column => column === key);
@@ -246,43 +281,72 @@ export function HerdrPage({ client, params, onParamsChange }: {
     next.set("method", entity.kind === "session" ? "session.snapshot" : entity.kind === "layout" ? "layout.export" : `${entity.kind}.get`);
     onParamsChange(next);
   };
+  const paneSelected = selected?.kind === "pane" || selected?.kind === "agent";
+  const quickActions = paneSelected ? ["agent.prompt", "agent.start", "pane.read"] : [];
+  const chooseAction = (nextMethod: string) => {
+    const next = new URLSearchParams(params);
+    next.set("method", nextMethod);
+    if (selected) next.set("targetSession", selected.session);
+    onParamsChange(next);
+  };
 
   return <section className="herdr-page" aria-label="Herdr console">
-    <header className="herdr-header"><div><h1>Herdr</h1><p>{overview.sessions.filter(session => session.running).length} running sessions · {all.filter(entity => entity.kind === "pane").length} panes · {all.filter(entity => entity.kind === "agent").length} agents</p></div>
+    <header className="herdr-header">
+      <div className="herdr-heading"><h1>Herdr</h1><span className="herdr-summary">Running: {overview.sessions.filter(session => session.running).length}<span> / </span>Panes: {all.filter(entity => entity.kind === "pane").length}<span> / </span>Agents: {all.filter(entity => entity.kind === "agent").length}</span></div>
       <div className="herdr-actions"><label><input type="checkbox" checked={autoRefresh} onChange={event => setParam("refresh", event.target.checked ? "" : "off")} /> Live refresh</label><button type="button" onClick={() => void refresh()} disabled={loading}>{loading ? "Refreshing…" : "Refresh"}</button></div>
     </header>
-    <p className="herdr-freshness">{overview.updated_at ? `Snapshot ${new Date(overview.updated_at).toLocaleTimeString()}` : "Waiting for Herdr…"} · {autoRefresh ? "Updates every 5 seconds; drafts stay in place." : "Automatic refresh paused."}</p>
+    <div className="herdr-statusline"><span>{autoRefresh ? "Live snapshots · every 5s" : "Live refresh paused"}</span><span>{overview.updated_at ? `Updated ${new Date(overview.updated_at).toLocaleTimeString()}` : "Waiting for Herdr…"}</span></div>
     {loadError ? <p role="alert" className="herdr-error">{loadError} <button type="button" onClick={() => void refresh()}>Retry discovery</button></p> : null}
-    <details className="herdr-session-create"><summary>Create or start a session</summary><form className="herdr-actions" onSubmit={event => { event.preventDefault(); lifecycle(newSession.trim(), "start"); }}><label>Session name<input value={newSession} onChange={event => setNewSession(event.target.value)} required maxLength={64} /></label><button disabled={busy}>Start session</button></form></details>
-    <CollectionToolbar query={params.get("q") ?? ""} onQueryChange={value => setParam("q", value)} sort={sort} onSortChange={value => setParam("sort", value)} sortOptions={[{ value: "hierarchy", label: "Session hierarchy" }, ...columns.map(value => ({ value, label: value })), ...scalarKeys.map(value => ({ value: `detail:${value}`, label: value }))]}>
-      {columns.slice(1).map(column => <label key={column}>{column}<select aria-label={`Filter ${column}`} value={params.get(column) ?? ""} onChange={event => setParam(column, event.target.value)}><option value="">All</option>{[...new Set(all.map(entity => text(entity[column])).filter(Boolean))].sort().map(value => <option key={value} value={value}>{value}</option>)}</select></label>)}
-    </CollectionToolbar>
-    <details className="herdr-attribute-filter"><summary>Filter by another attribute</summary><div className="herdr-actions"><label>Attribute<select value={attribute} onChange={event => { const next = new URLSearchParams(params); next.set("attribute", event.target.value); next.delete("value"); onParamsChange(next); }}><option value="">Any attribute</option>{scalarKeys.map(value => <option key={value}>{value}</option>)}</select></label><label>Value<select value={attributeValue} onChange={event => setParam("value", event.target.value)}><option value="">Any value</option>{[...new Set(all.map(entity => text(entity.details[attribute])).filter(Boolean))].sort().map(value => <option key={value}>{value}</option>)}</select></label></div></details>
-    <SelectionBar count={selection.selected.size} total={visible.length} allSelected={selection.allSelected} onToggleAll={selection.toggleAll} onClear={selection.clear} busy={busy}>
-      <button type="button" onClick={() => setOutput(visible.filter(entity => selection.selected.has(entity.key)).map(entity => ({ session: entity.session, kind: entity.kind, ...entity.details })))}>Inspect selected</button>
-    </SelectionBar>
     <div className="herdr-workbench">
-      <div className="herdr-entities"><div className="herdr-list-scroll">
-        <EntityList all={ordered} visible={visible} selected={selected} selection={selection} onPick={pickEntity} />
-      </div>
-      {!visible.length ? <p className="herdr-empty">{loading && !overview.updated_at ? "Loading sessions…" : all.length ? "No entities match these filters." : "No Herdr sessions found. Start a session above."}</p> : null}
-      {selected ? <section className="herdr-inspector"><h2>{selected.kind}: {selected.label}</h2><p>{selected.session} / {selected.id}</p>
-        {selected.kind === "session" ? <div className="herdr-actions"><button type="button" disabled={busy || selected.details.running === true} onClick={() => lifecycle(selected.session, "start")}>Start</button><button type="button" disabled={busy || selected.details.running !== true} onClick={() => lifecycle(selected.session, "stop")}>Stop session</button><button type="button" disabled={busy || selected.details.running === true || selected.details.default === true} onClick={() => lifecycle(selected.session, "delete")}>Delete saved session</button></div> : null}
-        <pre tabIndex={0} aria-label="Entity details">{pretty(selected.details)}</pre></section> : null}
-      {params.has("entity") && !selected ? <p role="status">The selected entity is no longer available. Its command draft has been kept.</p> : null}
-      <details><summary>Complete session snapshots</summary><pre tabIndex={0}>{pretty(overview)}</pre></details>
-      </div>
-      <section className="herdr-controls" aria-label="Herdr controls"><h2>Controls</h2><p>{catalog ? `${catalog.operations.length} operations · protocol ${catalog.protocol}` : "Loading installed capabilities…"}</p>
+      <section className="herdr-entities" aria-label="Session explorer">
+        <div className="herdr-panel-heading"><h2>Explorer</h2><span>Sessions &amp; agents</span></div>
+        <div className="herdr-explorer-tools">
+          <CollectionToolbar query={params.get("q") ?? ""} onQueryChange={value => setParam("q", value)} sort={sort} onSortChange={value => setParam("sort", value)} sortOptions={[{ value: "hierarchy", label: "Hierarchy" }, ...columns.map(value => ({ value, label: value })), ...scalarKeys.map(value => ({ value: `detail:${value}`, label: value }))]} />
+          <details className="herdr-filters"><summary>Filters{filterCount ? ` · ${filterCount} active` : ""}</summary>
+            <div className="herdr-filter-grid">
+              {columns.slice(1).map(column => <label key={column}>{column}<select aria-label={`Filter ${column}`} value={params.get(column) ?? ""} onChange={event => setParam(column, event.target.value)}><option value="">All</option>{[...new Set(all.map(entity => text(entity[column])).filter(Boolean))].sort().map(value => <option key={value} value={value}>{value}</option>)}</select></label>)}
+              <label>Attribute<select value={attribute} onChange={event => { const next = new URLSearchParams(params); next.set("attribute", event.target.value); next.delete("value"); onParamsChange(next); }}><option value="">Any attribute</option>{scalarKeys.map(value => <option key={value}>{value}</option>)}</select></label>
+              <label>Value<select value={attributeValue} onChange={event => setParam("value", event.target.value)}><option value="">Any value</option>{[...new Set(all.map(entity => text(entity.details[attribute])).filter(Boolean))].sort().map(value => <option key={value}>{value}</option>)}</select></label>
+            </div>
+          </details>
+        </div>
+        <SelectionBar count={selection.selected.size} total={visible.length} allSelected={selection.allSelected} onToggleAll={selection.toggleAll} onClear={selection.clear} busy={busy}>
+          <button type="button" onClick={() => setOutput(visible.filter(entity => selection.selected.has(entity.key)).map(entity => ({ session: entity.session, kind: entity.kind, ...entity.details })))}>Inspect selected</button>
+        </SelectionBar>
+        <div className="herdr-list-scroll">
+          <EntityList all={ordered} visible={visible} selected={selected} selection={selection} onPick={pickEntity} filtering={Boolean(query || filterCount)} />
+          {!visible.length ? <p className="herdr-empty">{loading && !overview.updated_at ? "Loading sessions…" : all.length ? "No entities match these filters." : "No Herdr sessions found. Start a session below."}</p> : null}
+        </div>
+        <div className="herdr-explorer-footer">
+          <details className="herdr-session-create"><summary>Create or start a session</summary><form className="herdr-actions" onSubmit={event => { event.preventDefault(); lifecycle(newSession.trim(), "start"); }}><label>Session name<input value={newSession} onChange={event => setNewSession(event.target.value)} required maxLength={64} /></label><button disabled={busy}>Start session</button></form></details>
+          <details><summary>Complete session snapshots</summary><pre tabIndex={0}>{pretty(overview)}</pre></details>
+        </div>
+      </section>
+      <div className="herdr-detail">
+        <section className="herdr-inspector" aria-label="Entity inspector">
+          {selected ? <>
+            <nav className="herdr-breadcrumb" aria-label="Entity location">{[selected.session, selected.workspace, selected.tab, selected.kind === "pane" || selected.kind === "agent" ? selected.id : ""].filter(Boolean).map((part, index) => <span key={`${index}:${part}`}>{part}</span>)}</nav>
+            <div className="herdr-inspector-title"><EntityIcon kind={selected.kind} /><h2>{selected.label}</h2>{selected.status && selected.status !== "unknown" ? <span className={`herdr-status herdr-status-${selected.status}`}>{selected.status}</span> : null}</div>
+            <dl className="herdr-properties"><div><dt>Type</dt><dd>{selected.kind}</dd></div><div><dt>ID</dt><dd><code>{selected.id}</code></dd></div>{selected.agent ? <div><dt>Agent</dt><dd>{selected.agent}</dd></div> : null}{selected.cwd ? <div className="herdr-property-path"><dt>Directory</dt><dd><code>{selected.cwd}</code></dd></div> : null}</dl>
+            {selected.kind === "session" ? <div className="herdr-actions"><button type="button" disabled={busy || selected.details.running === true} onClick={() => lifecycle(selected.session, "start")}>Start session</button><button type="button" disabled={busy || selected.details.running !== true} onClick={() => lifecycle(selected.session, "stop")}>Stop session</button><button type="button" disabled={busy || selected.details.running === true || selected.details.default === true} onClick={() => lifecycle(selected.session, "delete")}>Delete saved session</button></div> : null}
+            <details className="herdr-raw-details"><summary>Entity details</summary><pre tabIndex={0} aria-label="Entity details">{pretty(selected.details)}</pre></details>
+          </> : <div className="herdr-inspector-empty"><EntityIcon kind="pane" /><h2>{params.has("entity") ? "Entity no longer available" : "Select a pane. Take it from there."}</h2><p>{params.has("entity") ? "Its command draft has been kept. Select another entity or refresh the session." : "Browse the session tree to inspect a workspace, start an agent, or send a prompt."}</p><div className="herdr-hierarchy-guide">Session / Workspace / Tab / Pane / Agent</div></div>}
+        </section>
+        <section className="herdr-controls" aria-label="Herdr controls">
+          <div className="herdr-panel-heading"><h2>{paneSelected ? "Pane actions" : "Controls"}</h2><span>{catalog ? `${catalog.operations.length} operations` : "Loading capabilities…"}</span></div>
+          {paneSelected ? <div className="herdr-quick-actions" aria-label="Pane actions">{quickActions.filter(value => catalog?.operations.some(operation => operation.method === value)).map(value => <button type="button" key={value} aria-pressed={method === value} onClick={() => chooseAction(value)}>{actionLabels[value]}</button>)}</div> : null}
         {catalogError ? <p role="alert" className="herdr-error">{catalogError}<button type="button" onClick={() => { void client.catalog().then(value => { setCatalog(value); setCatalogError(""); }).catch(error => setCatalogError(message(error))); }}>Retry capabilities</button></p> : null}
+        <details className="herdr-operation-catalog"><summary>All operations{catalog ? ` · protocol ${catalog.protocol}` : ""}</summary>
         <CollectionToolbar query={params.get("opq") ?? ""} onQueryChange={value => setParam("opq", value)} sort={operationSort} onSortChange={value => setParam("opsort", value)} sortOptions={[{ value: "method", label: "Operation" }, { value: "access", label: "Access" }]}>
           <label>Concept<select value={params.get("group") ?? ""} onChange={event => setParam("group", event.target.value)}><option value="">All concepts</option>{[...new Set(catalog?.operations.map(value => value.group))].sort().map(value => <option key={value}>{value}</option>)}</select></label>
           <label>Access<select value={params.get("access") ?? ""} onChange={event => setParam("access", event.target.value)}><option value="">All controls</option><option value="read">Read only</option><option value="write">Changes state</option></select></label>
         </CollectionToolbar>
         <label>Operation<select value={method} onChange={event => setParam("method", event.target.value)}>{!operations.some(value => value.method === method) ? <option value={method}>{method} (selected)</option> : null}{operations.map(value => <option key={value.method} value={value.method}>{value.method}{value.readOnly ? "" : " — changes state"}</option>)}</select></label>
         <label>Target session<select value={sessionName} onChange={event => setParam("targetSession", event.target.value)}><option value="">Choose a session</option>{overview.sessions.map(session => <option key={session.name} value={session.name}>{session.name}{session.running ? "" : " (stopped)"}</option>)}</select></label>
+        </details>
         {operation ? <form onSubmit={event => { event.preventDefault(); try { invoke(parameters(operation, draft, actualDefaults)); } catch (error) { setActionError(message(error)); } }}>
-          <fieldset disabled={busy}><legend>{operation.method}</legend>
-            <p>{operation.readOnly ? "Reads live state without changing it." : "Changes the live session. You will review the request before it runs."}</p>
+          <fieldset disabled={busy}><legend>{actionLabels[operation.method] ?? operation.method}</legend>
+            <p className="herdr-operation-context"><code>{operation.method}</code><span>{operation.readOnly ? "Read only" : "Confirmation required"} · {sessionName || "No session selected"}</span></p>
             <label className="herdr-json-toggle"><input type="checkbox" checked={draft.$raw !== undefined} onChange={event => {
               if (event.target.checked) { try { setField("$raw", pretty(parameters({ ...operation, fields: operation.fields.map(field => ({ ...field, required: false })) }, draft, actualDefaults))); } catch { setField("$raw", pretty(actualDefaults)); } }
               else {
@@ -295,23 +359,27 @@ export function HerdrPage({ client, params, onParamsChange }: {
                   setDrafts(current => ({ ...current, [key]: fields }));
                 } catch (error) { setActionError(message(error)); }
               }
-            }} /> Edit parameters as JSON (including null values)</label>
-            {draft.$raw !== undefined ? <label>Parameters JSON<textarea rows={10} spellCheck={false} value={draft.$raw} onChange={event => setField("$raw", event.target.value)} /></label> : operation.fields.map(field => <ParameterField key={field.name} field={field} value={draft[field.name] ?? (actualDefaults[field.name] === undefined ? undefined : text(actualDefaults[field.name]))} onChange={value => setField(field.name, value)} />)}
+            }} /> Edit JSON</label>
+            {draft.$raw !== undefined ? <label>Parameters JSON<textarea rows={10} spellCheck={false} value={draft.$raw} onChange={event => setField("$raw", event.target.value)} /></label> : <>
+              {operation.fields.filter(field => field.required).map(field => <ParameterField key={field.name} field={field} value={draft[field.name] ?? (actualDefaults[field.name] === undefined ? undefined : text(actualDefaults[field.name]))} onChange={value => setField(field.name, value)} />)}
+              {operation.fields.some(field => !field.required) ? <details className="herdr-optional-fields"><summary>Optional parameters</summary>{operation.fields.filter(field => !field.required).map(field => <ParameterField key={field.name} field={field} value={draft[field.name] ?? (actualDefaults[field.name] === undefined ? undefined : text(actualDefaults[field.name]))} onChange={value => setField(field.name, value)} />)}</details> : null}
+            </>}
             {operation.method === "events.subscribe" ? <p>Captures events for 5 seconds, then disconnects. Refresh remains independent.</p> : null}
-            <div className="herdr-actions"><button type="submit" disabled={!overview.sessions.some(session => session.name === sessionName && session.running)}>{busy ? "Running…" : operation.method === "events.subscribe" ? "Capture events (5s)" : "Run operation"}</button>
+            <div className="herdr-actions"><button className="herdr-primary" type="submit" disabled={!overview.sessions.some(session => session.name === sessionName && session.running)}>{busy ? "Running…" : operation.method === "events.subscribe" ? "Capture events (5s)" : actionLabels[operation.method] ?? "Run operation"}</button>
               {selection.selected.size > 0 && operation.fields.some(field => ["workspace_id", "tab_id", "pane_id", "target"].includes(field.name)) ? <button type="button" onClick={() => { try { invoke(parameters(operation, draft, actualDefaults), visible.filter(entity => selection.selected.has(entity.key))); } catch (error) { setActionError(message(error)); } }}>Run on {selection.selected.size} selected</button> : null}</div>
           </fieldset>
           <details><summary>Full parameter schema</summary><pre>{pretty({ parameters: operation.schema, definitions: catalog?.definitions })}</pre></details>
         </form> : null}
       </section>
-    </div>
     <section className="herdr-output" aria-label="Operation result">
-      <h2>Result</h2>
+      <h2>Last result</h2>
       {busy ? <p role="status">Waiting for Herdr… {commandRef.current ? <button type="button" onClick={() => commandRef.current?.abort()}>Cancel waiting</button> : null}</p> : null}
       {actionError ? <p role="alert" className="herdr-error">{actionError}</p> : null}
       {terminalOutput ? <pre tabIndex={0} aria-label="Terminal output">{terminalOutput}</pre> : null}
-      {output !== undefined ? <pre tabIndex={0} aria-label="Full response">{pretty(output)}</pre> : <p>Inspect an entity or run a control to see its full response here.</p>}
+      {output !== undefined ? <details open={!terminalOutput}><summary>Full response</summary><pre tabIndex={0} aria-label="Full response">{pretty(output)}</pre></details> : <p>No operation run yet.</p>}
     </section>
+      </div>
+    </div>
     <dialog ref={confirmRef} className="herdr-confirm" aria-labelledby="herdr-confirm-title" onCancel={event => { event.preventDefault(); setPending(null); }}>
       {pending ? <><h2 id="herdr-confirm-title">{pending.title}</h2><pre>{pending.description}</pre><div className="herdr-actions"><button type="button" autoFocus onClick={() => setPending(null)}>Cancel</button><button type="button" className="danger" onClick={() => { const run = pending.run; setPending(null); void execute(run); }}>Confirm and run</button></div></> : null}
     </dialog>
