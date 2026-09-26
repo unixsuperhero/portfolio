@@ -84,6 +84,15 @@ export const PR_SORTS: { value: string; label: string; read: (pr: Pr) => Scalar 
   { value: "lists", label: "List memberships", read: pr => pr.lists.join(" ") },
   { value: "item_id", label: "Library item ID", read: pr => pr.item_id ?? -1 },
 ];
+export const PR_COLLECTIONS = [
+  { value: "visible", label: "Visible PRs" },
+  { value: "mine", label: "Mine" },
+  { value: "review_requested", label: "Review requested" },
+  { value: "watched", label: "Watched" },
+  { value: "ignored", label: "Ignored" },
+  { value: "all", label: "All, including ignored" },
+] as const;
+
 export const PR_FILTER_KEYS = ["q", "collection", "membership", ...PR_FILTERS.map(filter => filter.key), ...CHECK_FILTERS.map(filter => filter.key)];
 
 export const PR_VIEW_KEYS = [...PR_FILTER_KEYS, "sort", "direction"] as const;
@@ -144,6 +153,18 @@ export function matchesPr(pr: Pr, params: URLSearchParams, hidden: boolean): boo
   return text.includes(query);
 }
 
+
+export const defaultPrDirection = (sort: string): "asc" | "desc" =>
+  ["updated", "fetched", "comments"].includes(sort) ? "desc" : "asc";
+
+/** Applies the same saved view and sort semantics as the PR page, then gates linked items for scoped portfolios. */
+export function filterPortfolioPrs(prs: Pr[], hiddenIds: ReadonlySet<number>, query: string, scopeItemIds: readonly number[] | null): Pr[] {
+  const params = new URLSearchParams(query);
+  const eligible = prs.filter(pr =>
+    (scopeItemIds === null || (pr.item_id !== null && scopeItemIds.includes(pr.item_id)))
+    && matchesPr(pr, params, hiddenIds.has(pr.id)));
+  return sortPrs(eligible, params.get("sort") ?? "updated", params.get("direction") ?? defaultPrDirection(params.get("sort") ?? "updated"));
+}
 export function sortPrs(prs: Pr[], sort: string, direction: string): Pr[] {
   const field = PR_SORTS.find(field => field.value === sort) ?? PR_SORTS[0];
   const sign = direction === "asc" ? 1 : -1;

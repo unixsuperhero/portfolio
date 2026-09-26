@@ -1,6 +1,6 @@
 import type {
   Card, CardResult, Category, Completion, Detection, DueReminder, Item, ItemFilter, ItemType, ItemView, ReminderView,
-  Portfolio, Pr, PrEvent, PrStatus, ProjectView, Recurrence, ResolvedSlot, Settings, Slot, TaskInput, TaskView, WatchedDirectory,
+  Portfolio, PortfolioItemFilter, Pr, PrEvent, PrStatus, ProjectView, Recurrence, ResolvedSlot, Settings, Slot, TaskInput, TaskView, WatchedDirectory,
 } from "@portfolio/core";
 
 export class PortfolioApiError extends Error {
@@ -11,7 +11,7 @@ export type Fetcher = (input: string | URL | Request, init?: RequestInit) => Pro
 export interface ClientOptions { fetch?: Fetcher; headers?: Record<string, string> }
 
 export type PortfolioCardView = Card & CardResult;
-export type PortfolioView = Portfolio & { cards: PortfolioCardView[] };
+export type PortfolioView = Portfolio & { cards: PortfolioCardView[]; scope_active: boolean; scope_item_ids: number[] };
 export type PortfolioSummary = Portfolio & { card_count: number };
 export type CategorySummary = Category & { member_count: number };
 export type ItemDetail = Item & { href: string; tags: string[]; slots: ResolvedSlot[]; project: ProjectView | null };
@@ -117,8 +117,12 @@ export class PortfolioClient {
 
   portfolios() { return this.request<{ portfolios: PortfolioSummary[] }>("/api/portfolios"); }
   portfolio(id: number) { return this.request<PortfolioView>(`/api/portfolios/${id}`); }
-  createPortfolio(name: string, description = "") { return this.request<{ id: number }>("/api/portfolios", { method: "POST", json: { name, description } }); }
-  updatePortfolio(id: number, patch: { name?: string; description?: string }) { return this.request<{ ok: true }>(`/api/portfolios/${id}`, { method: "PATCH", json: patch }); }
+  createPortfolio(name: string, description = "", tags: string[] = [], item_filter: PortfolioItemFilter = {}) {
+    return this.request<{ id: number }>("/api/portfolios", { method: "POST", json: { name, description, tags, item_filter } });
+  }
+  updatePortfolio(id: number, patch: { name?: string; description?: string; tags?: string[]; item_filter?: PortfolioItemFilter }) {
+    return this.request<{ ok: true }>(`/api/portfolios/${id}`, { method: "PATCH", json: patch });
+  }
   deletePortfolio(id: number) { return this.request<{ ok: true }>(`/api/portfolios/${id}`, { method: "DELETE" }); }
 
   createCard(portfolioId: number, card: CardInput) { return this.request<{ id: number }>(`/api/portfolios/${portfolioId}/cards`, { method: "POST", json: card }); }

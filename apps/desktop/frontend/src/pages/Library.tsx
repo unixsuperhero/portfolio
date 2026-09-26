@@ -58,6 +58,7 @@ export default function Library() {
   const [items, setItems] = useState<ItemView[]>([]);
   const [loading, setLoading] = useState(true);
   const requestId = useRef(0);
+  const pageRef = useRef<HTMLDivElement>(null);
   const [loadError, setLoadError] = useState("");
   const [quick, setQuick] = useState("");
   const [quickBusy, setQuickBusy] = useState(false);
@@ -88,6 +89,19 @@ export default function Library() {
   };
 
   useEffect(() => { void load(); return () => { requestId.current++; }; }, [q, type, tag, pinned, starred]);
+  useEffect(() => {
+    const focusSearch = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (target instanceof HTMLElement && (target.isContentEditable || target.closest("input, textarea, select, dialog, [role='dialog']"))) return;
+      const search = pageRef.current?.querySelector<HTMLInputElement>(".collection-search input");
+      if (!search) return;
+      event.preventDefault();
+      search.focus();
+    };
+    window.addEventListener("keydown", focusSearch);
+    return () => window.removeEventListener("keydown", focusSearch);
+  }, []);
 
   useEffect(() => {
     if (!quick.trim()) { setQuickDetection(null); return; }
@@ -138,8 +152,8 @@ export default function Library() {
   const onToggle = (item: ItemView, field: "pinned" | "starred") => toggleItem(item.id, field).then(load).catch(error => setLoadError(error instanceof Error ? error.message : "Could not update item."));
 
   return (
-    <div>
-      <div className="page-header"><h1>Library</h1></div>
+    <div ref={pageRef}>
+      <div className="page-header"><h1>Library</h1><span className="keyboard-hint">Press / to search</span></div>
       <form className="field-row" onSubmit={submitQuick}>
         <label style={{ flex: 1 }}>Quick add
           <div className="path-field">
@@ -213,7 +227,7 @@ export default function Library() {
                 hrefFor={hashHref}
                 tagHrefFor={t => `#/library?tag=${encodeURIComponent(t)}`}
                 onToggle={onToggle}
-                editHref={() => `#/items/${item.id}`}
+                editHref={candidate => `#/items/${candidate.id}${candidate.type === "document" || candidate.type === "note" ? "?edit=1" : ""}`}
                 leading={(
                   <input
                     type="checkbox"

@@ -1,6 +1,6 @@
 import { unlink } from "node:fs/promises";
 import { basename } from "node:path";
-import { detect, documentTitle, firstHeading, isHtmlPath, ITEM_TYPES, itemHref, parseTags } from "@portfolio/core";
+import { detect, documentTitle, firstHeading, isHtmlPath, isMarkdownPath, ITEM_TYPES, itemHref, parseTags } from "@portfolio/core";
 import type { ItemFilter, ItemType } from "@portfolio/core";
 import type { ItemPatch, NewItem } from "@portfolio/db";
 import type { Ctx } from "./context.ts";
@@ -69,7 +69,19 @@ export async function getItemRoute(ctx: Ctx, _request: Request, params: Record<s
   const view = ctx.store.items.viewItem(item);
   const slots = ctx.store.categories.memberSlots(item, ctx.home);
   const project = getProjectView(ctx, item.id);
-  return json({ ...item, slot_paths: undefined, href: view.href, tags: view.tags, slots, project });
+  let editableMarkdown = (item.type === "document" || item.type === "note") && (!item.source_path || isMarkdownPath(item.source_path));
+  let content = item.content;
+  let sourceError: string | null = null;
+  if (editableMarkdown && item.source_path) {
+    const source = Bun.file(item.source_path);
+    if (!await source.exists()) {
+      editableMarkdown = false;
+      sourceError = "Markdown source file is missing";
+    } else {
+      content = await source.text();
+    }
+  }
+  return json({ ...item, content, editable_markdown: editableMarkdown, source_error: sourceError, slot_paths: undefined, href: view.href, tags: view.tags, slots, project });
 }
 
 export async function patchItemRoute(ctx: Ctx, request: Request, params: Record<string, string>): Promise<Response> {
@@ -77,6 +89,7 @@ export async function patchItemRoute(ctx: Ctx, request: Request, params: Record<
   const item = ctx.store.items.getItem(id);
   if (!item) return notFound();
   const body = await readJson(request);
+  if ("content" in body && body.type !== undefined && body.type !== item.type) return error(422, "content edits cannot change item type");
   if (body.type !== undefined && body.type !== item.type && (body.type === "task" || item.type === "task")) {
     return error(422, "create a new task instead of changing an item's type to or from task");
   }
@@ -91,8 +104,28 @@ export async function patchItemRoute(ctx: Ctx, request: Request, params: Record<
       categoryId = category.id;
     }
   }
-  const { tags, ...patch } = body as ItemPatch & { tags?: unknown };
-  if ("content" in patch) (patch as ItemPatch).rendered_html = "";
+  let renderedHtml: string | undefined;
+  if ("content" in body) {
+    if (typeof body.content !== "string") return error(422, "content must be a string");
+    if (item.type === "document" || item.type === "note") {
+      if (item.source_path && !isMarkdownPath(item.source_path)) return error(422, "source is not a Markdown file");
+      if (item.source_path && Object.keys(body).some(key => key !== "content" && key !== "expected_content")) return error(422, "source-backed Markdown edits accept content only");
+      const source = item.source_path ? Bun.file(item.source_path) : null;
+      if (source && !await source.exists()) return error(409, "Markdown source file is missing");
+      if (source) {
+        if (typeof body.expected_content !== "string") return error(422, "expected_content is required for source-backed Markdown");
+        if (await source.text() !== body.expected_content) return error(409, "Markdown source changed on disk; reload before saving");
+      }
+      renderedHtml = await ctx.render(body.content, {
+        title: typeof body.title === "string" ? body.title : item.title,
+        toc: Boolean(item.toc),
+        sourcePath: item.source_path ?? undefined,
+      });
+      if (item.source_path) await Bun.write(item.source_path, body.content);
+    }
+  }
+  const { tags, expected_content: _expectedContent, ...patch } = body as ItemPatch & { tags?: unknown; expected_content?: unknown };
+  if ("content" in patch) patch.rendered_html = renderedHtml ?? "";
   ctx.store.items.updateItem(id, patch);
   if ("category_id" in body) ctx.store.items.setPathAndCategory(id, item.path, categoryId);
   if (tags !== undefined) {
@@ -102,7 +135,7 @@ export async function patchItemRoute(ctx: Ctx, request: Request, params: Record<
     if (toRemove.length) ctx.store.tags.removeTags(id, toRemove);
     if (desired.length) ctx.store.tags.setTags(id, desired);
   }
-  return json({ ok: true });
+  return json({ ok: true, rendered_html: renderedHtml });
 }
 
 export async function deleteItemRoute(ctx: Ctx, request: Request, params: Record<string, string>): Promise<Response> {

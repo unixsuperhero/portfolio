@@ -102,8 +102,8 @@ export function ftsQuery(q: string, contents = false): string {
   return contents ? phrase : `{title description} : (${phrase})`;
 }
 
-/** Lists items newest first with pinned ones on top, applying the filter's search, flags, type, tag, and category. */
-export function listItems(db: Database, filter: ItemFilter = {}): Item[] {
+/** Shared membership predicate for list and portfolio queries. Scope tags are OR-ed; filter fields are AND-ed. */
+export function itemFilterSql(filter: Omit<ItemFilter, "limit"> = {}, tags: string[] = []) {
   const where = ["1=1"];
   const params: (string | number)[] = [];
   let join = "";
@@ -115,10 +115,20 @@ export function listItems(db: Database, filter: ItemFilter = {}): Item[] {
   }
   if (filter.tag) { join += " JOIN taggings filter_tagging ON filter_tagging.item_id = items.id"; where.push("filter_tagging.tag_id = ?"); params.push(filter.tag); }
   if (filter.tagName) { where.push("items.id IN (SELECT taggings.item_id FROM taggings JOIN tags ON tags.id = taggings.tag_id WHERE tags.name = ? COLLATE NOCASE)"); params.push(filter.tagName); }
+  if (tags.length) {
+    where.push(`items.id IN (SELECT taggings.item_id FROM taggings JOIN tags ON tags.id = taggings.tag_id WHERE tags.name IN (${tags.map(() => "?").join(", ")}))`);
+    params.push(...tags);
+  }
   if (filter.category) { where.push("items.category_id = ?"); params.push(filter.category); }
   if (filter.pinned) where.push("items.pinned = 1");
   if (filter.starred) where.push("items.starred = 1");
   if (filter.type && isItemType(filter.type)) { where.push("items.type = ?"); params.push(filter.type); }
+  return { join, where, params };
+}
+
+/** Lists items newest first with pinned ones on top, applying the filter's search, flags, type, tag, and category. */
+export function listItems(db: Database, filter: ItemFilter = {}): Item[] {
+  const { join, where, params } = itemFilterSql(filter);
   const limit = filter.limit && filter.limit > 0 ? ` LIMIT ${Math.floor(filter.limit)}` : "";
   return db.query<Item, (string | number)[]>(`SELECT DISTINCT items.* FROM items${join} WHERE ${where.join(" AND ")} ORDER BY items.pinned DESC, datetime(items.created_at) DESC, items.id DESC${limit}`).all(...params);
 }

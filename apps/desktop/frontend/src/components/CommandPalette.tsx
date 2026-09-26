@@ -8,6 +8,15 @@ export type Command = {
   /** Listed whatever the query is, e.g. commands that act on the typed text itself. */
   always?: boolean;
 };
+export function rankCommands(commands: readonly Command[], query: string): readonly Command[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return commands;
+  const byLabel = commands.filter(command => command.label.toLowerCase().includes(needle));
+  const byHint = commands.filter(command => !byLabel.includes(command) && command.hint.toLowerCase().includes(needle));
+  const fallback = commands.filter(command => command.always && !byLabel.includes(command) && !byHint.includes(command));
+  return [...byLabel, ...byHint, ...fallback];
+}
+
 
 type CommandPaletteProps = {
   commands: readonly Command[];
@@ -24,17 +33,7 @@ export function CommandPalette({ commands, open, onOpenChange, returnFocusRef, o
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const matches = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return commands;
-    // Commands the text names come first ("add dir" finds "Add directory…"), then commands
-    // whose hint mentions it, then commands that act on the text itself. Enter therefore
-    // never adds a note when a real command matched.
-    const byLabel = commands.filter(command => command.label.toLowerCase().includes(needle));
-    const byHint = commands.filter(command => !byLabel.includes(command) && command.hint.toLowerCase().includes(needle));
-    const fallback = commands.filter(command => command.always && !byLabel.includes(command) && !byHint.includes(command));
-    return [...byLabel, ...byHint, ...fallback];
-  }, [commands, query]);
+  const matches = useMemo(() => rankCommands(commands, query), [commands, query]);
 
   useEffect(() => { onQueryChange?.(query.trim()); }, [onQueryChange, query]);
 
@@ -72,6 +71,12 @@ export function CommandPalette({ commands, open, onOpenChange, returnFocusRef, o
     if (event.key === "Escape") {
       event.preventDefault();
       close();
+      return;
+    }
+    if (event.ctrlKey && !event.metaKey && (event.key.toLowerCase() === "n" || event.key.toLowerCase() === "p") && matches.length) {
+      event.preventDefault();
+      const direction = event.key.toLowerCase() === "n" ? 1 : -1;
+      setActive(current => Math.max(0, Math.min(current + direction, matches.length - 1)));
       return;
     }
     if (event.key === "ArrowDown") {

@@ -1,18 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useSearchParams } from "react-router";
+import { hasPortfolioItemScope } from "@portfolio/core/portfolio";
 import type { PortfolioSummary } from "../types.ts";
 import { createPortfolio, deletePortfolio, listPortfolios, patchPortfolio, patchSettings } from "../api.ts";
 import { CollectionToolbar, SelectionBar, useSelection } from "@portfolio/ui/collections";
 import { AddTextarea } from "../components/AddTextarea.tsx";
 import { useConfirm } from "../components/ConfirmDialog.tsx";
 
-type SortKey = "name" | "created" | "cards";
+type SortKey = "name" | "created" | "cards" | "tags" | "scope";
 type FillFilter = "" | "empty" | "nonempty";
+type ScopeFilter = "" | "scoped" | "unscoped";
 
 const cardCount = (portfolio: PortfolioSummary): number => {
   const value = portfolio as PortfolioSummary & { card_count?: number; cards?: unknown[] };
   return value.card_count ?? value.cards?.length ?? 0;
+};
+
+const scopeSummary = (portfolio: PortfolioSummary): string => {
+  const criteria = Object.entries(portfolio.item_filter)
+    .filter(([, value]) => value !== undefined && value !== false && value !== "")
+    .map(([key, value]) => `${key}: ${String(value)}`);
+  return [...portfolio.tags.map(tag => `#${tag}`), ...criteria].join(" · ") || "All items";
 };
 
 export default function Portfolios() {
@@ -29,6 +38,8 @@ export default function Portfolios() {
   const query = params.get("q") ?? "";
   const sort = (params.get("sort") ?? "name") as SortKey;
   const fill = (params.get("fill") ?? "") as FillFilter;
+  const scope = (params.get("scope") ?? "") as ScopeFilter;
+  const scopeTag = params.get("tag") ?? "";
 
   const setParam = (key: string, value: string) => {
     const next = new URLSearchParams(params);
@@ -43,19 +54,25 @@ export default function Portfolios() {
     const needle = query.trim().toLowerCase();
     return portfolios
       .filter(portfolio => {
-        if (needle && !`${portfolio.name} ${portfolio.description}`.toLowerCase().includes(needle)) return false;
+        const searchable = `${portfolio.name} ${portfolio.description} ${portfolio.tags.join(" ")} ${Object.values(portfolio.item_filter).join(" ")}`;
+        if (needle && !searchable.toLowerCase().includes(needle)) return false;
         if (fill === "empty" && cardCount(portfolio) !== 0) return false;
         if (fill === "nonempty" && cardCount(portfolio) === 0) return false;
+        if (scope === "scoped" && !hasPortfolioItemScope(portfolio)) return false;
+        if (scope === "unscoped" && hasPortfolioItemScope(portfolio)) return false;
+        if (scopeTag && !portfolio.tags.some(tag => tag.toLowerCase().includes(scopeTag.toLowerCase()))) return false;
         return true;
       })
       .sort((a, b) => {
         switch (sort) {
           case "created": return Date.parse(b.created_at) - Date.parse(a.created_at);
           case "cards": return cardCount(b) - cardCount(a);
+          case "tags": return b.tags.length - a.tags.length || a.name.localeCompare(b.name);
+          case "scope": return Number(hasPortfolioItemScope(b)) - Number(hasPortfolioItemScope(a)) || a.name.localeCompare(b.name);
           default: return a.name.localeCompare(b.name);
         }
       });
-  }, [portfolios, query, sort, fill]);
+  }, [portfolios, query, sort, fill, scope, scopeTag]);
 
   const selection = useSelection(visible.map(portfolio => portfolio.id));
   const selectedIds = Array.from(selection.selected);
@@ -118,6 +135,8 @@ export default function Portfolios() {
           { value: "name", label: "Name" },
           { value: "created", label: "Newest" },
           { value: "cards", label: "Card count" },
+          { value: "tags", label: "Tag count" },
+          { value: "scope", label: "Scoped first" },
         ]}
       >
         <label>Cards
@@ -127,6 +146,14 @@ export default function Portfolios() {
             <option value="nonempty">Nonempty</option>
           </select>
         </label>
+        <label>Scope
+          <select value={scope} onChange={event => setParam("scope", event.target.value)}>
+            <option value="">Any scope</option>
+            <option value="scoped">Scoped</option>
+            <option value="unscoped">Unscoped</option>
+          </select>
+        </label>
+        <label>Portfolio tag<input value={scopeTag} onChange={event => setParam("tag", event.target.value)} placeholder="Search tags…" /></label>
       </CollectionToolbar>
       <SelectionBar count={selectedIds.length} total={visible.length} allSelected={selection.allSelected} onToggleAll={selection.toggleAll} onClear={selection.clear} busy={busy}>
         <input value={bulkDescription} onChange={event => setBulkDescription(event.target.value)} placeholder="New description" disabled={busy} />
@@ -139,13 +166,14 @@ export default function Portfolios() {
       {portfolios.length && !visible.length ? <div className="empty"><strong>No matching portfolios.</strong><p>Adjust search or filters.</p></div> : null}
       {visible.length ? (
         <table className="data-table">
-          <thead><tr><th>Select</th><th>Name</th><th>Description</th><th>Cards</th><th></th></tr></thead>
+          <thead><tr><th>Select</th><th>Name</th><th>Description</th><th>Scope</th><th>Cards</th><th></th></tr></thead>
           <tbody>
             {visible.map(portfolio => (
               <tr key={portfolio.id}>
                 <td><input type="checkbox" checked={selection.selected.has(portfolio.id)} onChange={() => selection.toggle(portfolio.id)} aria-label={`Select ${portfolio.name}`} /></td>
                 <td><Link to={`/portfolios/${portfolio.id}`}>{portfolio.name}</Link></td>
                 <td>{portfolio.description}</td>
+                <td>{scopeSummary(portfolio)}</td>
                 <td>{cardCount(portfolio)}</td>
                 <td><button type="button" className="secondary" onClick={() => patchSettings({ home_portfolio_id: portfolio.id })}>Set as homepage</button></td>
               </tr>

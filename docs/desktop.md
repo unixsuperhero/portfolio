@@ -76,10 +76,31 @@ const settings = {
   github_pr_default_view: "mine-open",
 };
 ```
+Portfolios persist an item scope separately from their cards: portfolio tags match **ANY**,
+item-search criteria combine with those tags, and query-card tags/types further narrow the
+portfolio result with **AND** semantics. Scope is applied before card counts and item caps.
+The scope editor uses URL-persisted search, selected/available views, name/count sorting,
+bulk selection, and paging for large tag collections. The portfolio list exposes a concise
+scope column and URL-persisted scoped/unscoped and tag filters, and searches and sorts the
+new scope attributes. Empty scope preserves legacy dashboard behavior. When scope is active,
+data widgets require an eligible linked item: PRs use
+`item_id`, tasks use their linked task item, reminders follow their linked task item, and
+ports/services use the project item. Unlinked records are excluded. Clock and freeform note
+cards are content widgets and are intentionally unaffected.
+
+PR cards store the same normalized query-string model as the PR page. Their common controls,
+advanced filters, saved views, matching, and sorting therefore have identical semantics;
+portfolio linked-item eligibility is applied in addition to the saved PR query.
+
 
 The `tasks` card shows active tasks with nested subtasks and completion checkboxes. Completion checkboxes on tasks and reminders draw a check and settle the title; a daily task or reminder with a streak of two or more days shows an `N-day streak` count that ticks up when it advances, and a list whose entries are all complete ends with an "All done today." line. Due-reminder toasts slide in; successful Done completes the reminder and dismisses its notification. Each task links to its task page. Note cards support GitHub-flavored Markdown and a plain-text Markdown editor. Widget bodies and tile cards use the same horizontal padding as query rows.
 
 The command palette (⌘K) adds things as well as navigating. While you type, the palette runs the same detection as the Library quick-add and offers `Add <kind>` for every addable kind (task, note, link, PR, file, directory, document) — the detected kind ranks first, the rest still list even when they'd fail for that text (a failure just shows the API's error in the top bar). Text with an `http://`/`https://` scheme, or that looks like a bare domain (`example.com`, `github.com/foo/bar`), is treated as a link (or a PR, for GitHub pull URLs); a bare domain is prefixed with `https://` before it's added, since detection only recognizes URLs that already carry a scheme. `Add file…` and `Add directory…` open the native picker inside the app, or the in-page directory browser in a plain browser, and add the picked path. `Add…` opens a dialog (always listed, near the top when the query is empty) with a multi-line field, the same live detection line, a kind override (Auto plus every kind), and file/directory pickers that fill the field; Enter submits, Escape cancels. A successful add navigates to the new item or task; a failure shows in the top bar or, from the `Add…` dialog, inside the dialog itself.
+Palette results keep keyboard focus in the search field. Arrow keys and Ctrl+N/Ctrl+P move the active result; Enter runs it and Escape closes the palette and restores focus. Text-editing shortcuts remain native: in particular, Ctrl+K edits the palette query rather than reopening or closing the palette. `Go to Library` ranks ahead of the broad `Search Library` action for a `lib` query.
+
+On the Library page, `/` focuses the collection search when focus is not already in an editable control or dialog. Library item title and Edit links are explicit tab stops for the macOS webview. Document items render Pandoc HTML directly in a sanitized, app-scoped document surface rather than an iframe. Imported scripts, event handlers, embedded forms, and arbitrary styles are removed; headings, lists, tables, embedded images, IDs, links, and syntax-highlighted code remain. In-document links scroll without changing the hash-router route. Code-block copy feedback changes to **Copied** only after the native or browser clipboard operation succeeds.
+
+Notes and documents without a source file are editable as Markdown; the Library's **Edit** link opens that editor directly. Source-backed documents are editable only when the source is a Markdown file; the editor loads the current file contents, and Save writes the file, updates the database copy, and refreshes rendered HTML. HTML and other non-Markdown sources are read-only. Cmd+S (or Ctrl+S) saves while editing. Save errors leave the draft open, and Escape/Cancel asks before discarding changed text.
 
 Reminders are independent records with their own schedule and completion history. The Reminders form defaults to **No task**; selecting a task is optional. Creating a reminder does not create a task or a Library item. Completing a linked reminder does not complete its task. Existing task-linked reminders and their completion history migrate when the database opens.
 

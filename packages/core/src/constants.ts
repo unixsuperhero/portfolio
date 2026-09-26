@@ -10,7 +10,7 @@ export const CARD_SORT_LABELS: Record<CardSortKey, string> = { created_at: "Crea
 export const CARD_MAX_ITEMS = { min: 1, max: 1000, default: 100 } as const;
 
 /** "query" runs the saved search; every other kind is a dashboard widget with its own config shape. */
-export const CARD_KINDS: readonly CardKind[] = ["query", "tasks", "reminders", "ports", "clock", "note", "services"] as const;
+export const CARD_KINDS: readonly CardKind[] = ["query", "tasks", "reminders", "ports", "clock", "note", "services", "prs"] as const;
 
 export const MARKDOWN_EXTENSIONS = [".md", ".markdown"] as const;
 export const DOCUMENT_EXTENSIONS = [".md", ".markdown", ".html"] as const;

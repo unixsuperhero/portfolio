@@ -21,14 +21,14 @@ export function ItemRow({ item, hrefFor, tagHrefFor, onToggle, editHref, leading
       {leading}
       <div className="item-date">{item.created_at.slice(0, 10)}</div>
       <div className="item-main">
-        <div className="item-line"><KindBadge type={item.type} /><a href={hrefFor?.(item) ?? item.href} target={external ? "_blank" : undefined} rel={external ? "noreferrer" : undefined}>{item.title}</a></div>
+        <div className="item-line"><KindBadge type={item.type} /><a href={hrefFor?.(item) ?? item.href} tabIndex={0} target={external ? "_blank" : undefined} rel={external ? "noreferrer" : undefined}>{item.title}</a></div>
         {item.description ? <p>{item.description}</p> : null}
         <TagList tags={item.tags} hrefFor={tagHrefFor} />
       </div>
       <div className="item-actions">
         {onToggle ? <button type="button" className={`icon-button${item.pinned ? " active" : ""}`} title={item.pinned ? "Unpin" : "Pin"} onClick={() => onToggle(item, "pinned")}>Pin</button> : null}
         {onToggle ? <button type="button" className={`icon-button${item.starred ? " active star" : ""}`} title={item.starred ? "Unstar" : "Star"} onClick={() => onToggle(item, "starred")}>★</button> : null}
-        {editHref ? <a className="icon-button" href={editHref(item)}>Edit</a> : null}
+        {editHref ? <a className="icon-button" href={editHref(item)} tabIndex={0}>Edit</a> : null}
         {actions}
       </div>
     </article>

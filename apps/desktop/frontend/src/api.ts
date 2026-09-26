@@ -1,6 +1,6 @@
 import { PortfolioClient } from "@portfolio/client";
 import { isWails, ownOrigin } from "./lib/wails.ts";
-import type { CardSpec, ItemFilter, Settings, Slot, TaskInput } from "@portfolio/core";
+import type { CardSpec, ItemFilter, PortfolioItemFilter, Settings, Slot, TaskInput } from "@portfolio/core";
 import type {
   CategorySummary,
   Detection,
@@ -38,6 +38,8 @@ export const getItem = (id: number) => api.request<ItemDetail>(`/api/items/${id}
 
 export const patchItem = (id: number, patch: Record<string, unknown>) =>
   api.request<{ ok: true }>(`/api/items/${id}`, { method: "PATCH", json: patch });
+export const saveItemMarkdown = (id: number, content: string, expectedContent: string) =>
+  api.request<{ ok: true; rendered_html: string }>(`/api/items/${id}`, { method: "PATCH", json: { content, expected_content: expectedContent } });
 
 export const deleteItem = (id: number, deleteFiles = false) =>
   api.request<{ ok: true }>(`/api/items/${id}`, { method: "DELETE", query: { delete_files: deleteFiles } });
@@ -70,12 +72,12 @@ export const listTags = () => api.request<{ tags: { id: number; name: string; co
 
 export const listPortfolios = () => api.request<{ portfolios: PortfolioSummary[] }>("/api/portfolios");
 
-export const createPortfolio = (name: string, description = "") =>
-  api.request<{ id: number }>("/api/portfolios", { method: "POST", json: { name, description } });
+export const createPortfolio = (name: string, description = "", tags: string[] = [], item_filter: PortfolioItemFilter = {}) =>
+  api.request<{ id: number }>("/api/portfolios", { method: "POST", json: { name, description, tags, item_filter } });
 
 export const getPortfolio = (id: number) => api.request<PortfolioView>(`/api/portfolios/${id}`);
 
-export const patchPortfolio = (id: number, patch: { name?: string; description?: string }) =>
+export const patchPortfolio = (id: number, patch: { name?: string; description?: string; tags?: string[]; item_filter?: PortfolioItemFilter }) =>
   api.request<{ ok: true }>(`/api/portfolios/${id}`, { method: "PATCH", json: patch });
 
 export const deletePortfolio = (id: number) => api.request<{ ok: true }>(`/api/portfolios/${id}`, { method: "DELETE" });

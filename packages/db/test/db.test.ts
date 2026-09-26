@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addProjectParent, addWatchedDirectory, cardItems, categoryMembers, claimItem, completeReminder, completeTask, countByType, createCard, createCategory, createPortfolio, createReminder, createTask, deleteCard, deleteItems, deletePortfolio, deleteTask, dueReminders, ensureCategory, getCard, getHomePortfolioId, getItem, getTask, listItems, listProjectParents, listReminderViews, listTags, listTaskViews, listTasks, memberSlots, migrateCardColumns, migrateGithubPrColumns, migrateReminderColumns, moveCard, openDatabase, openStore, portfolioCards, portfolioView, readSchema, removeTags, removeWatchedDirectory, setHomePortfolioId, setPathAndCategory, setReminders, setSlotOverride, setTags, taskView, todayReminders, toggleItemField, uncompleteTask, updateCard, updateCategory, updateItem, updateTask, upsertItem, viewItem } from "../src/index.ts";
+import { addProjectParent, addWatchedDirectory, cardItems, categoryMembers, claimItem, completeReminder, completeTask, countByType, createCard, createCategory, createPortfolio, createReminder, createTask, deleteCard, deleteItems, deletePortfolio, deleteTask, dueReminders, ensureCategory, getCard, getHomePortfolioId, getItem, getPortfolio, getTask, listItems, listProjectParents, listReminderViews, listTags, listTaskViews, listTasks, memberSlots, migrateCardColumns, migrateGithubPrColumns, migratePortfolioScopeColumns, migrateReminderColumns, moveCard, openDatabase, openStore, portfolioCards, portfolioView, readSchema, removeTags, removeWatchedDirectory, setHomePortfolioId, setPathAndCategory, setReminders, setSlotOverride, setTags, taskView, todayReminders, toggleItemField, uncompleteTask, updateCard, updateCategory, updateItem, updateTask, upsertItem, viewItem } from "../src/index.ts";
 
 const fresh = () => openDatabase(":memory:");
 
@@ -50,7 +50,7 @@ describe("portfolios and cards", () => {
     const c2 = createCard(db, pid, { title: "Links", tags: "yt, slides", types: "link", sort_key: "title", sort_dir: "desc" });
     const c3 = createCard(db, pid, { title: "Future", tags: "future-tag" });
     expect(() => createCard(db, pid, { title: "" })).toThrow(/title/);
-    const view = portfolioView(db, { id: pid, name: "YT", description: "", created_at: "" });
+    const view = portfolioView(db, { id: pid, name: "YT", description: "", tags: [], item_filter: {}, created_at: "" });
     expect(view.cards.map(c => c.title)).toEqual(["Either", "Links", "Future"]);
     expect(view.cards[0].items.map(i => i.title)).toEqual(["apple", "Banana", "Cherry"]);
     expect(view.cards[1].items.map(i => i.title)).toEqual(["Banana", "apple"]);
@@ -64,6 +64,41 @@ describe("portfolios and cards", () => {
     expect(deleteCard(db, c3)).toBe(true);
     expect(deletePortfolio(db, pid)).toBe(true);
     expect(getCard(db, c1)).toBeNull();
+  });
+  test("portfolio scope combines ANY tag sets with card filters before the card cap", () => {
+    const db = fresh();
+    const add = (title: string, type: "link" | "note", tags: string) => {
+      const id = upsertItem(db, { type, title, content: title, url: `https://example.test/${title}` });
+      setTags(db, id, tags.split(",").map(tag => tag.trim()).filter(Boolean));
+      return id;
+    };
+    add("house-link", "link", "house");
+    add("bird-link", "link", "bird");
+    add("dog-link", "link", "dog");
+    add("house-note", "note", "house");
+    add("unrelated-cat-link", "link", "cat");
+    const id = createPortfolio(db, "Scoped", "", ["house", "bird", "dog"]);
+    const card = createCard(db, id, { title: "Narrow", tags: ["house", "bird"], types: ["link"] });
+    for (let index = 0; index < 110; index++) add(`extra-${index}`, "note", "house");
+    const broadCard = createCard(db, id, { title: "All scoped", max_items: 1000 });
+    const portfolio = getPortfolio(db, id)!;
+    const view = portfolioView(db, portfolio);
+    expect(view.cards.find(result => result.id === card)?.total).toBe(2);
+    expect(view.cards.find(result => result.id === card)?.items.map(item => item.title).sort()).toEqual(["bird-link", "house-link"]);
+    expect(view.cards.find(result => result.id === broadCard)).toMatchObject({ total: 114 });
+    expect(view.cards.find(result => result.id === broadCard)?.items).toHaveLength(114);
+    expect(view.scope_item_ids).toHaveLength(114);
+    expect(portfolioView(db, { ...view, tags: [], item_filter: {} }).scope_active).toBe(false);
+    expect(portfolioView(db, { ...view, tags: [], item_filter: { contents: true } }).scope_active).toBe(false);
+    db.close();
+  });
+
+  test("legacy portfolio rows migrate with an empty scope", () => {
+    const db = new Database(":memory:");
+    db.exec("CREATE TABLE portfolios (id INTEGER PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP); INSERT INTO portfolios(name) VALUES ('Legacy');");
+    migratePortfolioScopeColumns(db);
+    expect(db.query<{ tags: string; item_filter: string }, []>("SELECT tags, item_filter FROM portfolios").get()).toEqual({ tags: "[]", item_filter: "{}" });
+    db.close();
   });
 });
 
@@ -127,7 +162,7 @@ describe("card kind and config", () => {
     expect(getCard(db, cardId)).toMatchObject({ kind: "clock", config: { format: "24h" } });
     expect(updateCard(db, cardId, { title: "Clock", kind: "clock", config: { format: "12h" } })).toBe(true);
     expect(getCard(db, cardId)).toMatchObject({ config: { format: "12h" } });
-    const view = portfolioView(db, { id: pid, name: "Dash", description: "", created_at: "" });
+    const view = portfolioView(db, getPortfolio(db, pid)!);
     expect(view.cards[0]).toMatchObject({ kind: "clock", items: [], total: 0 });
   });
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CardEditor } from "@portfolio/ui";
 import { CARD_KINDS, isCardKind } from "@portfolio/core/constants";
 import type { CardSpec } from "@portfolio/core";
@@ -7,11 +7,17 @@ import type { CardInput } from "../api.ts";
 import { createCard, deleteCard, moveCard, updateCard } from "../api.ts";
 import { DashboardCard } from "../cards/DashboardCard.tsx";
 import { CardKindEditor } from "../cards/CardKindEditor.tsx";
+import { PrCardFilterEditor } from "../cards/PrCardFilterEditor.tsx";
 import { CollectionToolbar, SelectionBar, useSelection } from "@portfolio/ui/collections";
 import { useConfirm } from "./ConfirmDialog.tsx";
+import { listTags } from "../api.ts";
 
 export function PortfolioBoard({ portfolio, reload }: { portfolio: PortfolioView; reload: () => void }) {
+  const [tagOptions, setTagOptions] = useState<string[]>([]);
+  useEffect(() => { listTags().then(result => setTagOptions(result.tags.map(tag => tag.name))).catch(() => setTagOptions([])); }, []);
   const [addKind, setAddKind] = useState<CardSpec["kind"]>("query");
+  const [newPrTitle, setNewPrTitle] = useState("Pull requests");
+  const [newPrQuery, setNewPrQuery] = useState("");
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState("");
   const [sort, setSort] = useState("position");
@@ -70,8 +76,8 @@ export function PortfolioBoard({ portfolio, reload }: { portfolio: PortfolioView
     <div className="portfolio-grid">
       {cards.map(card => <div key={card.id} className="selectable-card">
         <label className="card-selection"><input type="checkbox" aria-label={`Select ${card.title}`} checked={selection.selected.has(card.id)} onChange={() => selection.toggle(card.id)} disabled={busy} /> Select card</label>
-        <DashboardCard card={card} onChanged={reload} footer={card.kind === "query" ? (
-          <CardEditor value={card} onSubmit={spec => saveCard(card.id, spec)} onMove={direction => void mutate(() => moveCard(card.id, direction))} onDelete={() => remove(card.id)} />
+        <DashboardCard card={card} onChanged={reload} scopeActive={portfolio.scope_active} scopeItemIds={portfolio.scope_item_ids} footer={card.kind === "query" ? (
+          <CardEditor value={card} tagOptions={tagOptions} onSubmit={spec => saveCard(card.id, spec)} onMove={direction => void mutate(() => moveCard(card.id, direction))} onDelete={() => remove(card.id)} />
         ) : (
           <CardKindEditor card={card} onSubmit={patch => saveCard(card.id, patch)} onMove={direction => void mutate(() => moveCard(card.id, direction))} onDelete={() => remove(card.id)} />
         )} />
@@ -80,9 +86,14 @@ export function PortfolioBoard({ portfolio, reload }: { portfolio: PortfolioView
         <header><h2>Add card</h2></header>
         <div className="card-body field-row">
           <label>Kind<select value={addKind} onChange={event => { if (isCardKind(event.target.value)) setAddKind(event.target.value); }}>{CARD_KINDS.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
-          {addKind !== "query" ? <button type="button" className="primary" disabled={busy} onClick={() => void mutate(() => createCard(portfolio.id, { title: "New card", kind: addKind, config: {} }))}>Add card</button> : null}
+          {addKind !== "query" && addKind !== "prs" ? <button type="button" className="primary" disabled={busy} onClick={() => void mutate(() => createCard(portfolio.id, { title: "New card", kind: addKind, config: {} }))}>Add card</button> : null}
         </div>
-        {addKind === "query" ? <CardEditor summary="Query details" onSubmit={spec => mutate(() => createCard(portfolio.id, spec))} submitLabel="Add query card" /> : null}
+        {addKind === "query" ? <CardEditor summary="Query details" tagOptions={tagOptions} onSubmit={spec => mutate(() => createCard(portfolio.id, spec))} submitLabel="Add query card" /> : null}
+        {addKind === "prs" ? <form className="card-form" onSubmit={event => { event.preventDefault(); void mutate(() => createCard(portfolio.id, { title: newPrTitle, kind: "prs", config: { query: newPrQuery } })); }}>
+          <label>Title<input required value={newPrTitle} onChange={event => setNewPrTitle(event.target.value)} /></label>
+          <PrCardFilterEditor query={newPrQuery} onChange={setNewPrQuery} />
+          <button type="submit" className="primary" disabled={busy}>Add PR card</button>
+        </form> : null}
       </section>
     </div>
     {dialog}

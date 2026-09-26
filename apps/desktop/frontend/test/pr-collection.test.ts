@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Pr } from "../src/types";
-import { ignoredCheckRuleRepos, lifecycle, matchesPr, normalizePrViewQuery, sortPrs } from "../src/lib/pr-collection";
+import { defaultPrDirection, filterPortfolioPrs, ignoredCheckRuleRepos, lifecycle, matchesPr, normalizePrViewQuery, sortPrs } from "../src/lib/pr-collection";
 
 const pr = (overrides: Partial<Pr> = {}): Pr => ({
   id: 1, number: 10, url: "https://github.com/acme/console/pull/10", owner: "acme", repo: "console", title: "Improve search", author: "alex",
@@ -98,5 +98,19 @@ describe("PR triage", () => {
     expect(sortPrs(records, "comments", "asc").map(item => item.id)).toEqual([4, 1, 3, 2]);
     expect(sortPrs(records, "draft", "desc").map(item => item.id)).toEqual([2, 4, 1, 3]);
     expect(sortPrs(records, "item_id", "desc").map(item => item.id)).toEqual([3, 1, 2, 4]);
+  });
+  test("portfolio PR cards reuse every page filter and exclude nonmatching or unlinked records under scope", () => {
+    const matching = pr({ id: 10, title: "Same name", item_id: 100, checks: [{ name: "unit", status: "success", url: "https://ci/10", ignored: false }], checks_summary: "success" });
+    const outside = pr({ id: 11, title: "Same name", item_id: 101, checks: [{ name: "unit", status: "success", url: "https://ci/11", ignored: false }], checks_summary: "success" });
+    const unlinked = pr({ id: 12, title: "Same name", item_id: null, checks: [{ name: "unit", status: "success", url: "https://ci/12", ignored: false }], checks_summary: "success" });
+    const wrongReview = pr({ id: 13, title: "Same name", item_id: 100, review_decision: "changes_requested", checks: [{ name: "unit", status: "success", url: "https://ci/13", ignored: false }], checks_summary: "success" });
+    const query = "collection=mine&review=approved&check_name=unit&check_status=success&updated_after=2026-09-24T00%3A00&sort=number&direction=asc";
+    expect(filterPortfolioPrs([unlinked, outside, wrongReview, matching], new Set(), query, [100]).map(item => item.id)).toEqual([10]);
+    expect(filterPortfolioPrs([unlinked, outside, wrongReview, matching], new Set(), query, null).map(item => item.id)).toEqual([10, 11, 12]);
+  });
+  test("PR sort defaults match the page for chronological and text fields", () => {
+    expect(defaultPrDirection("updated")).toBe("desc");
+    expect(defaultPrDirection("comments")).toBe("desc");
+    expect(defaultPrDirection("repo")).toBe("asc");
   });
 });

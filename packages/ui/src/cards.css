@@ -31,6 +31,25 @@ button.tag { cursor: pointer; }
 .card-edit > summary:hover, .portfolio-manage > summary:hover { color: var(--accent2); }
 .portfolio-card .rail-items + .card-edit { border-top: 1px solid var(--border); }
 .card-form { display: grid; gap: .7rem; padding: .25rem .85rem .85rem; }
+.card-tag-picker { display: grid; gap: .5rem; margin: 0; padding: .5rem; border: 1px solid var(--border); border-radius: var(--radius); }
+.card-tag-picker legend { color: var(--text2); font-size: .75rem; }
+.card-tag-picker input[type="search"] { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: .4rem .55rem; }
+.card-tag-selected, .card-tag-options { display: flex; flex-wrap: wrap; gap: .35rem; }
+.card-tag-selected .tag { display: inline-flex; align-items: center; gap: .3rem; }
+.card-tag-selected button { border: 0; background: none; color: inherit; cursor: pointer; padding: 0; }
+.card-tag-options { max-height: 7rem; overflow: auto; }
+.card-tag-options button { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface2); color: var(--text2); padding: .25rem .45rem; cursor: pointer; }
+.portfolio-scope { margin: 1rem 0; padding: .8rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.portfolio-scope > summary { cursor: pointer; font-weight: 650; }
+.portfolio-scope form { display: grid; gap: .65rem; margin-top: .75rem; }
+.portfolio-scope-search { display: grid; max-width: 30rem; gap: .25rem; color: var(--text2); font-size: .8rem; }
+.portfolio-scope-search input, .portfolio-scope .field-row :is(input, select) { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: .4rem .55rem; }
+.portfolio-scope-selected, .portfolio-scope-tag-options { display: flex; flex-wrap: wrap; gap: .4rem; }
+.portfolio-scope-selected .tag { display: inline-flex; align-items: center; gap: .35rem; }
+.portfolio-scope-selected button { border: 0; background: none; color: inherit; cursor: pointer; padding: 0; }
+.portfolio-scope-tag-options { max-height: 8rem; overflow: auto; }
+.portfolio-scope-tag-options button { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface2); color: var(--text2); padding: .25rem .5rem; cursor: pointer; }
+.portfolio-scope .field-row label { display: flex; gap: .3rem; align-items: center; }
 .card-form label { display: grid; gap: .3rem; color: var(--text2); font-size: .78rem; font-weight: 600; }
 .card-form input, .card-form select, .card-form textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--border2); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; padding: .55rem .7rem; }
 :root[data-theme="light"] .card-form input, :root[data-theme="light"] .card-form select, :root[data-theme="light"] .card-form textarea { background: var(--surface); }

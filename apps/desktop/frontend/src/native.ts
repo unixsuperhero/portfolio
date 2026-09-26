@@ -17,15 +17,17 @@ export async function openSystem(url: string): Promise<void> {
   window.open(destination, "_blank", "noopener,noreferrer");
 }
 
-export async function copyText(text: string): Promise<void> {
+export async function copyText(text: string): Promise<boolean> {
   if (inWails()) {
     await CopyText(text);
-    return;
+    return true;
   }
   try {
     await navigator.clipboard.writeText(text);
+    return true;
   } catch (error) {
     console.warn("copyText: clipboard API unavailable", error);
+    return false;
   }
 }
 

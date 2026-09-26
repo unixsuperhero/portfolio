@@ -7,15 +7,11 @@ import { PrRow, confirmIgnorePr, confirmIgnoreRepo, ignoreRepo } from "../compon
 import { PrStatusIcon } from "../components/PrStatus.tsx";
 import { CollectionToolbar, SelectionBar, useSelection } from "@portfolio/ui/collections";
 import { useConfirm } from "../components/ConfirmDialog.tsx";
-import { BUILTIN_PR_VIEWS, CHECK_FILTERS, ignoredCheckRuleRepos, lifecycle, matchesPr, normalizePrViewQuery, PR_FILTER_KEYS, PR_FILTERS, PR_SORTS, sortPrs } from "../lib/pr-collection.ts";
+import { BUILTIN_PR_VIEWS, CHECK_FILTERS, defaultPrDirection, ignoredCheckRuleRepos, lifecycle, matchesPr, normalizePrViewQuery, PR_COLLECTIONS, PR_FILTER_KEYS, PR_FILTERS, PR_SORTS, sortPrs } from "../lib/pr-collection.ts";
 import type { PrFilter } from "../lib/pr-collection.ts";
 import { usePrData } from "../hooks/usePrData.tsx";
 import "../operational.css";
 
-const COLLECTIONS = [
-  { value: "visible", label: "Visible PRs" }, { value: "mine", label: "Mine" }, { value: "review_requested", label: "Review requested" },
-  { value: "watched", label: "Watched" }, { value: "ignored", label: "Ignored" }, { value: "all", label: "All, including ignored" },
-];
 const GROUPS = ["People and location", "Tracking", "Identifiers and text", "Activity"] as const;
 const formatTime = (value: string | null) => value ? new Date(value).toLocaleTimeString() : "Not scheduled";
 const errorMessage = (error: unknown) => error instanceof PortfolioApiError ? error.message : "Request failed.";
@@ -36,7 +32,7 @@ export default function PullRequests() {
   const { confirm, dialog } = useConfirm();
   const query = params.get("q") ?? "";
   const sort = params.get("sort") ?? "updated";
-  const direction = params.get("direction") ?? (["updated", "fetched", "comments"].includes(sort) ? "desc" : "asc");
+  const direction = params.get("direction") ?? defaultPrDirection(sort);
   const collection = params.get("collection") ?? "visible";
   const expanded = params.get("filters") === "1";
   const update = (key: string, value: string) => {
@@ -206,7 +202,7 @@ export default function PullRequests() {
       <button type="submit" className="secondary" disabled={!viewName.trim()}>Save view</button>
     </form>
     <CollectionToolbar query={query} onQueryChange={value => update("q", value)} sort={sort} onSortChange={value => update("sort", value)} sortOptions={PR_SORTS}>
-      <label>Collection<select name="collection" value={collection} onChange={event => update("collection", event.target.value)}>{COLLECTIONS.map(option => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
+      <label>Collection<select name="collection" value={collection} onChange={event => update("collection", event.target.value)}>{PR_COLLECTIONS.map(option => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
       {PR_FILTERS.filter(filter => filter.group === "Primary").map(renderFilter)}
       <label>Order<select name="direction" value={direction} onChange={event => update("direction", event.target.value)}><option value="desc">Descending</option><option value="asc">Ascending</option></select></label>
     </CollectionToolbar>
@@ -215,7 +211,7 @@ export default function PullRequests() {
     {activeFilters.length ? <div className="pr-active-filters" aria-label="Active filters">{activeFilters.map(key => {
       const filter = PR_FILTERS.find(filter => filter.key === key);
       const label = filter?.label ?? CHECK_FILTERS.find(filter => filter.key === key)?.label ?? (key === "q" ? "Search" : key === "membership" ? "List membership" : "Collection");
-      const value = (key === "collection" ? COLLECTIONS : filter?.options)?.find(option => option.value === params.get(key))?.label ?? params.get(key);
+      const value = (key === "collection" ? PR_COLLECTIONS : filter?.options)?.find(option => option.value === params.get(key))?.label ?? params.get(key);
       return <button type="button" key={key} onClick={() => update(key, "")} aria-label={`Remove ${label} filter`}><span>{label}: {value}</span><PrStatusIcon kind="closed" /></button>;
     })}</div> : null}
     <div id="pr-advanced-filters" className="pr-advanced-filters" hidden={!expanded}>

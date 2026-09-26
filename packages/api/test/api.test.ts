@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openStore } from "@portfolio/db";
@@ -42,7 +42,7 @@ describe("items", () => {
 
     res = await get(api, `/api/items/${created.id}`);
     const detail = await res.json();
-    expect(detail).toMatchObject({ title: "Hello", tags: ["a", "b"], project: null });
+    expect(detail).toMatchObject({ title: "Hello", content: "body", editable_markdown: true, source_error: null, tags: ["a", "b"], project: null });
     expect(detail.slot_paths).toBeUndefined();
 
     res = await send(api, "PATCH", `/api/items/${created.id}`, { title: "Updated", tags: ["b", "c"] });
@@ -68,6 +68,49 @@ describe("items", () => {
     expect(await res.json()).toEqual({ ok: true });
     res = await get(api, `/api/items/${created.id}`);
     expect(res.status).toBe(404);
+  });
+  test("reads authoritative Markdown sources, writes only Markdown, and refreshes rendering", async () => {
+    const home = mkdtempSync(join(tmpdir(), "portfolio-doc-"));
+    const markdownPath = join(home, "source.md");
+    const htmlPath = join(home, "source.html");
+    writeFileSync(markdownPath, "# source of truth");
+    writeFileSync(htmlPath, "<h1>keep this file</h1>");
+    const { store, api } = makeApi({ home });
+    try {
+      const markdownId = store.items.upsertItem({ type: "document", title: "Markdown", content: "stale database copy", source_path: markdownPath });
+      const htmlId = store.items.upsertItem({ type: "document", title: "HTML", content: "cached", source_path: htmlPath, rendered_html: "<h1>Imported</h1>" });
+
+      const detail = await (await get(api, `/api/items/${markdownId}`)).json();
+      expect(detail).toMatchObject({ content: "# source of truth", editable_markdown: true, source_error: null });
+      expect(store.items.getItem(markdownId)?.rendered_html).toBe("");
+      const saved = await send(api, "PATCH", `/api/items/${markdownId}`, { content: "# updated", expected_content: "# source of truth" });
+      expect(saved.status).toBe(200);
+      expect(await saved.json()).toEqual({ ok: true, rendered_html: "<h1>Markdown</h1>9" });
+      expect(readFileSync(markdownPath, "utf8")).toBe("# updated");
+      expect(store.items.getItem(markdownId)?.rendered_html).toBe("<h1>Markdown</h1>9");
+      expect((await get(api, `/api/items/${markdownId}/html`)).status).toBe(200);
+
+      expect((await send(api, "PATCH", `/api/items/${markdownId}`, { content: "bad", expected_content: "# updated", type: "nonsense" })).status).toBe(422);
+      expect((await send(api, "PATCH", `/api/items/${markdownId}`, { content: "bad metadata", expected_content: "# updated", title: "Renamed" })).status).toBe(422);
+      expect(readFileSync(markdownPath, "utf8")).toBe("# updated");
+      writeFileSync(markdownPath, "# external change");
+      expect((await send(api, "PATCH", `/api/items/${markdownId}`, { content: "# overwrite", expected_content: "# updated" })).status).toBe(409);
+      expect(readFileSync(markdownPath, "utf8")).toBe("# external change");
+      expect((await (await get(api, `/api/items/${htmlId}`)).json()).editable_markdown).toBe(false);
+      expect((await send(api, "PATCH", `/api/items/${htmlId}`, { content: "overwrite" })).status).toBe(422);
+      expect(readFileSync(htmlPath, "utf8")).toBe("<h1>keep this file</h1>");
+
+      const missingId = store.items.upsertItem({ type: "document", title: "Missing", content: "cached draft", source_path: join(home, "missing.md") });
+      expect((await (await get(api, `/api/items/${missingId}`)).json())).toMatchObject({
+        content: "cached draft",
+        editable_markdown: false,
+        source_error: "Markdown source file is missing",
+      });
+      expect((await send(api, "PATCH", `/api/items/${missingId}`, { content: "do not recreate", expected_content: "cached draft" })).status).toBe(409);
+    } finally {
+      store.close();
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
   test("category changes preserve paths and reject incompatible assignments before editing", async () => {
@@ -181,6 +224,37 @@ describe("portfolios and cards", () => {
     expect(await res.json()).toEqual({ ok: true });
     res = await get(api, `/api/portfolios/${portfolioId}`);
     expect(res.status).toBe(404);
+  });
+
+  test("portfolio scope persists and filters cards through the API without a 100-item scope cap", async () => {
+    const { store, api } = makeApi();
+    const add = (title: string, type: "link" | "note", tags: string) => {
+      const id = store.items.upsertItem({ type, title, description: "needle" });
+      store.tags.setTags(id, tags.split(",").map(tag => tag.trim()).filter(Boolean));
+    };
+    add("house-link", "link", "house");
+    add("bird-link", "link", "bird");
+    add("dog-link", "link", "dog");
+    add("house-note", "note", "house");
+    add("unrelated-cat-link", "link", "cat");
+    for (let index = 0; index < 105; index++) add(`extra-${index}`, "note", "house");
+    let response = await send(api, "POST", "/api/portfolios", {
+      name: "Scoped",
+      tags: ["house", "bird", "dog"],
+      item_filter: { q: "needle" },
+    });
+    const { id } = await response.json();
+    await send(api, "POST", `/api/portfolios/${id}/cards`, { title: "Narrow", tags: ["house", "bird"], types: ["link"] });
+    response = await get(api, `/api/portfolios/${id}`);
+    const portfolio = await response.json();
+    expect(portfolio.scope_active).toBe(true);
+    expect(portfolio.scope_item_ids).toHaveLength(109);
+    expect(portfolio.cards[0]).toMatchObject({ total: 2 });
+    expect(portfolio.cards[0].items.map((item: { title: string }) => item.title).sort()).toEqual(["bird-link", "house-link"]);
+    await send(api, "PATCH", `/api/portfolios/${id}`, { tags: ["cat"], item_filter: { q: "needle", type: "link" } });
+    response = await get(api, `/api/portfolios/${id}`);
+    expect(await response.json()).toMatchObject({ tags: ["cat"], item_filter: { q: "needle", type: "link" } });
+    store.close();
   });
 
   test("errors: duplicate name, missing card title, bad portfolio", async () => {

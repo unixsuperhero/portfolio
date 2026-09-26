@@ -1,3 +1,4 @@
+import { normalizePortfolioFilter, normalizePortfolioTags } from "@portfolio/core";
 import type { Ctx } from "./context.ts";
 import { error, json, notFound, readJson } from "./http.ts";
 
@@ -8,7 +9,7 @@ export async function listPortfoliosRoute(ctx: Ctx): Promise<Response> {
 export async function createPortfolioRoute(ctx: Ctx, request: Request): Promise<Response> {
   const body = await readJson(request);
   try {
-    const id = ctx.store.portfolios.createPortfolio(String(body.name ?? ""), String(body.description ?? ""));
+    const id = ctx.store.portfolios.createPortfolio(String(body.name ?? ""), String(body.description ?? ""), normalizePortfolioTags(body.tags), normalizePortfolioFilter(body.item_filter));
     return json({ id }, 201);
   } catch (err) {
     return error(422, (err as Error).message);
@@ -25,7 +26,12 @@ export async function patchPortfolioRoute(ctx: Ctx, request: Request, params: Re
   const id = Number(params.id);
   const body = await readJson(request);
   try {
-    const ok = ctx.store.portfolios.updatePortfolio(id, { name: body.name as string | undefined, description: body.description as string | undefined });
+    const ok = ctx.store.portfolios.updatePortfolio(id, {
+      name: typeof body.name === "string" ? body.name : undefined,
+      description: typeof body.description === "string" ? body.description : undefined,
+      tags: body.tags === undefined ? undefined : normalizePortfolioTags(body.tags),
+      item_filter: body.item_filter === undefined ? undefined : normalizePortfolioFilter(body.item_filter),
+    });
     return ok ? json({ ok: true }) : notFound();
   } catch (err) {
     return error(422, (err as Error).message);

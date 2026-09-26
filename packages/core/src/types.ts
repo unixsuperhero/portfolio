@@ -2,7 +2,7 @@ export type ItemType = "document" | "note" | "link" | "pr" | "file" | "dir" | "t
 export type PathType = "file" | "dir";
 export type CardSortKey = "created_at" | "updated_at" | "title" | "type";
 export type SortDir = "asc" | "desc";
-export type CardKind = "query" | "tasks" | "reminders" | "ports" | "clock" | "note" | "services";
+export type CardKind = "query" | "tasks" | "reminders" | "ports" | "clock" | "note" | "services" | "prs";
 export type Recurrence = "daily" | "once";
 
 export interface Item {
@@ -53,6 +53,8 @@ export interface Portfolio {
   id: number;
   name: string;
   description: string;
+  tags: string[];
+  item_filter: Omit<ItemFilter, "limit">;
   created_at: string;
 }
 
@@ -124,6 +126,8 @@ export interface Detection {
   exists?: boolean;
   content?: string;
 }
+
+export type PortfolioItemFilter = Omit<ItemFilter, "limit">;
 
 export interface ItemFilter {
   q?: string;

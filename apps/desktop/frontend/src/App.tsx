@@ -199,11 +199,8 @@ function TopBar() {
       run: query => navigate(query ? `/library?q=${encodeURIComponent(query)}` : "/library"),
     };
 
-    // "Add…" sits near the top when the query is empty (right before Go to…), but when there's
-    // a detected/addable kind for the typed text, that kind must rank first — so "Add…" moves
-    // after the add commands (nav items never land in the ranked fallback bucket; only
-    // `always`-flagged commands do, so nav's position here only matters for the empty-query list).
-    return text ? [...add, openAdd, ...pickers, search, ...nav] : [openAdd, ...nav, ...pickers, search];
+    // Keep navigation ahead of the broad text-query command so "library" selects Go to Library.
+    return text ? [...add, openAdd, ...pickers, ...nav, search] : [openAdd, ...nav, ...pickers, search];
   }, [addItem, addPath, addTask, detection, navigate, paletteQuery]);
 
   const openPalette = (trigger: HTMLElement | null) => {
@@ -214,9 +211,12 @@ function TopBar() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest(".command-palette")) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        if (target instanceof HTMLElement && (target.isContentEditable || target.closest("input, textarea, select, [contenteditable='true']"))) return;
         event.preventDefault();
-        openPalette(document.activeElement instanceof HTMLElement ? document.activeElement : commandButtonRef.current);
+        openPalette(target instanceof HTMLElement ? target : commandButtonRef.current);
       }
     };
     window.addEventListener("keydown", onKeyDown);

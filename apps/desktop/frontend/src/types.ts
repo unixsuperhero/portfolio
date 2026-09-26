@@ -35,6 +35,9 @@ export type DueReminder = { reminder: ReminderView; due_at: string };
 
 /** GET /api/items/:id */
 export interface ItemDetail extends ItemView {
+  content: string;
+  editable_markdown: boolean;
+  source_error: string | null;
   task_id: number | null;
   slots: ResolvedSlot[];
   project: ProjectView | null;
@@ -44,7 +47,7 @@ export interface ItemDetail extends ItemView {
 export type PortfolioCardResult = Card & { items: ItemView[]; total: number };
 
 /** GET /api/portfolios/:id and GET /api/home */
-export type PortfolioView = Portfolio & { cards: PortfolioCardResult[] };
+export type PortfolioView = Portfolio & { cards: PortfolioCardResult[]; scope_active: boolean; scope_item_ids: number[] };
 
 export interface PortfolioSummary extends Portfolio {}
 

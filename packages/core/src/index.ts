@@ -6,3 +6,4 @@ export * from "./detect.ts";
 export * from "./slots.ts";
 export * from "./cards.ts";
 export * from "./items.ts";
+export * from "./portfolio.ts";

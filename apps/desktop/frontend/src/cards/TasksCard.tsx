@@ -7,7 +7,7 @@ import { MarkdownContent } from "../components/MarkdownContent.tsx";
 import { AllDone, StreakBadge } from "../components/Completion.tsx";
 import "../pages/Tasks.css";
 
-export function TasksCard() {
+export function TasksCard({ scopeActive, scopeItemIds }: { scopeActive: boolean; scopeItemIds: number[] }) {
   const [tasks, setTasks] = useState<TaskView[] | null>(null);
   const [items, setItems] = useState<ItemView[]>([]);
   const [error, setError] = useState("");
@@ -15,15 +15,14 @@ export function TasksCard() {
 
   useEffect(() => {
     let live = true;
-    Promise.all([listTasks(), listItems({ type: "task" })])
-      .then(([taskResult, itemResult]) => {
-        if (!live) return;
-        setTasks(taskResult.tasks);
-        setItems(itemResult.items);
-      })
-      .catch(err => { if (live) setError(err instanceof Error ? err.message : String(err)); });
+    listTasks().then(async taskResult => {
+      const itemResult = await listItems({ type: "task", limit: Math.max(taskResult.tasks.length, 1) });
+      if (!live) return;
+      setTasks(scopeActive ? taskResult.tasks.filter(task => task.item_id !== null && scopeItemIds.includes(task.item_id)) : taskResult.tasks);
+      setItems(itemResult.items);
+    }).catch(err => { if (live) setError(err instanceof Error ? err.message : String(err)); });
     return () => { live = false; };
-  }, []);
+  }, [scopeActive, scopeItemIds]);
 
   const toggle = async (task: TaskView) => {
     setPending(task.id);
