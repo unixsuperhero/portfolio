@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { entities, isObject, targetParams, text } from "@portfolio/herdr";
 import type { HerdrCatalog, HerdrClient, HerdrEntity, HerdrField, HerdrOperation, HerdrOverview, HerdrResult, Json, JsonObject, SessionAction } from "@portfolio/herdr";
 import { CollectionToolbar, SelectionBar, useSelection } from "./collections.tsx";
@@ -56,6 +56,60 @@ function ParameterField({ field, value, onChange }: { field: HerdrField; value: 
     {field.description ? <small>{field.description}</small> : null}
     {field.kind === "json" ? <details><summary>{field.name} schema</summary><pre>{pretty(field.schema)}</pre></details> : null}
   </div>;
+}
+
+function EntityList({ all, visible, selected, selection, onPick }: {
+  all: HerdrEntity[];
+  visible: HerdrEntity[];
+  selected: HerdrEntity | undefined;
+  selection: { selected: Set<string>; toggle: (key: string) => void };
+  onPick: (entity: HerdrEntity) => void;
+}) {
+  const byKey = new Map(all.map(entity => [entity.key, entity]));
+  const parents = new Map<string, string>();
+  const children = new Map<string, HerdrEntity[]>();
+  for (const entity of all) {
+    const find = (kind: string, id: string) => id ? byKey.get(JSON.stringify([entity.session, kind, id])) : undefined;
+    const parent = entity.kind === "session" ? undefined
+      : (entity.kind === "agent" ? find("pane", text(entity.details.pane_id)) : undefined)
+        ?? (entity.kind === "pane" || entity.kind === "agent" || entity.kind === "layout" ? find("tab", entity.tab) : undefined)
+        ?? (entity.kind !== "workspace" ? find("workspace", entity.workspace) : undefined)
+        ?? find("session", entity.session);
+    if (parent) parents.set(entity.key, parent.key);
+    const parentKey = parent?.key ?? "";
+    const siblings = children.get(parentKey) ?? [];
+    siblings.push(entity);
+    children.set(parentKey, siblings);
+  }
+  const matches = new Set(visible.map(entity => entity.key));
+  const included = new Set(matches);
+  for (const entity of visible) {
+    let parent = parents.get(entity.key);
+    while (parent && !included.has(parent)) {
+      included.add(parent);
+      parent = parents.get(parent);
+    }
+  }
+  const render = (parentKey: string): ReactNode => {
+    const rows = children.get(parentKey)?.filter(entity => included.has(entity.key));
+    if (!rows?.length) return null;
+    return <ul className="herdr-entity-list" aria-label={parentKey ? undefined : "Session hierarchy"}>
+      {rows.map(entity => <li key={entity.key}>
+        <div className="herdr-entity-row" data-selected={selected?.key === entity.key}>
+          <input type="checkbox" aria-label={`Select ${entity.kind} ${entity.label} in ${entity.session}`} disabled={!matches.has(entity.key)} checked={selection.selected.has(entity.key)} onChange={() => selection.toggle(entity.key)} />
+          <div className="herdr-entity-info">
+            <button type="button" className="herdr-entity-link" aria-current={selected?.key === entity.key ? "true" : undefined} onClick={() => onPick(entity)}>{entity.label}</button>
+            <small>{entity.kind} · {entity.id}{entity.focused ? " · focused" : ""}{!matches.has(entity.key) ? " · parent context" : ""}</small>
+            {entity.agent ? <small>{entity.agent}</small> : null}
+            {entity.cwd ? <small title={entity.cwd}>{entity.cwd}</small> : null}
+          </div>
+          <span className={`herdr-status herdr-status-${entity.status}`}>{entity.status || "—"}</span>
+        </div>
+        {render(entity.key)}
+      </li>)}
+    </ul>;
+  };
+  return render("");
 }
 
 export function HerdrPage({ client, params, onParamsChange }: {
@@ -126,10 +180,10 @@ export function HerdrPage({ client, params, onParamsChange }: {
     const column = columns.find(column => column === key);
     return key.startsWith("detail:") ? text(entity.details[key.slice(7)]) : column ? text(entity[column]) : entity.label;
   };
-  const visible = all.filter(entity => (!query || pretty(entity).toLowerCase().includes(query))
+  const ordered = [...all].sort((a, b) => sort === "hierarchy" ? a.session.localeCompare(b.session) || ["session", "workspace", "tab", "pane", "agent", "layout"].indexOf(a.kind) - ["session", "workspace", "tab", "pane", "agent", "layout"].indexOf(b.kind) || a.id.localeCompare(b.id, undefined, { numeric: true }) : scalar(a, sort).localeCompare(scalar(b, sort), undefined, { numeric: true }) || a.key.localeCompare(b.key));
+  const visible = ordered.filter(entity => (!query || pretty(entity).toLowerCase().includes(query))
     && columns.slice(1).every(key => !params.get(key) || text(entity[key]) === params.get(key))
-    && (!attribute || !attributeValue || text(entity.details[attribute]) === attributeValue))
-    .sort((a, b) => sort === "hierarchy" ? a.session.localeCompare(b.session) || ["session", "workspace", "tab", "layout", "pane", "agent"].indexOf(a.kind) - ["session", "workspace", "tab", "layout", "pane", "agent"].indexOf(b.kind) || a.id.localeCompare(b.id, undefined, { numeric: true }) : scalar(a, sort).localeCompare(scalar(b, sort), undefined, { numeric: true }) || a.key.localeCompare(b.key));
+    && (!attribute || !attributeValue || text(entity.details[attribute]) === attributeValue));
   const selection = useSelection(visible.map(entity => entity.key));
   const selected = all.find(entity => entity.key === params.get("entity"));
   const sessionName = params.get("targetSession") ?? selected?.session ?? overview.sessions.find(session => session.running)?.name ?? overview.sessions[0]?.name ?? "";
@@ -208,9 +262,9 @@ export function HerdrPage({ client, params, onParamsChange }: {
       <button type="button" onClick={() => setOutput(visible.filter(entity => selection.selected.has(entity.key)).map(entity => ({ session: entity.session, kind: entity.kind, ...entity.details })))}>Inspect selected</button>
     </SelectionBar>
     <div className="herdr-workbench">
-      <div className="herdr-entities"><div className="herdr-table-scroll"><table><thead><tr><th><span className="herdr-sr-only">Select</span></th><th>Entity</th><th>Status</th><th>Location</th></tr></thead><tbody>
-        {visible.map(entity => <tr key={entity.key} aria-selected={selected?.key === entity.key}><td><input type="checkbox" aria-label={`Select ${entity.kind} ${entity.label} in ${entity.session}`} checked={selection.selected.has(entity.key)} onChange={() => selection.toggle(entity.key)} /></td><td><button type="button" className="herdr-entity-link" onClick={() => pickEntity(entity)}>{entity.label}</button><small>{entity.kind} · {entity.id}{entity.focused ? " · focused" : ""}</small>{entity.agent ? <small>{entity.agent}</small> : null}</td><td><span className={`herdr-status herdr-status-${entity.status}`}>{entity.status || "—"}</span></td><td><span>{entity.session}{entity.workspace ? ` / ${entity.workspace}` : ""}{entity.tab ? ` / ${entity.tab}` : ""}</span>{entity.cwd ? <small title={entity.cwd}>{entity.cwd}</small> : null}</td></tr>)}
-      </tbody></table></div>
+      <div className="herdr-entities"><div className="herdr-list-scroll">
+        <EntityList all={ordered} visible={visible} selected={selected} selection={selection} onPick={pickEntity} />
+      </div>
       {!visible.length ? <p className="herdr-empty">{loading && !overview.updated_at ? "Loading sessions…" : all.length ? "No entities match these filters." : "No Herdr sessions found. Start a session above."}</p> : null}
       {selected ? <section className="herdr-inspector"><h2>{selected.kind}: {selected.label}</h2><p>{selected.session} / {selected.id}</p>
         {selected.kind === "session" ? <div className="herdr-actions"><button type="button" disabled={busy || selected.details.running === true} onClick={() => lifecycle(selected.session, "start")}>Start</button><button type="button" disabled={busy || selected.details.running !== true} onClick={() => lifecycle(selected.session, "stop")}>Stop session</button><button type="button" disabled={busy || selected.details.running === true || selected.details.default === true} onClick={() => lifecycle(selected.session, "delete")}>Delete saved session</button></div> : null}

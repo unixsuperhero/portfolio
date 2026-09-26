@@ -204,6 +204,10 @@ const notification = {
 and named sessions, including stopped sessions, and shows live workspaces, tabs,
 panes, agents, layouts, process metadata, and complete snapshots. Search, sorting,
 attribute filters, selected entity, and selected control live in the URL.
+The entity list nests sessions → workspaces → tabs → panes → agents; layouts sit
+under their tabs. Sorting orders siblings without breaking the hierarchy. Search
+and filters retain ancestor rows as context; only matching rows participate in
+bulk selection.
 
 Select an entity to inspect all its fields and prefill the most specific control target.
 The control catalog comes from `herdr api schema --json` rather than a handwritten

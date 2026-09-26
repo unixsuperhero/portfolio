@@ -26,13 +26,13 @@
 .herdr-page .herdr-freshness { font-size: .8rem; font-variant-numeric: tabular-nums; }
 .herdr-workbench { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(19rem, 1fr); gap: 1.7rem; margin-top: 1.2rem; align-items: start; }
 .herdr-entities, .herdr-controls { min-width: 0; }
-.herdr-table-scroll { max-height: 32rem; overflow: auto; scrollbar-color: var(--border2) var(--surface); }
-.herdr-page table { width: 100%; border-collapse: collapse; font-size: .83rem; }
-.herdr-page th { position: sticky; top: 0; background: var(--bg); text-align: left; font-weight: 500; color: var(--text2); z-index: 1; }
-.herdr-page th, .herdr-page td { padding: .7rem .5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
-.herdr-page td small { display: block; margin-top: .25rem; font-size: .76rem; color: var(--text2); overflow-wrap: anywhere; }
-.herdr-page td { overflow-wrap: anywhere; }
-.herdr-page tr[aria-selected="true"] { background: var(--surface2); }
+.herdr-list-scroll { max-height: 32rem; overflow: auto; scrollbar-color: var(--border2) var(--surface); }
+.herdr-entity-list { list-style: none; margin: 0; padding: 0; font-size: .83rem; }
+.herdr-entity-list .herdr-entity-list { margin-inline-start: .85rem; padding-inline-start: .65rem; border-inline-start: 1px solid var(--border2); }
+.herdr-entity-row { display: flex; align-items: flex-start; gap: .65rem; padding: .7rem .5rem; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.herdr-entity-info { flex: 1; min-width: 0; }
+.herdr-entity-info small { display: block; margin-top: .25rem; font-size: .76rem; color: var(--text2); }
+.herdr-entity-row[data-selected="true"] { background: var(--surface2); }
 .herdr-page .herdr-entity-link { border: 0; background: none; padding: 0; color: var(--accent); text-align: left; text-decoration: underline; text-underline-offset: .2em; }
 .herdr-status { font-size: .76rem; }
 .herdr-status-blocked, .herdr-status-unavailable { color: var(--danger); }
@@ -61,5 +61,5 @@
 @media (max-width: 600px) {
   .herdr-page .collection-toolbar > label { flex-basis: 40%; max-width: none; }
   .herdr-header { align-items: flex-start; }
-  .herdr-page th, .herdr-page td { padding: .6rem .3rem; }
+  .herdr-entity-row { padding: .6rem .3rem; }
 }
