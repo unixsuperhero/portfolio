@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SERVER="${MDOC_SERVER:-http://127.0.0.1:4387}"
-TITLE="" DESC="" TOC=true OPEN=true RECURSIVE=false REBUILD=false OUT=""
+TITLE="" DESC="" TOC=true OPEN=true RECURSIVE=false REBUILD=false OUT="" CHUNKED_SITE=false
 TEMP="" TEMP_BASE="" INPUTS=()
 trap '[[ -n "$TEMP" ]] && rm -f "$TEMP"; [[ -n "$TEMP_BASE" ]] && rm -f "$TEMP_BASE"' EXIT
 
@@ -16,7 +16,9 @@ Usage:
 
 One Markdown file is stored on the Portfolio server. HTML files are stored
 as-is. More than one Markdown file, or -r, builds one chunked HTML site
-instead of uploading. Recursive link-following applies to Markdown only.
+instead of uploading each file. The build is saved as one library item whose
+file is index.html. Every other page stays on disk next to that index, and
+/items/<id>/<path> serves it. Recursive link-following applies to Markdown only.
 
 Pandoc rewrites a cross-file link only when the path text matches an input
 path exactly, so the build copies the files into a fresh temporary directory
@@ -359,15 +361,16 @@ print(f'mdoc: build {build}')
 PY
 )
   printf '%s\n' "$CHUNK_OUT"
-  if [[ "$OPEN" == true ]]; then
-    site=${CHUNK_OUT#*'mdoc: site '}
-    site=${site%%$'\n'*}
-    open "$site/index.html"
-  fi
-  exit 0
+  site=${CHUNK_OUT#*'mdoc: site '}
+  site=${site%%$'\n'*}
+  FILES=("$site/index.html")
+  ROOTS_JSON=$(python3 -c 'import json,sys; print(json.dumps([sys.argv[1]]))' "$site/index.html")
+  CHUNKED_SITE=true
 fi
 
-ROOTS_JSON=$(python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["roots"]))' <<<"$FILES_JSON")
+if [[ "$CHUNKED_SITE" != true ]]; then
+  ROOTS_JSON=$(python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["roots"]))' <<<"$FILES_JSON")
+fi
 
 CURL_ARGS=(--form-string "roots=$ROOTS_JSON" --form-string "title=$TITLE" --form-string "description=$DESC" --form-string "toc=$TOC")
 for file in "${FILES[@]}"; do
@@ -383,6 +386,7 @@ done < <(python3 -c 'import json,sys; print("\n".join(item["href"] for item in j
 
 for href in "${HREFS[@]}"; do
   url="$SERVER$href"
+  [[ "$CHUNKED_SITE" == true ]] && url="$url/"
   echo "mdoc: saved $url"
   [[ "$OPEN" == false ]] || open "$url"
 done

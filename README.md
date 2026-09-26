@@ -79,7 +79,7 @@ Use `mdoc` to add one Markdown file to Portfolio:
 mdoc guide.md --no-open
 ```
 
-Pass more than one Markdown file, or `-r`, to build one chunked HTML site. `-r` includes local `.md` and `.markdown` files linked from the roots. Pandoc rewrites a cross-file link only when the path text matches an input path, so `mdoc` copies the files into a fresh temporary directory and runs `pandoc --file-scope` from there. A link without an anchor is aimed at the target file's first heading. The site directory must not already exist. `mdoc` prints the site path and leaves the temporary build directory in place.
+Pass more than one Markdown file, or `-r`, to build one chunked HTML site and save one library item for its `index.html`. `-r` includes local `.md` and `.markdown` files linked from the roots. Pandoc rewrites a cross-file link only when the path text matches an input path, so `mdoc` copies the files into a fresh temporary directory and runs `pandoc --file-scope` from there. A link without an anchor is aimed at the target file's first heading. The site directory must not already exist. Pages other than the index stay on disk beside it. Opening the item serves `/items/<id>/`, and `/items/<id>/<path>` is any file in that directory. `mdoc` leaves the build directory in place.
 
 ```bash
 mdoc guide.md notes.md --no-open

@@ -116,14 +116,25 @@ test("builds a chunked site for recursive Markdown and resolves cross-file links
   expect(pages).toMatch(/href="[^"]*other\.md__other\.html"/);
   expect(pages).not.toContain('href="#other.md"');
   expect(pages).not.toContain("../alpha.md");
-  expect((await items())).toHaveLength(0);
+  const saved = first.stdout.toString().split("\n").find(line => line.startsWith("mdoc: saved "));
+  expect(saved.endsWith("/")).toBe(true);
+  const id = saved.match(/\/items\/(\d+)\//)[1];
+  expect((await items())).toHaveLength(1);
+  const chunk = (await readdir(site)).find(name => name.endsWith(".html") && name !== "index.html");
+  const served = await fetch(`${serverUrl}/items/${id}/${chunk}`);
+  expect(served.status).toBe(200);
+  expect(await served.text()).toBe(await readFile(join(site, chunk), "utf8"));
+  expect((await fetch(`${serverUrl}/items/${id}/%2e%2e/secret`)).status).toBe(404);
+  const root = await fetch(`${serverUrl}/items/${id}`, { redirect: "manual" });
+  expect(root.status).toBe(302);
+  expect(root.headers.get("location")).toBe(`/items/${id}/`);
 
   const occupied = join(directory, "occupied-site");
   await mkdir(occupied);
   const refused = mdoc(["-r", alpha, "--out", occupied, "--no-open"]);
   expect(refused.exitCode).not.toBe(0);
   expect(refused.stderr.toString()).toContain("output directory already exists");
-  expect((await items())).toHaveLength(0);
+  expect((await items())).toHaveLength(1);
 });
 
 test("fails a recursive batch before it uploads missing linked Markdown", async () => {
@@ -149,7 +160,7 @@ test("builds a chunked site for several Markdown files without -r", async () => 
   const pages = (await Promise.all((await readdir(site)).filter(name => name.endsWith(".html")).map(async name => readFile(join(site, name), "utf8")))).join("\n");
   expect(pages).toMatch(/href="[^"]*plain-two\.md__two\.html"/);
   expect(pages).toMatch(/href="[^"]*plain-two\.md__two\.html#plain-two\.md__setup"/);
-  expect((await items())).toHaveLength(count);
+  expect((await items())).toHaveLength(count + 1);
 });
 
 test("rolls back a server document when Pandoc cannot render it", async () => {
