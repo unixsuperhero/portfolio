@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { abbreviatePath, BLANK_CARD, cardMatches, describeCard, detect, detectUrl, documentTitle, escapeHtml, expandPath, formatSlots, itemHref, kindLabel, localMarkdownLink, normalizeCard, normalizeItemPath, parseCardRow, parseSlots, parseTags, resolveSlots, runCard, slugify, textTitle } from "../src/index.ts";
+import { abbreviatePath, BLANK_CARD, cardMatches, describeCard, detect, detectUrl, documentTitle, escapeHtml, expandPath, formatSlots, isSiteIndex, itemHref, kindLabel, localMarkdownLink, normalizeCard, normalizeItemPath, parseCardRow, parseSlots, parseTags, resolveSiteFile, resolveSlots, runCard, slugify, textTitle } from "../src/index.ts";
 import type { ItemView } from "../src/index.ts";
 
 const HOME = "/Users/me";
@@ -34,6 +34,19 @@ describe("paths", () => {
     expect(localMarkdownLink("/d/a.md", "https://x.dev/b.md")).toBeNull();
     expect(localMarkdownLink("/d/a.md", "#anchor")).toBeNull();
     expect(localMarkdownLink("/d/a.md", "image.png")).toBeNull();
+  });
+});
+
+describe("site files", () => {
+  test("resolves paths under the index directory and rejects escapes", () => {
+    expect(isSiteIndex("/d/site/index.html")).toBe(true);
+    expect(isSiteIndex("/d/site/page.html")).toBe(false);
+    expect(resolveSiteFile("/d/site/index.html", "")).toBe("/d/site/index.html");
+    expect(resolveSiteFile("/d/site/index.html", "2-a.html")).toBe("/d/site/2-a.html");
+    expect(resolveSiteFile("/d/site/index.html", "sub/pic.png")).toBe("/d/site/sub/pic.png");
+    expect(resolveSiteFile("/d/site/index.html", "../secret")).toBeNull();
+    expect(resolveSiteFile("/d/site/index.html", "%2e%2e/secret")).toBeNull();
+    expect(resolveSiteFile("/d/site/index.html", "/etc/passwd")).toBeNull();
   });
 });
 
