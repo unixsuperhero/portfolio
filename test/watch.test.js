@@ -133,4 +133,16 @@ test("lists directories for the inline folder browser", async () => {
   expect(file.status).toBe(422);
 });
 
+test("native folder picker rejects cross-origin and unmarked requests", async () => {
+  for (const headers of [
+    {},
+    { "X-Portfolio-Picker": "1", Origin: "https://example.com" },
+    { "X-Portfolio-Picker": "1", "Sec-Fetch-Site": "cross-site" },
+  ]) {
+    const response = await fetch(`${serverUrl}/api/settings/pick-directory`, { method: "POST", headers });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "Local same-origin requests only." });
+  }
+});
+
 

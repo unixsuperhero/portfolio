@@ -254,7 +254,6 @@ function pastryStatus() {
 }
 
 function settingsPage(error = "", statusCode = 200) {
-  const home = resolve(process.env.HOME ?? ROOT);
   const enabled = pastryEnabled();
   const status = pastryStatus();
   const directories = watchedDirectories();
@@ -285,117 +284,33 @@ function settingsPage(error = "", statusCode = 200) {
           <label for="watched-directory-path">Directory path</label>
           <div class="watch-path-control">
             <input id="watched-directory-path" name="path" required placeholder="/Users/you/Documents/docs">
-            <button type="button" class="folder-picker" data-folder-picker aria-expanded="false" aria-controls="directory-browser">Choose folder…</button>
+            <button type="button" class="folder-picker" data-folder-picker>Choose folder…</button>
           </div>
-          <div class="directory-browser" id="directory-browser" data-directory-browser data-home="${escapeHtml(home)}" role="region" aria-labelledby="directory-browser-heading" hidden>
-            <div class="directory-browser-head">
-              <strong id="directory-browser-heading">Choose a directory</strong>
-              <button type="button" data-directory-close>Close</button>
-            </div>
-            <code class="directory-browser-path" data-directory-path></code>
-            <div class="directory-browser-actions">
-              <button type="button" data-directory-up disabled>Up</button>
-              <button type="button" data-directory-choose disabled>Choose this folder</button>
-            </div>
-            <div class="directory-browser-list" data-directory-list></div>
-            <p class="directory-browser-error" data-directory-error aria-live="polite"></p>
-          </div>
+          <p class="directory-browser-error" data-directory-error role="alert"></p>
         </div>
-        <label class="check"><input type="checkbox" name="recursive"> Include subdirectories</label>
+        <label class="check"><input type="checkbox" name="recursive" checked> Include subdirectories</label>
         <button class="primary">Add directory</button>
       </form>
       <script>
         {
           const button=document.querySelector('[data-folder-picker]');
-          const panel=document.querySelector('[data-directory-browser]');
-          const input=button?.form.elements.path;
-          const pathLabel=panel?.querySelector('[data-directory-path]');
-          const list=panel?.querySelector('[data-directory-list]');
-          const error=panel?.querySelector('[data-directory-error]');
-          const up=panel?.querySelector('[data-directory-up]');
-          const choose=panel?.querySelector('[data-directory-choose]');
-          const close=panel?.querySelector('[data-directory-close]');
-          let currentPath='';
-          let requestId=0;
-          const setOpen=open=>{
-            panel.hidden=!open;
-            button.setAttribute('aria-expanded',String(open));
-          };
-          const closeBrowser=()=>{
-            requestId++;
-            panel.removeAttribute('aria-busy');
-            setOpen(false);
-            button.focus();
-          };
-          const loadDirectory=async(path,fallbackHome=false)=>{
-            const id=++requestId;
+          const input=button.form.elements.path;
+          const error=document.querySelector('[data-directory-error]');
+          button.addEventListener('click',async()=>{
+            button.disabled=true;
             error.textContent='';
-            choose.disabled=true;
-            panel.setAttribute('aria-busy','true');
             try{
-              const response=await fetch('/api/settings/directories?'+new URLSearchParams({path}));
-              const data=await response.json().catch(()=>({}));
-              if(!response.ok)throw new Error(data.error||'The directory could not be read.');
-              if(id!==requestId)return;
-              currentPath=data.path;
-              pathLabel.textContent=data.path;
-              up.disabled=!data.parent;
-              up.dataset.path=data.parent||'';
-              choose.disabled=false;
-              const rows=data.directories.map(directory=>{
-                const row=document.createElement('button');
-                row.type='button';
-                row.className='directory-browser-row';
-                row.textContent=directory.name;
-                row.addEventListener('click',()=>loadDirectory(directory.path));
-                return row;
-              });
-              if(!rows.length){
-                const empty=document.createElement('p');
-                empty.className='directory-browser-empty';
-                empty.textContent='No subdirectories.';
-                rows.push(empty);
+              const response=await fetch('/api/settings/pick-directory',{method:'POST',headers:{'X-Portfolio-Picker':'1'}});
+              const data=await response.json();
+              if(!response.ok)throw new Error(data.error||'Could not open the folder picker.');
+              if(data.path){
+                input.value=data.path;
+                input.focus();
               }
-              list.replaceChildren(...rows);
             }catch(reason){
-              if(id!==requestId)return;
-              if(fallbackHome&&path!==panel.dataset.home)return loadDirectory(panel.dataset.home);
-              error.textContent=reason.message||'The directory could not be read.';
+              error.textContent=reason.message;
             }finally{
-              if(id===requestId){
-                panel.removeAttribute('aria-busy');
-                choose.disabled=!currentPath;
-              }
-            }
-          };
-          button?.addEventListener('click',()=>{
-            if(!panel.hidden){
-              closeBrowser();
-              return;
-            }
-            currentPath='';
-            pathLabel.textContent='';
-            list.replaceChildren();
-            up.disabled=true;
-            choose.disabled=true;
-            setOpen(true);
-            const candidate=input.value.trim();
-            loadDirectory(candidate.startsWith('/')?candidate:panel.dataset.home,candidate.startsWith('/'));
-          });
-          up?.addEventListener('click',()=>up.dataset.path&&loadDirectory(up.dataset.path));
-          choose?.addEventListener('click',()=>{
-            if(!currentPath)return;
-            requestId++;
-            panel.removeAttribute('aria-busy');
-            input.value=currentPath;
-            setOpen(false);
-            input.focus();
-          });
-          close?.addEventListener('click',closeBrowser);
-          panel?.addEventListener('keydown',event=>{
-            if(event.key==='Escape'){
-              event.preventDefault();
-              closeBrowser();
+              button.disabled=false;
             }
           });
         }
@@ -1449,7 +1364,7 @@ scanProjects().catch(error => console.error(error));
 const server = Bun.serve({
   hostname: HOST,
   port: PORT,
-  async fetch(request) {
+  async fetch(request, server) {
     const url = new URL(request.url);
     try {
       if (url.pathname === "/health") return Response.json({ ok: true, items: db.query("SELECT count(*) count FROM items").get().count });
@@ -1673,6 +1588,20 @@ const server = Bun.serve({
       if (request.method === "GET" && url.pathname === "/api/ports") return Response.json(getPortsSnapshot());
       if (request.method === "POST" && url.pathname === "/api/ports/kill") return killPortProcess(request);
       if (request.method === "GET" && url.pathname === "/settings") return settingsPage();
+      if (request.method === "POST" && url.pathname === "/api/settings/pick-directory") {
+        if (!["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) ||
+            request.headers.get("X-Portfolio-Picker") !== "1" ||
+            (request.headers.has("origin") && request.headers.get("origin") !== url.origin) ||
+            request.headers.get("sec-fetch-site") === "cross-site") {
+          return Response.json({ error: "Local same-origin requests only." }, { status: 403 });
+        }
+        if (process.platform !== "darwin") return Response.json({ error: "Native folder selection requires macOS. Enter a directory path instead." }, { status: 501 });
+        server.timeout(request, 0);
+        const picker = Bun.spawn(["/usr/bin/osascript", "-e", 'try\nactivate\nreturn POSIX path of (choose folder with prompt "Choose a watched directory")\non error number -128\nreturn ""\nend try'], { stdout: "pipe", stderr: "pipe" });
+        const [path, error, code] = await Promise.all([new Response(picker.stdout).text(), new Response(picker.stderr).text(), picker.exited]);
+        if (code !== 0) return Response.json({ error: error.trim() || "Could not open the folder picker." }, { status: 500 });
+        return Response.json({ path: path.replace(/\n$/, "") });
+      }
       if (request.method === "GET" && url.pathname === "/api/settings/directories") return listDirectories(url);
       if (request.method === "POST" && url.pathname === "/settings") {
         const form = await request.formData();

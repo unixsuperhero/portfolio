@@ -17,3 +17,7 @@ Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agent
 ### Every listing is filterable, sortable, and searchable
 
 Any page, card, or panel that lists items (library items, tasks, reminders, PRs, projects, ports, cards, categories, settings rows, anything) ships with the shared collection tools: a search box, a sort select, and filter selects for each meaningful attribute, all reflected in the URL query so the state survives navigation. Use `CollectionToolbar` and `SelectionBar` from `@portfolio/ui/collections` (`packages/ui/src/components/collections.tsx`). A new attribute on a listed record (for example a PR's `source_dir`) gets a filter, a sort option, and search coverage in the same change that adds it. See `docs/desktop.md`.
+
+### Links must remain keyboard reachable
+
+All navigable `<a href>`, React Router `Link`, and `NavLink` elements must participate in normal Tab/Shift+Tab order. Never give them a negative `tabindex`/`tabIndex`, remove their `href`, or suppress keyboard focus. Use native link semantics; do not patch individual pages with positive tabindex values. Keep macOS Wails `Mac.WebviewPreferences.TabFocusesLinks` enabled in `apps/desktop/main.go`. Verify actual keyboard traversal across navigation, page actions, and collection-item links, not just DOM tabindex values.

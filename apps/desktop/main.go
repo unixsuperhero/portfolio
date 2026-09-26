@@ -46,7 +46,7 @@ func main() {
 		},
 	})
 
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
+	windowOptions := application.WebviewWindowOptions{
 		Title:  "Portfolio",
 		Width:  1400,
 		Height: 900,
@@ -60,7 +60,9 @@ func main() {
 		DevToolsEnabled:  true,
 		// PORTFOLIO_INSPECT=1 opens the WebKit inspector with the window, for debugging the page.
 		OpenInspectorOnStartup: os.Getenv("PORTFOLIO_INSPECT") == "1",
-	})
+	}
+	windowOptions.Mac.WebviewPreferences.TabFocusesLinks.Set(true)
+	app.Window.NewWithOptions(windowOptions)
 
 	// A SIGTERM or SIGINT (a killed dev run, a stopped launcher) quits through
 	// the application so services shut down and the sidecar is not orphaned.
