@@ -21,6 +21,7 @@
 .document-render #toc-sidebar nav a:focus-visible,
 .document-render #toc-sidebar nav a:hover { color: var(--accent2); background: var(--surface2); }
 .document-render .content-wrap { display: flex; flex: 1; min-width: 0; flex-direction: column; align-items: center; padding: 2rem clamp(1rem, 4vw, 3rem); }
+.document-site { display: block; width: 100%; height: calc(100vh - 14rem); min-height: 24rem; border: 0; background: #fff; }
 .document-render .doc-header,
 .document-render article { width: 100%; max-width: 88ch; }
 .document-render .doc-header { margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--doc-border); }

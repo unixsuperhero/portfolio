@@ -1,9 +1,11 @@
 import DOMPurify from "dompurify";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
+import { isSiteIndex } from "@portfolio/core";
 import { TagList } from "@portfolio/ui";
 import type { ItemDetail } from "../types.ts";
-import { addItemTags, deleteItem, getItem, itemHtmlUrl, pathAction, removeItemTag, saveItemMarkdown, setSlotPath, toggleItem } from "../api.ts";
+import { addItemTags, apiBase, deleteItem, getItem, itemHtmlUrl, pathAction, removeItemTag, saveItemMarkdown, setSlotPath, toggleItem } from "../api.ts";
+import { isWails } from "../lib/wails.ts";
 import { copyText, openPath, reveal } from "../native.ts";
 import { openTerminal } from "../terminal/store.ts";
 import { ServicesCard } from "../cards/ServicesCard.tsx";
@@ -187,7 +189,7 @@ export default function Item() {
   }, [load, location.key]);
 
   useEffect(() => {
-    if (!item || (item.type !== "document" && item.type !== "note")) {
+    if (!item || isSiteIndex(item.source_path) || (item.type !== "document" && item.type !== "note")) {
       setHtml(null);
       setHtmlError("");
       return;
@@ -301,7 +303,11 @@ export default function Item() {
       </form>
       {item.type === "task" && item.task_id !== null ? <Tasks taskId={item.task_id} onChange={load} /> : null}
 
-      {(item.type === "document" || item.type === "note") ? (
+      {(item.type === "document" || item.type === "note") && isSiteIndex(item.source_path) ? (
+        <iframe className="document-site" title={item.title} src={isWails() ? `/items/${item.id}/` : `${apiBase}/items/${item.id}/`} />
+      ) : null}
+
+      {(item.type === "document" || item.type === "note") && !isSiteIndex(item.source_path) ? (
         <section>
           {item.editable_markdown && !editingMarkdown ? <button type="button" className="secondary" disabled={savingMarkdown} onClick={startMarkdownEdit}>Edit Markdown</button> : null}
           {item.source_error ? <p role="alert" className="markdown-error">{item.source_error}; showing saved content only.</p> : null}
