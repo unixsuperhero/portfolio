@@ -81,7 +81,7 @@ export default function Library() {
     setLoading(true);
     setLoadError("");
     try {
-      const result = await listItems({ q: q || undefined, type, tagName: tag || undefined, pinned: pinned || undefined, starred: starred || undefined });
+      const result = await listItems({ q: q || undefined, contents: true, type, tagName: tag || undefined, pinned: pinned || undefined, starred: starred || undefined });
       if (current === requestId.current) setItems(result.items);
     } catch (error) {
       if (current === requestId.current) { setItems([]); setLoadError(error instanceof Error ? error.message : "Could not load library."); }

@@ -96,12 +96,6 @@ export function deleteItems(db: Database, ids: number[]): void {
   pruneTags(db);
 }
 
-/** The FTS5 query for a search box: every token must match; scoped to title/description unless `contents`. */
-export function ftsQuery(q: string, contents = false): string {
-  const phrase = q.split(/\s+/).filter(Boolean).map(token => `"${token.replaceAll('"', '""')}"`).join(" AND ");
-  return contents ? phrase : `{title description} : (${phrase})`;
-}
-
 /** Shared membership predicate for list and portfolio queries. Scope tags are OR-ed; filter fields are AND-ed. */
 export function itemFilterSql(filter: Omit<ItemFilter, "limit"> = {}, tags: string[] = []) {
   const where = ["1=1"];
@@ -109,9 +103,12 @@ export function itemFilterSql(filter: Omit<ItemFilter, "limit"> = {}, tags: stri
   let join = "";
   const q = filter.q?.trim();
   if (q) {
-    join += " JOIN items_fts ON items_fts.rowid = items.id";
-    where.push("items_fts MATCH ?");
-    params.push(ftsQuery(q, filter.contents));
+    const columns = filter.contents ? ["title", "description", "content"] : ["title", "description"];
+    for (const term of q.split(/\s+/)) {
+      const pattern = `%${term.replace(/[\\%_]/g, character => `\\${character}`)}%`;
+      where.push(`(${columns.map(column => `items.${column} LIKE ? ESCAPE '\\'`).join(" OR ")})`);
+      params.push(...columns.map(() => pattern));
+    }
   }
   if (filter.tag) { join += " JOIN taggings filter_tagging ON filter_tagging.item_id = items.id"; where.push("filter_tagging.tag_id = ?"); params.push(filter.tag); }
   if (filter.tagName) { where.push("items.id IN (SELECT taggings.item_id FROM taggings JOIN tags ON tags.id = taggings.tag_id WHERE tags.name = ? COLLATE NOCASE)"); params.push(filter.tagName); }
