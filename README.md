@@ -73,19 +73,20 @@ The service logs are:
 
 ## Add Markdown with `mdoc`
 
-Use `mdoc` to add one or more Markdown files to Portfolio:
+Use `mdoc` to add one Markdown file to Portfolio:
+
+```bash
+mdoc guide.md --no-open
+```
+
+Pass more than one Markdown file, or `-r`, to build one chunked HTML site. `-r` includes local `.md` and `.markdown` files linked from the roots. Pandoc rewrites a cross-file link only when the path text matches an input path, so `mdoc` copies the files into a fresh temporary directory and runs `pandoc --file-scope` from there. A link without an anchor is aimed at the target file's first heading. The site directory must not already exist. `mdoc` prints the site path and leaves the temporary build directory in place.
 
 ```bash
 mdoc guide.md notes.md --no-open
+mdoc -r docs/overview.md --title "Overview" --out ./site
 ```
 
-Use `-r` to include local `.md` and `.markdown` files linked by those roots. Portfolio stores the original Markdown and rewrites rendered Pandoc links to the matching Portfolio item. It keeps query strings and fragments on those links.
-
-```bash
-mdoc -r docs/overview.md --title "Overview"
-```
-
-The title and description apply to the first root. `mdoc` returns and opens root items only. It ignores external links, anchor links, images, links written in code, and raw HTML anchors. It reports a missing linked Markdown file before it uploads any document. Paths use their lexical absolute spelling, so two symlink spellings identify different tracked sources.
+For a single file, the title and description apply to that document. `mdoc` returns and opens the saved item. It ignores external links, anchor links, images, links written in code, and raw HTML anchors. It reports a missing linked Markdown file before it uploads any document or builds a site. Paths use their lexical absolute spelling, so two symlink spellings identify different tracked sources.
 
 Pipe one nonrecursive document with `-`:
 

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SERVER="${MDOC_SERVER:-http://127.0.0.1:4387}"
-TITLE="" DESC="" TOC=true OPEN=true RECURSIVE=false REBUILD=false
+TITLE="" DESC="" TOC=true OPEN=true RECURSIVE=false REBUILD=false OUT=""
 TEMP="" TEMP_BASE="" INPUTS=()
 trap '[[ -n "$TEMP" ]] && rm -f "$TEMP"; [[ -n "$TEMP_BASE" ]] && rm -f "$TEMP_BASE"' EXIT
 
@@ -14,16 +14,27 @@ Usage:
   mdoc <file.md|file.html> [more-files...] [-r|--recursive] [-t|--title TITLE] [-d|--desc DESCRIPTION]
   echo '# Hello' | mdoc - --title 'Piped input'
 
-HTML files are stored as-is and served verbatim. Recursive link-following
-applies to Markdown files only; HTML files are added without link traversal.
+One Markdown file is stored on the Portfolio server. HTML files are stored
+as-is. More than one Markdown file, or -r, builds one chunked HTML site
+instead of uploading. Recursive link-following applies to Markdown only.
+
+Pandoc rewrites a cross-file link only when the path text matches an input
+path exactly, so the build copies the files into a fresh temporary directory
+and runs from there with --file-scope and those relative paths. A link with
+no anchor is pointed at the target file's first heading, because the chunked
+writer drops a bare file anchor. A fragment that matches no heading in that
+file is pointed there too. Heading anchors use the ids Pandoc generates.
+--out must be a directory that does not exist yet. The temporary build
+directory is left in place.
 
 Options:
   -t, --title <text>  Override the first root title
   -d, --desc <text>   Set the first root description
+  -o, --out <dir>     Chunked-site directory (must not exist yet)
       --toc           Include a table of contents (default)
       --no-toc        Omit the table of contents
-      --no-open       Do not open saved root items
-  -r, --recursive     Add transitively linked local Markdown files
+      --no-open       Do not open the saved item or the site index
+  -r, --recursive     Follow local Markdown links; build a chunked site
       --no-date       Accepted for compatibility
       --rebuild-index Verify the server and search index
   -h, --help          Show this help
@@ -38,6 +49,7 @@ while [[ $# -gt 0 ]]; do
     --toc) TOC=true; shift ;;
     --no-toc) TOC=false; shift ;;
     --no-open) OPEN=false; shift ;;
+    -o|--out) OUT="$2"; shift 2 ;;
     -r|--recursive) RECURSIVE=true; shift ;;
     --no-date) shift ;;
     --rebuild-index) REBUILD=true; shift ;;
@@ -140,11 +152,222 @@ print(json.dumps({'roots': roots, 'files': sorted(seen)}))
 PY
 )
 
-ROOTS_JSON=$(python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["roots"]))' <<<"$FILES_JSON")
 FILES=()
 while IFS= read -r file; do
   [[ -n "$file" ]] && FILES+=("$file")
 done < <(python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin)["files"]))' <<<"$FILES_JSON")
+
+if [[ -n "$OUT" ]]; then
+  OUT=$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$OUT")
+fi
+
+CHUNKED=false
+if [[ -z "$TEMP" ]]; then
+  ALL_MD=true
+  for file in "${FILES[@]}"; do
+    ext=$(printf '%s' "${file##*.}" | tr '[:upper:]' '[:lower:]')
+    [[ "$ext" == "md" || "$ext" == "markdown" ]] || ALL_MD=false
+  done
+  if [[ "$ALL_MD" == true && ( "$RECURSIVE" == true || ${#FILES[@]} -gt 1 ) ]]; then
+    CHUNKED=true
+  fi
+fi
+if [[ -n "$OUT" && "$CHUNKED" == false ]]; then
+  echo "mdoc: --out is for a multi-file or -r Markdown site" >&2
+  exit 1
+fi
+
+if [[ "$CHUNKED" == true ]]; then
+  CHUNK_OUT=$(python3 - "$OUT" "$TITLE" "$TOC" "${FILES[@]}" <<'PY'
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from urllib.parse import unquote
+
+reader = 'markdown+lists_without_preceding_blankline-blank_before_header-blank_before_blockquote+autolink_bare_uris+emoji+mark+wikilinks_title_before_pipe'
+out_arg, title, toc_flag = sys.argv[1], sys.argv[2], sys.argv[3]
+toc = toc_flag == 'true'
+files = [os.path.normpath(os.path.abspath(path)) for path in sys.argv[4:]]
+
+def common_dir(paths):
+    parents = [Path(path).parent.parts for path in paths]
+    prefix = []
+    for pieces in zip(*parents):
+        if len(set(pieces)) != 1:
+            break
+        prefix.append(pieces[0])
+    return Path(*prefix) if prefix else Path('/')
+
+def ast(path):
+    result = subprocess.run(['pandoc', '--from=' + reader, '--to=json', path], text=True, capture_output=True)
+    if result.returncode:
+        raise SystemExit(result.stderr.strip() or 'mdoc: pandoc failed')
+    return json.loads(result.stdout)
+
+def walk(value, kind, found):
+    if isinstance(value, dict):
+        if value.get('t') == kind:
+            found.append(value)
+        for child in value.values():
+            walk(child, kind, found)
+    elif isinstance(value, list):
+        for child in value:
+            walk(child, kind, found)
+
+def heading_ids(path):
+    found = []
+    walk(ast(path), 'Header', found)
+    return [node['c'][1][0] for node in found if node['c'][1][0]]
+
+def targets_of(path, kind):
+    found = []
+    walk(ast(path), kind, found)
+    targets = []
+    for node in found:
+        content = node.get('c', [])
+        if len(content) > 2 and isinstance(content[2], list) and content[2]:
+            targets.append(content[2][0])
+    return targets
+
+def split_target(target):
+    cut = len(target)
+    fragment = ''
+    hash_at = target.find('#')
+    query_at = target.find('?')
+    if hash_at >= 0:
+        fragment = target[hash_at + 1:]
+        cut = hash_at
+    if query_at >= 0:
+        cut = min(cut, query_at)
+    return target[:cut], fragment
+
+def linked_file(source, path_part):
+    if not path_part or path_part.startswith(('#', '//')):
+        return None
+    if ':' in path_part.split('/', 1)[0]:
+        return None
+    path = unquote(path_part)
+    if Path(path).suffix.lower() not in {'.md', '.markdown'}:
+        return None
+    return os.path.normpath(os.path.abspath(os.path.join(os.path.dirname(source), path)))
+
+def fragment_for(target_path, fragment, ids_for):
+    ids = ids_for[target_path]
+    if not fragment:
+        return ids[0] if ids else ''
+    if fragment in ids:
+        return fragment
+    folded = [ident for ident in ids if ident.lower() == fragment.lower()]
+    if len(folded) == 1:
+        return folded[0]
+    return ids[0] if ids else fragment
+
+if out_arg:
+    destination = Path(out_arg)
+    if destination.exists():
+        raise SystemExit(f'mdoc: output directory already exists: {destination}')
+else:
+    destination = None
+
+root = common_dir(files)
+relative = {path: Path(path).relative_to(root).as_posix() for path in files}
+ids_for = {path: heading_ids(path) for path in files}
+build = Path(tempfile.mkdtemp(prefix='mdoc-chunked-'))
+source_root = build / 'src'
+source_root.mkdir()
+for path, rel in relative.items():
+    copied = source_root / rel
+    copied.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(path, copied)
+
+image_rewrites = {path: {} for path in files}
+for path in files:
+    for target in targets_of(path, 'Image'):
+        path_part, _fragment = split_target(target)
+        if not path_part or path_part.startswith('//') or ':' in path_part.split('/', 1)[0]:
+            continue
+        source_file = Path(os.path.normpath(os.path.join(os.path.dirname(path), unquote(path_part))))
+        if not source_file.is_file():
+            continue
+        try:
+            rel_img = source_file.relative_to(root).as_posix()
+        except ValueError:
+            continue
+        dest = source_root / rel_img
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if not dest.exists():
+            shutil.copy2(source_file, dest)
+        rewritten = rel_img + target[len(path_part):]
+        if rewritten != target:
+            image_rewrites[path][target] = rewritten
+
+for path, rel in relative.items():
+    replacements = dict(image_rewrites[path])
+    known = set(relative)
+    for target in targets_of(path, 'Link'):
+        path_part, fragment = split_target(target)
+        resolved = linked_file(path, path_part)
+        if resolved not in known:
+            continue
+        anchor = fragment_for(resolved, fragment, ids_for)
+        rewritten = relative[resolved] + (f'#{anchor}' if anchor else '')
+        if rewritten != target:
+            replacements[target] = rewritten
+    if not replacements:
+        continue
+    text = (source_root / rel).read_text()
+    tokens = {}
+    for index, old in enumerate(sorted(replacements, key=len, reverse=True)):
+        token = f'\x00MDOC{index}\x00'
+        tokens[token] = replacements[old]
+        text = text.replace(f']({old})', f']({token})')
+        text = text.replace(f']({old} ', f']({token} ')
+        text = re.sub(rf'(^\[.*?\]:\s*){re.escape(old)}(\s*$)', rf'\1{token}\2', text, flags=re.M)
+    for token, new in tokens.items():
+        text = text.replace(token, new)
+    (source_root / rel).write_text(text)
+
+site = destination if destination is not None else build / 'site'
+command = ['pandoc', '--file-scope', '-s', '--from=' + reader, '--split-level=1', '-t', 'chunkedhtml', '-o', str(site)]
+if toc:
+    command.append('--toc')
+if title:
+    command.extend(['--metadata', f'title={title}'])
+command.extend(relative[path] for path in files)
+result = subprocess.run(command, cwd=source_root, capture_output=True, text=True)
+if result.returncode:
+    raise SystemExit(result.stderr.strip() or 'mdoc: pandoc failed')
+
+unresolved = []
+for page in sorted(site.glob('*.html')):
+    for href in re.findall(r'href="([^"]*)"', page.read_text()):
+        if 'index.html' in href or '.html' in href:
+            continue
+        if href.startswith(('http://', 'https://', 'mailto:')):
+            continue
+        unresolved.append(f'{page.name} href="{href}"')
+if unresolved:
+    raise SystemExit('mdoc: unresolved links:\n' + '\n'.join(unresolved))
+
+print(f'mdoc: site {site}')
+print(f'mdoc: build {build}')
+PY
+)
+  printf '%s\n' "$CHUNK_OUT"
+  if [[ "$OPEN" == true ]]; then
+    site=${CHUNK_OUT#*'mdoc: site '}
+    site=${site%%$'\n'*}
+    open "$site/index.html"
+  fi
+  exit 0
+fi
+
+ROOTS_JSON=$(python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["roots"]))' <<<"$FILES_JSON")
 
 CURL_ARGS=(--form-string "roots=$ROOTS_JSON" --form-string "title=$TITLE" --form-string "description=$DESC" --form-string "toc=$TOC")
 for file in "${FILES[@]}"; do
