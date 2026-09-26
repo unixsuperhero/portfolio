@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { findByPort, findPortEntry, killListener, matchPortsToProjects, portRows, portSiteUrl, scanPorts } from "../src/index.ts";
+import { findByPort, findPortEntry, killListener, matchPortsToProjects, portRows, scanPorts } from "../src/index.ts";
+import { portSiteUrl } from "../src/url.ts";
 
 const snapshot = { scanned_at: "t", herdr_available: false, warnings: [], ports: [
   { port: 4387, host: "127.0.0.1", command: "bun", pid: 100, cwd: "/p", herdr: { pane_id: "p1", workspace_label: "W", match: "cwd" }, ai: { kind: "claude", session: "abcdefgh-1234" } },

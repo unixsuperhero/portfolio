@@ -167,6 +167,34 @@ Single and bulk reminder deletion use an in-app confirmation dialog. Cancel or E
 See [data-model.md](data-model.md) for the full shapes and
 [packages/api.md](packages/api.md), [packages/github.md](packages/github.md) for the routes.
 
+## Ports and process details
+
+In the Ports table, **Open** sits beside the process name; **Kill** stays at the
+far right. The port number opens the service in the system browser, using localhost
+for wildcard/loopback binds and bracketed IPv6 addresses where needed.
+The process name and PID link to `/processes/:pid`.
+
+The process page shows its command, working directory, parent PID, uptime, and an
+indented process tree. Parent and child process links open their own detail pages.
+The tree combines ancestry and captured children from the existing ports snapshot;
+it is not an exhaustive system process inventory. Processes absent from that snapshot
+show an unavailable message. **Refresh** reloads the snapshot without a background timer.
+
+Search, relationship/directory filters, and sorting are URL-backed. Tree order
+keeps descendants below their parents; other sort modes show a flat table.
+
+```js
+const processNavigation = {
+  port: { label: "3000", destination: "http://localhost:3000", target: "system browser" },
+  process: { label: "node (1234)", destination: "/processes/1234" },
+  tree: [
+    { pid: 1, relation: "Ancestor", depth: 0 },
+    { pid: 1234, relation: "Selected", depth: 1 },
+    { pid: 1235, relation: "Descendant", depth: 2 },
+  ],
+};
+```
+
 ## Pull requests
 
 The PRs page uses one full-width list, deduplicated by PR ID. The Collection

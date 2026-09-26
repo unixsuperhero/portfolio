@@ -30,6 +30,7 @@ const Category = lazy(() => import("./pages/Category.tsx"));
 const Projects = lazy(() => import("./pages/Projects.tsx"));
 const Project = lazy(() => import("./pages/Project.tsx"));
 const Ports = lazy(() => import("./pages/Ports.tsx"));
+const Process = lazy(() => import("./pages/Process.tsx"));
 const Herdr = lazy(() => import("./pages/Herdr.tsx"));
 const Reminders = lazy(() => import("./pages/Reminders.tsx"));
 const Tasks = lazy(() => import("./pages/Tasks.tsx"));
@@ -366,6 +367,7 @@ const router = createHashRouter([
       { path: "/projects", element: <Projects /> },
       { path: "/projects/:id", element: <Project /> },
       { path: "/ports", element: <Ports /> },
+      { path: "/processes/:pid", element: <Process /> },
       { path: "/herdr", element: <Herdr /> },
       { path: "/tasks", element: <Tasks /> },
       { path: "/tasks/:taskId", element: <Tasks /> },

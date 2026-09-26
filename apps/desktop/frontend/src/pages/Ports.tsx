@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
+import { portSiteUrl } from "@portfolio/ports/url";
 import type { PortEntryWithProject } from "../types.ts";
 import { getPorts, killPort } from "../api.ts";
 import { openSystem } from "../native.ts";
@@ -139,13 +140,17 @@ export default function Ports() {
             return (
               <tr key={`${entry.pid}-${entry.port}`} className={selection.selected.has(id) ? "is-selected" : ""}>
                 <td><input type="checkbox" checked={selection.selected.has(id)} onChange={() => selection.toggle(id)} aria-label={`Select ${entry.command} on port ${entry.port ?? "unknown"}`} /></td>
-                <td>{entry.port}</td>
-                <td>{entry.command} ({entry.pid})</td>
+                <td>{entry.port !== null ? <a href={portSiteUrl(entry)} title="Open in system browser">{entry.port}</a> : "—"}</td>
+                <td>
+                  <div className="page-actions">
+                    <Link to={`/processes/${entry.pid}`}>{entry.command} ({entry.pid})</Link>
+                    {entry.port !== null ? <button type="button" className="secondary" onClick={() => void openSystem(portSiteUrl(entry)).catch(error => setError(error instanceof Error ? error.message : "Could not open service."))}>Open</button> : null}
+                  </div>
+                </td>
                 <td data-path={entry.cwd} data-kind="dir"><code>{entry.cwd}</code></td>
                 <td>{entry.project ? <Link to={`/projects/${entry.project.id}`}>{entry.project.title}</Link> : "—"}</td>
                 <td>{entry.elapsed ?? "—"}</td>
                 <td className="page-actions">
-                  <button type="button" className="secondary" onClick={() => void openSystem(`http://${entry.host || "127.0.0.1"}:${entry.port}`)}>Open</button>
                   <button type="button" className="danger" onClick={() => kill(entry)} disabled={busy}>Kill</button>
                 </td>
               </tr>

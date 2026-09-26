@@ -12,3 +12,7 @@
 .bulk-inline-field textarea { min-width: 13rem; max-width: 18rem; resize: vertical; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: 0.35rem 0.5rem; font: 0.8rem var(--mono); }
 .reminder-notes { margin-top: 0.35rem; color: var(--text2); max-width: 42rem; }
 .reminder-notes .note-render { font-size: 0.82rem; }
+.process-table-scroll { overflow-x: auto; }
+.process-table-scroll td { vertical-align: top; }
+.process-table-scroll td:nth-child(2) { min-width: 18rem; overflow-wrap: anywhere; }
+.process-port + .process-port { margin-left: 0.5rem; }
