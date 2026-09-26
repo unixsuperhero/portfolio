@@ -20,6 +20,37 @@ const get = (api: (r: Request) => Promise<Response>, path: string) => api(new Re
 const send = (api: (r: Request) => Promise<Response>, method: string, path: string, body?: unknown) =>
   api(new Request(`http://x${path}`, { method, headers: body !== undefined ? { "content-type": "application/json" } : {}, body: body !== undefined ? JSON.stringify(body) : undefined }));
 
+describe("site files", () => {
+  test("serves every path under the index file and rejects escapes", async () => {
+    const home = mkdtempSync(join(tmpdir(), "portfolio-site-"));
+    const site = join(home, "site");
+    mkdirSync(site);
+    writeFileSync(join(site, "index.html"), "<p>index</p>");
+    writeFileSync(join(site, "2-a.html"), "<p>chunk</p>");
+    mkdirSync(join(site, "sub"));
+    writeFileSync(join(site, "sub", "pic.txt"), "pic");
+    const { store, api } = makeApi({ home });
+    const id = store.items.upsertItem({ type: "document", title: "Site", content: "", rendered_html: "", source_path: join(site, "index.html") });
+    try {
+      let res = await get(api, `/items/${id}`);
+      expect(res.status).toBe(302);
+      expect(res.headers.get("location")).toBe(`/items/${id}/`);
+      res = await get(api, `/items/${id}/`);
+      expect(await res.text()).toBe("<p>index</p>");
+      res = await get(api, `/items/${id}/2-a.html`);
+      expect(await res.text()).toBe("<p>chunk</p>");
+      res = await get(api, `/items/${id}/sub/pic.txt`);
+      expect(await res.text()).toBe("pic");
+      res = await get(api, `/items/${id}/%2e%2e/secret`);
+      expect(res.status).toBe(404);
+      res = await get(api, `/items/${id + 1}/2-a.html`);
+      expect(res.status).toBe(404);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("health", () => {
   test("GET /health", async () => {
     const { api } = makeApi();

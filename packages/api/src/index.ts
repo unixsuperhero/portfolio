@@ -1,7 +1,9 @@
 import type { Store } from "@portfolio/db";
 import { createContext } from "./context.ts";
 import type { ApiOptions } from "./context.ts";
+import { isSiteIndex } from "@portfolio/core";
 import { compile, error, json } from "./http.ts";
+import { serveSite } from "./site.ts";
 import type { Route } from "./http.ts";
 import {
   createCategoryRoute, deleteCategoryRoute, getCategoryRoute, listCategoriesRoute, patchCategoryRoute,
@@ -126,6 +128,19 @@ export function createApi(store: Store, options: ApiOptions = {}): (request: Req
   return async function handle(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/health") return healthRoute(store);
+    if (request.method === "GET") {
+      const nested = /^\/items\/(?<id>\d+)\/(?<relative>.*)$/.exec(url.pathname);
+      if (nested?.groups) {
+        const item = store.items.getItem(Number(nested.groups.id));
+        if (!item?.source_path || !isSiteIndex(item.source_path)) return error(404, "not found");
+        return serveSite(item.source_path, nested.groups.relative, url.pathname);
+      }
+      const bare = /^\/items\/(?<id>\d+)$/.exec(url.pathname);
+      if (bare?.groups) {
+        const item = store.items.getItem(Number(bare.groups.id));
+        if (item?.source_path && isSiteIndex(item.source_path)) return new Response(null, { status: 302, headers: { location: `/items/${item.id}/` } });
+      }
+    }
     for (const route of routes) {
       if (route.method !== request.method) continue;
       const match = route.pattern.exec(url.pathname);

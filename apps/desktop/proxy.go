@@ -12,9 +12,10 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// apiProxy forwards /health and /api/* from the webview's own origin to the
-// sidecar, so the page never makes a cross-origin request: no CORS, no App
-// Transport Security, and cookies stay on one origin.
+// apiProxy forwards /health, /api/*, and /items/* (a site's index and the
+// files beside it) from the webview's own origin to the sidecar, so the page
+// never makes a cross-origin request: no CORS, no App Transport Security, and
+// cookies stay on one origin.
 func apiProxy(target string) application.Middleware {
 	proxy := reverseProxy(target)
 	// With `-tags mcp` and WAILS_MCP_PORT set, /__mcp/* reaches the Wails MCP
@@ -27,7 +28,7 @@ func apiProxy(target string) application.Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch {
-			case r.URL.Path == "/health" || strings.HasPrefix(r.URL.Path, "/api/"):
+			case r.URL.Path == "/health" || strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/items/"):
 				bufferBody(r)
 				proxy.ServeHTTP(w, r)
 			case mcp != nil && strings.HasPrefix(r.URL.Path, "/__mcp/"):

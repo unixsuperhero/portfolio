@@ -1,4 +1,6 @@
 import { openDatabase, upsertItem as storeItem, getTask, listTaskViews, createTask, updateTask, completeTask, uncompleteTask, taskView } from "@portfolio/db";
+import { isSiteIndex } from "@portfolio/core";
+import { serveSite } from "./packages/api/src/site.ts";
 import { basename, dirname, extname, isAbsolute, join, resolve, sep } from "node:path";
 import { mkdir, mkdtemp, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { existsSync, watch } from "node:fs";
@@ -1677,10 +1679,17 @@ const server = Bun.serve({
         deleteRecords([id]);
         return redirect("/");
       }
+      const siteMatch = url.pathname.match(/^\/items\/(\d+)\/(.*)$/);
+      if (request.method === "GET" && siteMatch) {
+        const item = db.query("SELECT * FROM items WHERE id = ?").get(Number(siteMatch[1]));
+        if (!item?.source_path || !isSiteIndex(item.source_path)) return text("not found", 404);
+        return serveSite(item.source_path, siteMatch[2], url.pathname);
+      }
       const itemMatch = url.pathname.match(/^\/items\/(\d+)$/);
       if (request.method === "GET" && itemMatch) {
         const item = db.query("SELECT * FROM items WHERE id = ?").get(Number(itemMatch[1]));
         if (!item) return text("not found", 404);
+        if (item.source_path && isSiteIndex(item.source_path)) return new Response(null, { status: 302, headers: { location: `/items/${item.id}/` } });
         if (item.type === "task") return html(tasksPage(item.task_id));
         if (PATH_TYPES.includes(item.type)) return html(pathItemPage(item));
         if (!item.rendered_html && item.content) {
