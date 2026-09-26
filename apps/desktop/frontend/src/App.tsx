@@ -109,6 +109,33 @@ function TopBar() {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addModalInitial, setAddModalInitial] = useState("");
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.altKey || event.shiftKey || !(event.ctrlKey || event.metaKey)) return;
+      if (event.key !== "[" && event.key !== "]") return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!event.repeat) void navigate(event.key === "[" ? -1 : 1);
+    };
+    const onMouseButton = (event: MouseEvent) => {
+      if (event.button !== 3 && event.button !== 4) return;
+      // Cancel the webview's default so one press cannot traverse history twice.
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.type === "mouseup") void navigate(event.button === 3 ? -1 : 1);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("mousedown", onMouseButton, true);
+    window.addEventListener("mouseup", onMouseButton, true);
+    window.addEventListener("auxclick", onMouseButton, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("mousedown", onMouseButton, true);
+      window.removeEventListener("mouseup", onMouseButton, true);
+      window.removeEventListener("auxclick", onMouseButton, true);
+    };
+  }, [navigate]);
+
   // Detect what the palette text is (URL, path, or text) the same way the Library quick-add does.
   // A bare domain (no scheme) is prefixed with https:// first, since detect() only recognizes
   // URLs that already carry a scheme.
@@ -238,6 +265,8 @@ function TopBar() {
 
   return (
     <div className="topbar">
+      <button type="button" className="topbar-history" title="Back (Ctrl+[ or ⌘[)" aria-keyshortcuts="Control+[ Meta+[" onClick={() => void navigate(-1)}>Back</button>
+      <button type="button" className="topbar-history" title="Forward (Ctrl+] or ⌘])" aria-keyshortcuts="Control+] Meta+]" onClick={() => void navigate(1)}>Forward</button>
       <button ref={commandButtonRef} type="button" className="topbar-command" onClick={() => openPalette(commandButtonRef.current)}>
         Commands <span aria-hidden="true">⌘K</span>
       </button>

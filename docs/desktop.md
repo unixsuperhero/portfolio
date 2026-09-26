@@ -34,6 +34,27 @@ at the repo root once.
 External links never replace the main app screen. The desktop opens them through the
 system browser; the web version opens a separate tab. There is no embedded-browser mode.
 
+### Back and forward
+
+The top bar's **Back** and **Forward** buttons traverse the browser's existing
+route history, including URL search/filter state. `Ctrl+[` / `Ctrl+]` and
+`Cmd+[` / `Cmd+]` do the same, even while an input or the terminal has focus.
+At either end of history, the corresponding action does nothing. Navigating to
+a new page after going back discards the old forward branch.
+
+Mouse back/forward buttons (DOM buttons 3 and 4) use the same history when the
+webview receives those events. If macOS or Logitech software intercepts the MX
+Master 3 buttons, create a Portfolio mapping in Logi Options+:
+
+```js
+const mouseShortcuts = {
+  back: "Ctrl+[",
+  forward: "Ctrl+]",
+};
+```
+
+History navigation restores URLs, not unsaved form edits.
+
 ### Opening Markdown from Finder
 
 The packaged macOS app registers as an editor for `.md`, `.markdown`, `.mdown`,

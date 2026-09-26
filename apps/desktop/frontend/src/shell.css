@@ -14,6 +14,7 @@
   -webkit-app-region: no-drag;
 }
 
+.topbar-history,
 .topbar-command,
 .topbar-browser,
 .topbar-notifications,
@@ -28,6 +29,7 @@
   padding: 0.35rem 0.7rem;
 }
 
+.topbar-history:hover,
 .topbar-command:hover,
 .topbar-browser:hover,
 .topbar-notifications:hover,
