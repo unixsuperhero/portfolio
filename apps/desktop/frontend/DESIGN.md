@@ -94,18 +94,18 @@ components:
 
 **Creative North Star: "Debugger workbench"**
 
-The Herdr page is a compact explorer and inspector for local sessions. It is a scoped design within Portfolio's existing app shell, not a redesign of the other routes. Browsing and inspection lead; pane actions remain available beside the selected entity.
+The Herdr page is a compact explorer and inspector for local sessions within Portfolio's existing app shell. Its graphite and cool-paper palettes may also be used on other routes and in the shell. Browsing and inspection lead; pane actions remain available beside the selected entity.
 
 A restrained graphite palette in dark mode and cool paper in light mode distinguish Herdr from Portfolio's global dark navy and warm light tokens. Fine separators, compact disclosure rows, selection fill, and text statuses make hierarchy and state legible without large cards.
 
 **Key Characteristics:**
 - Compact session tree and adjacent inspector.
-- Herdr-scoped dark and light colors; the surrounding shell keeps the Portfolio palette.
+- Dark graphite and light cool-paper colors, available across Portfolio.
 - Text statuses, visible focus, and direct pane controls.
 
 ## Colors
 
-`packages/ui/src/tokens.css` defines Portfolio's global `--bg`, `--surface`, `--surface2`, `--border`, `--border2`, `--text`, `--text2`, `--text3`, `--accent`, `--accent2`, `--gold`, and `--danger` in both themes. `packages/ui/src/herdr.css` overrides those names except `--text3` on `.herdr-page` and its light-theme rule. The frontmatter keeps both sets under separate names to prevent a page override from becoming an app-wide token.
+`packages/ui/src/tokens.css` defines Portfolio's global `--bg`, `--surface`, `--surface2`, `--border`, `--border2`, `--text`, `--text2`, `--text3`, `--accent`, `--accent2`, `--gold`, and `--danger` in both themes. `packages/ui/src/herdr.css` currently overrides those names except `--text3` on `.herdr-page` and its light-theme rule. The frontmatter records the current global and Herdr palettes separately; this does not restrict either palette to a particular route.
 
 ### Primary
 
@@ -162,12 +162,11 @@ The inspector shows the selected entity's breadcrumb, properties, and expandable
 
 ### Do:
 
-- **Do** use the Herdr-local colors inside this page and keep Portfolio's global colors in the shell.
+- **Do** reuse the graphite and cool-paper palettes on other routes and in the shell where appropriate.
 - **Do** use compact disclosure rows, selection fill, fine borders, and text statuses to distinguish entities.
 - **Do** keep pane actions and their result near the inspector.
 
 ### Don't:
 
-- **Don't** apply Herdr's graphite or cool-paper colors to other routes.
 - **Don't** use color alone to convey an agent's status.
 - **Don't** animate button color changes when reduced motion is requested.
