@@ -21,9 +21,12 @@
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
     "react-router": "^7.0.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.0"
   },
   "devDependencies": {
+    "@types/mdast": "^4.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.0.0",

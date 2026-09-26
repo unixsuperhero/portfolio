@@ -34,6 +34,27 @@ at the repo root once.
 External links never replace the main app screen. The desktop opens them through the
 system browser; the web version opens a separate tab. There is no embedded-browser mode.
 
+### Opening Markdown from Finder
+
+The packaged macOS app registers as an editor for `.md`, `.markdown`, `.mdown`,
+`.mkd`, and `.mkdn`. Build the app bundle, then use Finder's **Get Info → Open with
+→ Portfolio → Change All…** on a Markdown file to make it the default for that
+file type. Installing or building Portfolio does not replace an existing default.
+
+Opening a file imports it into the library and opens its document page. Reopening
+the same source path refreshes the existing item rather than creating a duplicate.
+Finder requests received during startup wait in the native service until the
+frontend and API are ready. Files opened while Portfolio is running use the same
+queue. Import errors appear in the app without navigating away from the current page.
+
+```js
+const openedFile = {
+  source_path: "/Users/me/notes/checklist.md",
+  type: "document",
+  route: "/items/42",
+};
+```
+
 ## What runs where
 
 | Concern | Where | Why |
@@ -105,6 +126,18 @@ On the Library page, `/` focuses the collection search when focus is not already
 The legacy browser Settings page uses the macOS folder dialog for watched directories, with **Include subdirectories** checked for new entries. Cancellation preserves the typed path. The same-origin picker POST disables its request idle timeout while awaiting the OS dialog; other requests remain responsive.
 
 Notes and documents without a source file are editable as Markdown; the Library's **Edit** link opens that editor directly. Source-backed documents are editable only when the source is a Markdown file; the editor loads the current file contents, and Save writes the file, updates the database copy, and refreshes rendered HTML. HTML and other non-Markdown sources are read-only. Cmd+S (or Ctrl+S) saves while editing. Save errors leave the draft open, and Escape/Cancel asks before discarding changed text.
+
+Rendered Markdown task checkboxes save immediately when checked or unchecked, including
+nested, quoted, and numbered tasks. Source-backed documents write the original file;
+notes and documents without a source file save in the database. Only the selected
+`[ ]` or `[x]` marker changes; code samples and other source formatting stay intact.
+Controls are disabled while saving or editing the Markdown draft. A failed save
+restores the checkbox and displays the error. External file changes are not
+overwritten: reload the document before trying again. Reopening a source-backed
+document refreshes its rendered content from disk.
+
+HTML documents remain read-only. If the rendered checklist cannot be matched to its
+Markdown source, the checkboxes stay read-only and the page directs you to Edit Markdown.
 
 Reminders are independent records with their own schedule and completion history. The Reminders form defaults to **No task**; selecting a task is optional. Creating a reminder does not create a task or a Library item. Completing a linked reminder does not complete its task. Existing task-linked reminders and their completion history migrate when the database opens.
 

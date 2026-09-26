@@ -8,6 +8,7 @@ import { CommandPalette } from "./components/CommandPalette.tsx";
 import type { Command } from "./components/CommandPalette.tsx";
 import { BrowsePicker } from "./components/BrowsePicker.tsx";
 import { AddModal } from "./components/AddModal.tsx";
+import { OpenedFiles } from "./components/OpenedFiles.tsx";
 import { createTask, detect, quickAdd } from "./api.ts";
 import { ToastStack } from "./components/ToastStack.tsx";
 import { useSidecarStatus } from "./hooks/useSidecarStatus.ts";
@@ -308,6 +309,7 @@ function Layout() {
         <div className="main-area">
           <TopBar />
           <div className="content">
+            {isWails() ? <OpenedFiles /> : null}
             <Suspense fallback={<p role="status">Loading…</p>}><Outlet /></Suspense>
           </div>
         </div>

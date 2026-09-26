@@ -79,6 +79,10 @@ export async function getItemRoute(ctx: Ctx, _request: Request, params: Record<s
       sourceError = "Markdown source file is missing";
     } else {
       content = await source.text();
+      if (content !== item.content) {
+        item.rendered_html = await ctx.render(content, { title: item.title, toc: Boolean(item.toc), sourcePath: item.source_path });
+        ctx.store.items.updateItem(item.id, { content, rendered_html: item.rendered_html });
+      }
     }
   }
   return json({ ...item, content, editable_markdown: editableMarkdown, source_error: sourceError, slot_paths: undefined, href: view.href, tags: view.tags, slots, project });

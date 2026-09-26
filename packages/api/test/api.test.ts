@@ -82,7 +82,6 @@ describe("items", () => {
 
       const detail = await (await get(api, `/api/items/${markdownId}`)).json();
       expect(detail).toMatchObject({ content: "# source of truth", editable_markdown: true, source_error: null });
-      expect(store.items.getItem(markdownId)?.rendered_html).toBe("");
       const saved = await send(api, "PATCH", `/api/items/${markdownId}`, { content: "# updated", expected_content: "# source of truth" });
       expect(saved.status).toBe(200);
       expect(await saved.json()).toEqual({ ok: true, rendered_html: "<h1>Markdown</h1>9" });

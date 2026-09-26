@@ -76,3 +76,10 @@ export function PickFile(title: string, start: string): $CancellablePromise<stri
 export function Reveal(path: string): $CancellablePromise<void> {
     return $Call.ByID(2264880907, path);
 }
+
+/**
+ * TakeOpenedFiles includes Finder requests received before the frontend was ready.
+ */
+export function TakeOpenedFiles(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(572013255);
+}

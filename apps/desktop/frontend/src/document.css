@@ -63,6 +63,11 @@
 .document-render .copy-code-button:focus-visible { border-color: var(--accent); color: var(--text); }
 .document-render .copy-code-button.copied { color: var(--success, #66bb6a); }
 .document-render .task-list-item { list-style: none; }
+.document-render .task-list { list-style: none; }
+.document-render li > label,
+.document-render li > p > label { display: inline; font: inherit; color: inherit; }
+.document-render input[type="checkbox"] { width: 1rem; height: 1rem; margin: 0 .5rem 0 0; accent-color: var(--accent); vertical-align: middle; }
+.document-render input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .document-render .doc-footer { width: 100%; max-width: 88ch; display: flex; justify-content: space-between; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--doc-border); color: var(--doc-muted); font-size: .75rem; }
 .document-render article div.sourceCode::before { content: attr(data-lang); position: absolute; top: .45rem; left: .7rem; color: var(--text2); font: .65rem var(--mono, monospace); text-transform: uppercase; }
 .document-render article code span.kw,

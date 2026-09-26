@@ -12,8 +12,8 @@ export const CARD_MAX_ITEMS = { min: 1, max: 1000, default: 100 } as const;
 /** "query" runs the saved search; every other kind is a dashboard widget with its own config shape. */
 export const CARD_KINDS: readonly CardKind[] = ["query", "tasks", "reminders", "ports", "clock", "note", "services", "prs"] as const;
 
-export const MARKDOWN_EXTENSIONS = [".md", ".markdown"] as const;
-export const DOCUMENT_EXTENSIONS = [".md", ".markdown", ".html"] as const;
+export const MARKDOWN_EXTENSIONS = [".md", ".markdown", ".mdown", ".mkd", ".mkdn"] as const;
+export const DOCUMENT_EXTENSIONS = [...MARKDOWN_EXTENSIONS, ".html"] as const;
 
 export const KIND_LABELS: Record<string, string> = { document: "DOC", note: "NOTE", link: "LINK", pr: "PR", file: "FILE", dir: "DIR", task: "TASK" };
 

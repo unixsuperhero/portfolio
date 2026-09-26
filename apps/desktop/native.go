@@ -5,14 +5,36 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // NativeService wraps macOS `open`/`osascript` integrations and clipboard access.
-type NativeService struct{}
+type NativeService struct {
+	mu           sync.Mutex
+	pendingFiles []string
+}
 
 func (n *NativeService) ServiceName() string { return "NativeService" }
+
+func (n *NativeService) enqueueFile(path string) {
+	n.mu.Lock()
+	n.pendingFiles = append(n.pendingFiles, path)
+	n.mu.Unlock()
+}
+
+// TakeOpenedFiles includes Finder requests received before the frontend was ready.
+func (n *NativeService) TakeOpenedFiles() []string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	files := n.pendingFiles
+	n.pendingFiles = nil
+	if files == nil {
+		return []string{}
+	}
+	return files
+}
 
 // Reveal shows path in Finder, highlighting it.
 func (n *NativeService) Reveal(path string) error {

@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 // Wails uses Go's `embed` package to embed the frontend files into the binary.
@@ -29,13 +30,14 @@ func init() {
 // application, registers the desktop services and one main window, and runs
 // the application until it exits.
 func main() {
+	native := &NativeService{}
 	app := application.New(application.Options{
 		Name:        "Portfolio",
 		Description: "Portfolio desktop: library, dashboards, browser, terminal",
 		Services: []application.Service{
 			application.NewService(&SidecarService{}),
 			application.NewService(&PtyService{}),
-			application.NewService(&NativeService{}),
+			application.NewService(native),
 		},
 		Assets: application.AssetOptions{
 			Handler:    application.AssetFileServerFS(assets),
@@ -62,7 +64,13 @@ func main() {
 		OpenInspectorOnStartup: os.Getenv("PORTFOLIO_INSPECT") == "1",
 	}
 	windowOptions.Mac.WebviewPreferences.TabFocusesLinks.Set(true)
-	app.Window.NewWithOptions(windowOptions)
+	window := app.Window.NewWithOptions(windowOptions)
+	app.Event.OnApplicationEvent(events.Common.ApplicationOpenedWithFile, func(event *application.ApplicationEvent) {
+		native.enqueueFile(event.Context().Filename())
+		app.Event.Emit("native:files-opened")
+		window.Show()
+		window.Focus()
+	})
 
 	// A SIGTERM or SIGINT (a killed dev run, a stopped launcher) quits through
 	// the application so services shut down and the sidecar is not orphaned.

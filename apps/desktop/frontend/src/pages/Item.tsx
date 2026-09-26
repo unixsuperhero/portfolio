@@ -1,6 +1,6 @@
 import DOMPurify from "dompurify";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { TagList } from "@portfolio/ui";
 import type { ItemDetail } from "../types.ts";
 import { addItemTags, deleteItem, getItem, itemHtmlUrl, pathAction, removeItemTag, saveItemMarkdown, setSlotPath, toggleItem } from "../api.ts";
@@ -11,10 +11,15 @@ import { PortsCard } from "../cards/PortsCard.tsx";
 import { PathField } from "../components/PathField.tsx";
 import { useConfirm } from "../components/ConfirmDialog.tsx";
 import Tasks from "./Tasks.tsx";
+import { markdownTasks, setMarkdownTask, taskLabel } from "../lib/markdown-tasks.ts";
 import "../document.css";
 
 function sanitizeDocument(html: string): string {
   const source = new DOMParser().parseFromString(html, "text/html");
+  source.querySelectorAll("input").forEach(input => {
+    if (input.type !== "checkbox" || !input.matches("li > label > input, li > p:first-child > label > input")) input.remove();
+    else input.disabled = true;
+  });
   const content = source.querySelector(".page-wrap")?.outerHTML
     ?? source.querySelector("article")?.outerHTML
     ?? `<article>${source.body.innerHTML}</article>`;
@@ -22,14 +27,54 @@ function sanitizeDocument(html: string): string {
     USE_PROFILES: { html: true },
     SANITIZE_NAMED_PROPS: true,
     ALLOW_DATA_ATTR: false,
-    FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form", "input", "button", "textarea", "select"],
+    FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form", "button", "textarea", "select"],
     FORBID_ATTR: ["style"],
   });
 }
 
-function DocumentContent({ html }: { html: string }) {
+function DocumentContent({ html, markdown, disabled, onToggle }: {
+  html: string;
+  markdown: string | null;
+  disabled: boolean;
+  onToggle: (offset: number, checked: boolean) => Promise<void>;
+}) {
   const rootRef = useRef<HTMLDivElement>(null);
   const safeHtml = useMemo(() => sanitizeDocument(html), [html]);
+  const tasks = useMemo(() => markdown === null ? [] : markdownTasks(markdown), [markdown]);
+  const focusTask = useRef<number | null>(null);
+  const [mismatch, setMismatch] = useState(false);
+
+  useEffect(() => {
+    const inputs = [...(rootRef.current?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]') ?? [])];
+    const matches = inputs.length === tasks.length && inputs.every((input, index) => {
+      const label = input.parentElement;
+      return input.defaultChecked === tasks[index]?.checked && taskLabel(label?.textContent ?? "") === tasks[index]?.label;
+    });
+    setMismatch(markdown !== null && inputs.length > 0 && !matches);
+    const removeListeners: (() => void)[] = [];
+    inputs.forEach((input, index) => {
+      input.disabled = disabled || markdown === null || !matches;
+      const task = tasks[index];
+      if (!matches || !task) return;
+      input.setAttribute("aria-label", task.label || "Checklist item");
+      const change = async () => {
+        const checked = input.checked;
+        focusTask.current = task.offset;
+        try {
+          await onToggle(task.offset, checked);
+        } catch {
+          input.checked = task.checked;
+        }
+      };
+      input.addEventListener("change", change);
+      removeListeners.push(() => input.removeEventListener("change", change));
+      if (!input.disabled && focusTask.current === task.offset) {
+        input.focus({ preventScroll: true });
+        focusTask.current = null;
+      }
+    });
+    return () => removeListeners.forEach(remove => remove());
+  }, [safeHtml, tasks, markdown, disabled, onToggle]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -98,12 +143,16 @@ function DocumentContent({ html }: { html: string }) {
     return () => removeListeners.forEach(remove => remove());
   }, [safeHtml]);
 
-  return <div ref={rootRef} className="document-render" dangerouslySetInnerHTML={{ __html: safeHtml }} />;
+  return <>
+    {mismatch ? <p role="alert" className="markdown-error">This checklist does not match the Markdown source. Use Edit Markdown to update it safely.</p> : null}
+    <div ref={rootRef} className="document-render" dangerouslySetInnerHTML={{ __html: safeHtml }} />
+  </>;
 }
 
 export default function Item() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const routeItemId = Number(id);
   const itemRequest = useRef(0);
@@ -135,7 +184,7 @@ export default function Item() {
   useEffect(() => {
     void load(true);
     return () => { itemRequest.current++; };
-  }, [load]);
+  }, [load, location.key]);
 
   useEffect(() => {
     if (!item || (item.type !== "document" && item.type !== "note")) {
@@ -207,6 +256,28 @@ export default function Item() {
     }
   };
 
+  const toggleChecklist = async (offset: number, checked: boolean) => {
+    if (!item.editable_markdown || editingMarkdown || saveInFlight.current) throw new Error("Markdown is not available for editing.");
+    saveInFlight.current = true;
+    setSavingMarkdown(true);
+    setMarkdownError("");
+    try {
+      const content = setMarkdownTask(item.content, offset, checked);
+      const saved = await saveItemMarkdown(item.id, content, item.content);
+      setItem(current => current?.id === item.id ? { ...current, content } : current);
+      if (activeItemId.current === item.id) {
+        setHtml(saved.rendered_html);
+        setHtmlError("");
+      }
+    } catch (error) {
+      if (activeItemId.current === item.id) setMarkdownError(error instanceof Error ? error.message : "Could not save checklist.");
+      throw error;
+    } finally {
+      saveInFlight.current = false;
+      setSavingMarkdown(false);
+    }
+  };
+
   const startSlotEdit = (slotName: string, current: string) => { setEditingSlot(slotName); setSlotOverride(current); };
   const saveSlotOverride = (slotName: string) => setSlotPath(item.id, slotName, slotOverride.trim()).then(() => { setEditingSlot(null); void load(); }).catch(() => {});
   const clearSlotOverride = (slotName: string) => setSlotPath(item.id, slotName, "").then(() => { setEditingSlot(null); void load(); }).catch(() => {});
@@ -232,7 +303,7 @@ export default function Item() {
 
       {(item.type === "document" || item.type === "note") ? (
         <section>
-          {item.editable_markdown && !editingMarkdown ? <button type="button" className="secondary" onClick={startMarkdownEdit}>Edit Markdown</button> : null}
+          {item.editable_markdown && !editingMarkdown ? <button type="button" className="secondary" disabled={savingMarkdown} onClick={startMarkdownEdit}>Edit Markdown</button> : null}
           {item.source_error ? <p role="alert" className="markdown-error">{item.source_error}; showing saved content only.</p> : null}
           {editingMarkdown ? (
             <div className="markdown-editor">
@@ -260,7 +331,8 @@ export default function Item() {
               {markdownError ? <p role="alert" className="markdown-error">{markdownError}</p> : null}
             </div>
           ) : null}
-          {html !== null ? <DocumentContent html={html} /> : htmlError ? <p role="alert" className="markdown-error">{htmlError}</p> : <p role="status">Loading document…</p>}
+          {!editingMarkdown && markdownError ? <p role="alert" className="markdown-error">{markdownError}</p> : null}
+          {html !== null ? <DocumentContent html={html} markdown={item.editable_markdown ? item.content : null} disabled={savingMarkdown || editingMarkdown} onToggle={toggleChecklist} /> : htmlError ? <p role="alert" className="markdown-error">{htmlError}</p> : <p role="status">Loading document…</p>}
         </section>
       ) : null}
 
