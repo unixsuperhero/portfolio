@@ -4,7 +4,7 @@ require 'fileutils'
 require 'pathname'
 require 'uri'
 FileUtils.mkdir_p(File.join(Dir.home, '.config', 'hiiro'))
-gem 'hiiro', '= 0.1.384'
+gem 'hiiro', '= 0.1.386'
 require 'hiiro'
 
 module Pf

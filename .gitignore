@@ -1,2 +1,7 @@
 **/*.log
 **/*.sqlite*
+
+*-main/*
+
+# td
+.todos/

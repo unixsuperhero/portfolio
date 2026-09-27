@@ -1,5 +1,12 @@
 ## Agent skills
 
+Always check if you are running in Sidecar: run sidecar --agents for capabilities.
+
+## MANDATORY: Use td for Task Management
+
+You must run td usage --new-session at conversation start (or after /clear) to see current work.
+Use td usage -q for subsequent reads.
+
 ### Issue tracker
 
 Issues live in GitHub Issues for unixsuperhero/portfolio, managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
