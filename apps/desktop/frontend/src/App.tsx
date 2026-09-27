@@ -4,6 +4,9 @@ import { createHashRouter, Link, NavLink, Outlet, useLocation, useNavigate } fro
 import { RouterProvider } from "react-router/dom";
 import { useTerminalStore } from "./terminal/store.ts";
 import { ContextMenuProvider } from "./context-menu/ContextMenu.tsx";
+import { contextActionsFor } from "./context-menu/actions.ts";
+import { attachListNavigation, isEditableTarget, ROW_ACTIONS_EVENT, shouldOpenPalette } from "./lib/list-nav.ts";
+import type { RowActionsDetail } from "./lib/list-nav.ts";
 import { CommandPalette } from "./components/CommandPalette.tsx";
 import type { Command } from "./components/CommandPalette.tsx";
 import { BrowsePicker } from "./components/BrowsePicker.tsx";
@@ -109,6 +112,7 @@ function TopBar() {
   const [browseKind, setBrowseKind] = useState<PickerKind | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addModalInitial, setAddModalInitial] = useState("");
+  const [rowActions, setRowActions] = useState<RowActionsDetail | null>(null);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -240,17 +244,37 @@ function TopBar() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target;
-      if (target instanceof HTMLElement && target.closest(".command-palette")) return;
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        if (target instanceof HTMLElement && (target.isContentEditable || target.closest("input, textarea, select, [contenteditable='true']"))) return;
-        event.preventDefault();
-        openPalette(target instanceof HTMLElement ? target : commandButtonRef.current);
-      }
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      const open = shouldOpenPalette(event, {
+        inPalette: target?.closest(".command-palette") != null,
+        editable: isEditableTarget(target),
+        modalOpen: document.querySelector("dialog[open]") !== null,
+      });
+      if (!open) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setRowActions(null);
+      openPalette(target && target !== document.body ? target : null);
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    // Capture phase: the shortcut must win whatever element has focus, fields included.
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
   }, []);
+
+  useEffect(() => {
+    const onRowActions = (event: Event) => {
+      setRowActions((event as CustomEvent<RowActionsDetail>).detail);
+      returnFocusRef.current = null;
+      setPaletteOpen(true);
+    };
+    window.addEventListener(ROW_ACTIONS_EVENT, onRowActions);
+    return () => window.removeEventListener(ROW_ACTIONS_EVENT, onRowActions);
+  }, []);
+
+  const rowCommands = useMemo<Command[] | null>(
+    () => rowActions?.actions.map(action => ({ id: action.id, label: action.label, hint: action.hint, run: action.run })) ?? null,
+    [rowActions],
+  );
 
   const openCurrentPage = async () => {
     setBrowserBusy(true);
@@ -268,7 +292,7 @@ function TopBar() {
     <div className="topbar">
       <button type="button" className="topbar-history" title="Back (Ctrl+[ or ⌘[)" aria-keyshortcuts="Control+[ Meta+[" onClick={() => void navigate(-1)}>Back</button>
       <button type="button" className="topbar-history" title="Forward (Ctrl+] or ⌘])" aria-keyshortcuts="Control+] Meta+]" onClick={() => void navigate(1)}>Forward</button>
-      <button ref={commandButtonRef} type="button" className="topbar-command" onClick={() => openPalette(commandButtonRef.current)}>
+      <button ref={commandButtonRef} type="button" className="topbar-command" onClick={() => { setRowActions(null); openPalette(commandButtonRef.current); }}>
         Commands <span aria-hidden="true">⌘K</span>
       </button>
       <button type="button" className="topbar-browser" onClick={() => void openCurrentPage()} disabled={browserBusy}>
@@ -278,7 +302,15 @@ function TopBar() {
       <Link className="topbar-notifications" to="/notifications">Notifications ({newNotifications}){storageError || pollingError ? " · Error" : ""}</Link>
       <button type="button" className="topbar-dismiss" disabled={!newNotifications} onClick={() => dismissNotifications()}>Dismiss all</button>
       <button type="button" className="topbar-theme" onClick={toggle}>{theme === "dark" ? "Light" : "Dark"} theme</button>
-      <CommandPalette commands={commands} open={paletteOpen} onOpenChange={setPaletteOpen} returnFocusRef={returnFocusRef} onQueryChange={setPaletteQuery} />
+      <CommandPalette
+        commands={rowCommands ?? commands}
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        returnFocusRef={returnFocusRef}
+        onQueryChange={setPaletteQuery}
+        label={rowActions ? `Actions for ${rowActions.label}` : undefined}
+        placeholder={rowActions ? `Actions for ${rowActions.label}…` : undefined}
+      />
       {browseKind ? (
         <BrowsePicker kind={browseKind} onClose={() => setBrowseKind(null)} onPick={path => { setBrowseKind(null); void addItem(path, browseKind); }} />
       ) : null}
@@ -319,7 +351,13 @@ function Sidebar() {
 
 function Layout() {
   const terminal = useTerminalStore();
+  const navigate = useNavigate();
   useNotificationPolling();
+
+  useEffect(
+    () => attachListNavigation({ contextActions: target => contextActionsFor(target, to => void navigate(to)) }),
+    [navigate],
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

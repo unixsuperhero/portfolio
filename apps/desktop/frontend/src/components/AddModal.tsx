@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router";
 import { ITEM_TYPES } from "@portfolio/core/constants";
 import type { Detection, ItemType } from "@portfolio/core";
 import { AddTextarea } from "./AddTextarea.tsx";
@@ -35,11 +34,11 @@ type AddModalProps = {
 
 /**
  * The "Add…" command's dialog: free-form content, live detection (same debounce as the
- * palette), a kind override, and file/directory pickers that fill the textarea. Mirrors
+ * palette), a kind override, and file/directory pickers that fill the textarea. After each
+ * add the form resets and the dialog stays open for the next one; Escape closes it. Mirrors
  * ConfirmDialog's <dialog>/showModal() pattern so it works in the Wails webview.
  */
 export function AddModal({ open, initialContent, onClose }: AddModalProps) {
-  const navigate = useNavigate();
   const ref = useRef<HTMLDialogElement>(null);
   const [content, setContent] = useState(initialContent);
   const [kind, setKind] = useState<ItemType | "">("");
@@ -47,14 +46,25 @@ export function AddModal({ open, initialContent, onClose }: AddModalProps) {
   const [browseKind, setBrowseKind] = useState<PickerKind | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [added, setAdded] = useState("");
 
   useEffect(() => {
     if (!open) return;
     setContent(initialContent);
     setKind("");
     setError("");
+    setAdded("");
     setBrowseKind(null);
   }, [open, initialContent]);
+
+  /** Clears the form for the next entry; the dialog stays open until Escape or Done. */
+  const reset = (message: string) => {
+    setContent("");
+    setKind("");
+    setDetection(null);
+    setAdded(message);
+    requestAnimationFrame(() => ref.current?.querySelector("textarea")?.focus());
+  };
 
   useEffect(() => {
     if (open) ref.current?.showModal();
@@ -80,16 +90,14 @@ export function AddModal({ open, initialContent, onClose }: AddModalProps) {
     setError("");
     try {
       if (kind === "task") {
-        const result = await createTask({ title: trimmed });
-        onClose();
-        navigate(`/tasks/${result.id}`);
+        await createTask({ title: trimmed });
+        reset(`Added task · ${trimmed}`);
         return;
       }
       const type = kind || undefined;
       const value = (type === "link" || type === "pr" || (!type && isLinkish(trimmed))) && isLinkish(trimmed) ? linkContent(trimmed) : trimmed;
       const result = await quickAdd(value, type ? { type } : {});
-      onClose();
-      navigate(`/items/${result.id}`);
+      reset(`Added ${(TYPE_LABEL[result.type as ItemType] ?? result.type).toLowerCase()} · ${result.title}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add.");
     } finally {
@@ -128,10 +136,11 @@ export function AddModal({ open, initialContent, onClose }: AddModalProps) {
             </select>
           </label>
           {error ? <p className="topbar-error" role="alert">{error}</p> : null}
+          {added && !error ? <p className="add-modal-added" role="status">{added}</p> : null}
           <div className="page-actions">
             <button type="button" className="secondary" onClick={() => void pick("file")}>Choose file…</button>
             <button type="button" className="secondary" onClick={() => void pick("dir")}>Choose directory…</button>
-            <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+            <button type="button" className="secondary" onClick={onClose}>{added ? "Done" : "Cancel"}</button>
             <button type="submit" className="primary" disabled={busy || !content.trim()}>Add</button>
           </div>
         </form>

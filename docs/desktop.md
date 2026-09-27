@@ -137,8 +137,33 @@ portfolio linked-item eligibility is applied in addition to the saved PR query.
 
 The `tasks` card shows active tasks with nested subtasks and completion checkboxes. Completion checkboxes on tasks and reminders draw a check and settle the title; a daily task or reminder with a streak of two or more days shows an `N-day streak` count that ticks up when it advances, and a list whose entries are all complete ends with an "All done today." line. Due-reminder toasts slide in; successful Done completes the reminder and dismisses its notification. Each task links to its task page. Note cards support GitHub-flavored Markdown and a plain-text Markdown editor. Widget bodies and tile cards use the same horizontal padding as query rows.
 
-The command palette (⌘K) adds things as well as navigating. While you type, the palette runs the same detection as the Library quick-add and offers `Add <kind>` for every addable kind (task, note, link, PR, file, directory, document) — the detected kind ranks first, the rest still list even when they'd fail for that text (a failure just shows the API's error in the top bar). Text with an `http://`/`https://` scheme, or that looks like a bare domain (`example.com`, `github.com/foo/bar`), is treated as a link (or a PR, for GitHub pull URLs); a bare domain is prefixed with `https://` before it's added, since detection only recognizes URLs that already carry a scheme. `Add file…` and `Add directory…` open the native picker inside the app, or the in-page directory browser in a plain browser, and add the picked path. `Add…` opens a dialog (always listed, near the top when the query is empty) with a multi-line field, the same live detection line, a kind override (Auto plus every kind), and file/directory pickers that fill the field; Enter submits, Escape cancels. A successful add navigates to the new item or task; a failure shows in the top bar or, from the `Add…` dialog, inside the dialog itself.
+The command palette (⌘K) adds things as well as navigating. While you type, the palette runs the same detection as the Library quick-add and offers `Add <kind>` for every addable kind (task, note, link, PR, file, directory, document) — the detected kind ranks first, the rest still list even when they'd fail for that text (a failure just shows the API's error in the top bar). Text with an `http://`/`https://` scheme, or that looks like a bare domain (`example.com`, `github.com/foo/bar`), is treated as a link (or a PR, for GitHub pull URLs); a bare domain is prefixed with `https://` before it's added, since detection only recognizes URLs that already carry a scheme. `Add file…` and `Add directory…` open the native picker inside the app, or the in-page directory browser in a plain browser, and add the picked path. `Add…` opens a dialog (always listed, near the top when the query is empty) with a multi-line field, the same live detection line, a kind override (Auto plus every kind), and file/directory pickers that fill the field; Enter submits, Escape closes. A successful add from a palette command navigates to the new item or task. The `Add…` dialog instead stays open: it shows `Added <kind> · <title>`, resets the field and the kind to Auto, and puts the cursor back in the field, so items can be added one after another until Escape or **Done**. A failure shows in the top bar or, from the `Add…` dialog, inside the dialog itself.
+`Cmd+K` opens the palette whatever has focus, including the search, filter, and sort controls at the top of a page and the quick-add field. `Ctrl+K` also opens it, except inside a text field, where it stays the native kill-line. Neither opens it over a modal dialog.
+
 Palette results keep keyboard focus in the search field. Arrow keys and Ctrl+N/Ctrl+P move the active result; Enter runs it and Escape closes the palette and restores focus. Text-editing shortcuts remain native: in particular, Ctrl+K edits the palette query rather than reopening or closing the palette. `Go to Library` ranks ahead of the broad `Search Library` action for a `lib` query.
+
+### List keys and pseudo focus
+
+Listings have their own focus, separate from browser focus. One row at a time is the focused row; it gets a brighter background and an accent bar on its left edge. Browser focus does not move to the row.
+
+```js
+const listKeys = {
+  j: "focus the next row",
+  k: "focus the previous row",
+  Enter: "run the row's standard action: open its page, or open a PR on GitHub in the system browser",
+  Space: "toggle the row's checkbox, adding or removing it from the next bulk action",
+  ".": "open the command palette scoped to this row's actions",
+};
+```
+
+- The keys are ignored while typing in a text field, select, or editable region, and while the palette, a modal, a context menu, or the terminal has the keyboard.
+- `j` and `k` blur whatever control had browser focus, so `Enter` and `Space` then reach the focused row. If you Tab to a button or link afterwards, `Enter` and `Space` belong to that control again.
+- Clicking a row focuses it. With nothing focused, `j` or `k` starts on the first row. Focus stops at both ends of the list.
+- When the focused row leaves the list, because it was deleted or filtered out, the row now in its position takes the focus. A different page starts with nothing focused.
+- `Enter` clicks the row's first link, or the element marked `data-nav-primary`. It never falls back to a button, so it cannot trigger Delete or Kill. A row with no link opens its actions instead.
+- `.` lists the row's standard action, its selection toggle, every enabled button and link in the row, and the row's right-click menu actions.
+
+Rows are found by selector (`NAV_ROW_SELECTOR` in `apps/desktop/frontend/src/lib/list-nav.ts`): library item rows, PR rows, task rows, notification rows, tiles, and every `table.data-table` body row. A listing built from those pieces takes part with no extra code. A row built from anything else needs `data-nav-item`. Optional attributes: `data-nav-primary` on the element `Enter` should click, `data-nav-select` on the checkbox `Space` should toggle, `data-nav-label` for the name shown in the actions palette.
 
 The macOS window enables Wails `TabFocusesLinks`, so all native `<a href>` links participate in Tab/Shift+Tab navigation across every route without per-link tabindex patches. Verify keyboard traversal in the actual WebView; a DOM `tabIndex` of zero alone does not prove macOS will tab to a link.
 

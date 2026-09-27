@@ -25,10 +25,13 @@ type CommandPaletteProps = {
   returnFocusRef: RefObject<HTMLElement | null>;
   /** Called with the trimmed query as it changes, so the owner can offer query-dependent commands. */
   onQueryChange?: (query: string) => void;
+  /** Names the palette when it is scoped, e.g. to one row's actions. */
+  label?: string;
+  placeholder?: string;
   children?: ReactNode;
 };
 
-export function CommandPalette({ commands, open, onOpenChange, returnFocusRef, onQueryChange, children }: CommandPaletteProps) {
+export function CommandPalette({ commands, open, onOpenChange, returnFocusRef, onQueryChange, label = "Command palette", placeholder = "Type a page or search the library…", children }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -99,13 +102,14 @@ export function CommandPalette({ commands, open, onOpenChange, returnFocusRef, o
 
   return (
     <div className="command-palette-backdrop" role="presentation" onMouseDown={close}>
-      <div className="command-palette" role="dialog" aria-modal="true" aria-label="Command palette" onKeyDown={onKeyDown} onMouseDown={event => event.stopPropagation()}>
+      <div className="command-palette" role="dialog" aria-modal="true" aria-label={label} onKeyDown={onKeyDown} onMouseDown={event => event.stopPropagation()}>
         <input
           ref={inputRef}
+          autoFocus
           type="search"
           value={query}
           onChange={event => setQuery(event.target.value)}
-          placeholder="Type a page or search the library…"
+          placeholder={placeholder}
           role="combobox"
           aria-label="Search commands"
           aria-expanded="true"
