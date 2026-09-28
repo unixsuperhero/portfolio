@@ -1,8 +1,8 @@
 # Portfolio toolset
 
-Portfolio is a local library of documents, notes, links, PRs, files, and directories, with tags, portfolios of query cards, categories with slots, watched directories, project discovery, and a ports view. This set of documents describes the reusable pieces that were carved out of the app so the next rewrite starts from parts instead of from zero.
+Portfolio is a local library of documents, notes, links, PRs, files, directories, and tasks, with reminders, tags, portfolios of query cards and widgets, categories with slots, watched directories, project discovery, and live ports and Herdr views. These documents describe the reusable models and adapters so another application can reuse their rules instead of rebuilding them.
 
-There are three levels, and every level is complete on its own:
+The documentation groups the toolset into three levels. Their domain coverage differs; the CLI audit records the gaps.
 
 | Level | What | Where |
 |-------|------|-------|
@@ -13,8 +13,9 @@ There are three levels, and every level is complete on its own:
 ## Start here
 
 - [Overview](overview.md) — the layout, how to install, and a five-minute tour
-- [Data model](data-model.md) — every record shape as JavaScript data, with examples
-- [Architecture](architecture.md) — how the packages depend on each other, and how `app.js` maps onto them
+- [Data model](data-model.md) — record examples, ownership, relationships, identity, and current versus proposed models from epic `td-623ef3`
+- [Architecture](architecture.md) — package dependencies, reuse boundaries, and the mapping from `app.js`
+- [CLI domain coverage](cli/coverage.md) — the P2 audit, current verification evidence, and unresolved epic scope
 - [Suggestions](suggestions.md) — reusable tools worth extracting next, and a better way to build the next version
 - [Desktop app](desktop.md) — the Wails app: sidecar, proxy, terminal, browser windows, and how to drive it from a script
 - [Testing](testing.md) — running tests, the typecheck, and the smoke script

@@ -2,7 +2,7 @@
 
 ## Dependency graph
 
-Arrows point at what a package imports. Nothing points back up, and nothing below `core` knows about a server.
+This overview groups reusable packages by responsibility; it is not an exhaustive import graph. The table under [reuse boundaries](#reuse-boundaries) includes the GitHub, Herdr, and HTTP adapters.
 
 ```text
                       ┌──────────────┐
@@ -118,7 +118,41 @@ Bun.serve({ fetch(request) {
 } });
 ```
 
-The same components render on the server for a no-JavaScript page and hydrate in the browser for an interactive one, and the `pf-*` tools already exercise every repo, so the data layer is proven before the first route exists.
+The same UI package supports server rendering and browser interaction. The Ruby tools cover library and query-card workflows, but do not exercise every repository or domain operation. The [CLI coverage audit](cli/coverage.md) records the missing command families and the checks actually performed.
+
+## Reuse boundaries
+
+Epic `td-623ef3` asks for reusable models and adapters rather than another application-specific implementation. The [data model](data-model.md) identifies each record's authority, relationships, and storage. Existing package boundaries already separate most of those concerns.
+
+| Responsibility | Existing module | What stays outside |
+| --- | --- | --- |
+| Shared records and pure detection, path, slot, and card rules | `@portfolio/core` | SQL, process lifecycle, HTTP routing |
+| SQLite rows, joins, migrations, and view projections | `@portfolio/db` | UI state and external polling |
+| Markdown rendering and link rewriting | `@portfolio/render` | Watch ownership and scheduling |
+| Watch reconciliation, project discovery, service metadata | `@portfolio/watch` | A hard dependency on a particular renderer; rendering is injected |
+| GitHub queries, parsing, ignored checks, change events, polling | `@portfolio/github` | Presentation; the poller accepts its database and command dependencies |
+| Herdr session discovery, schema catalog, socket commands | `@portfolio/herdr/server` | Browser code and Portfolio persistence |
+| Herdr records, entity projection, injected HTTP request client | `@portfolio/herdr` | Socket discovery in browser code |
+| Listener and process snapshots | `@portfolio/ports` | Durable project or service identity |
+| HTTP validation and routing | `@portfolio/api` | Page layouts |
+| HTTP transport | `@portfolio/client` | SQLite access in consumers |
+| Reusable views | `@portfolio/ui` | Direct SQL and socket access |
+| Ruby command declarations and helpers | `bin/pf-*`, `lib/pf/` | Assumed parity with every TypeScript repository method |
+
+A rewrite can reuse a plain record without inheriting its storage mechanism. For example, these relationships remain different even when one page displays them together:
+
+```js
+const task = { id: 12, item_id: 43, parent_id: null };
+const owningLibraryItem = { id: 47, type: "task", task_id: 12 };
+const relatedDocument = { id: 43, type: "document" };
+const reminder = { id: 5, task_id: 12, at: "09:00", recurrence: "daily" };
+```
+
+The database owns synchronization between task 12 and item 47. Item 43 is optional context, not the task's identity. Reminder 5 has its own completion history. Reimplementing these links in a page or CLI command would duplicate domain rules.
+
+External records need a different boundary. A Herdr pane belongs to a named session, a process listener is a transient observation, and a GitHub PR may have several local checkouts. None is interchangeable with a project item ID. The [Git adapter and normalized-check proposals](data-model.md#git-repositories-branches-and-worktrees) remain unimplemented; the current checks stay embedded in the PR record.
+
+The Ruby CLI shares the canonical schema but implements its own helpers. Reuse of SQL constraints does not prove equivalent validation, projections, or command coverage. The [coverage audit](cli/coverage.md#remaining-epic-scope) separates existing operations from the work required before claiming CLI parity.
 
 ## Sharing with other apps
 
