@@ -23,22 +23,18 @@ type CommandPaletteProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   returnFocusRef: RefObject<HTMLElement | null>;
-  /** Called with the trimmed query as it changes, so the owner can offer query-dependent commands. */
-  onQueryChange?: (query: string) => void;
   /** Names the palette when it is scoped, e.g. to one row's actions. */
   label?: string;
   placeholder?: string;
   children?: ReactNode;
 };
 
-export function CommandPalette({ commands, open, onOpenChange, returnFocusRef, onQueryChange, label = "Command palette", placeholder = "Type a page or search the library…", children }: CommandPaletteProps) {
+export function CommandPalette({ commands, open, onOpenChange, returnFocusRef, label = "Command palette", placeholder = "Type a page or search the library…", children }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const matches = useMemo(() => rankCommands(commands, query), [commands, query]);
-
-  useEffect(() => { onQueryChange?.(query.trim()); }, [onQueryChange, query]);
 
   useEffect(() => {
     if (!open) return;

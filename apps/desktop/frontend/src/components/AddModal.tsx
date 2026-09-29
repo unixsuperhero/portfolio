@@ -33,8 +33,8 @@ type AddModalProps = {
 };
 
 /**
- * The "Add…" command's dialog: free-form content, live detection (same debounce as the
- * palette), a kind override, and file/directory pickers that fill the textarea. After each
+ * The "Add…" command's dialog: free-form content, live detection, a kind override,
+ * and file/directory pickers that fill the textarea. After each
  * add the form resets and the dialog stays open for the next one; Escape closes it. Mirrors
  * ConfirmDialog's <dialog>/showModal() pattern so it works in the Wails webview.
  */
@@ -71,7 +71,7 @@ export function AddModal({ open, initialContent, onClose }: AddModalProps) {
     else ref.current?.close();
   }, [open]);
 
-  // Same live detection as the command palette, debounced the same way.
+  // Debounce live detection while editing the content.
   useEffect(() => {
     const trimmed = content.trim();
     if (!trimmed) { setDetection(null); return; }

@@ -1,5 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Detection, ItemType } from "@portfolio/core";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { createHashRouter, Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { RouterProvider } from "react-router/dom";
 import { useTerminalStore } from "./terminal/store.ts";
@@ -9,16 +8,14 @@ import { attachListNavigation, isEditableTarget, ROW_ACTIONS_EVENT, shouldOpenPa
 import type { RowActionsDetail } from "./lib/list-nav.ts";
 import { CommandPalette } from "./components/CommandPalette.tsx";
 import type { Command } from "./components/CommandPalette.tsx";
-import { BrowsePicker } from "./components/BrowsePicker.tsx";
 import { AddModal } from "./components/AddModal.tsx";
 import { OpenedFiles } from "./components/OpenedFiles.tsx";
-import { createTask, detect, quickAdd } from "./api.ts";
 import { ToastStack } from "./components/ToastStack.tsx";
 import { useSidecarStatus } from "./hooks/useSidecarStatus.ts";
 import { useNotificationPolling } from "./hooks/useNotificationPolling.ts";
 import { PrDataProvider } from "./hooks/usePrData.tsx";
 import { dismissNotifications, useNotifications } from "./lib/notifications.ts";
-import { home, openSystem, pickDirectory, pickFile } from "./native.ts";
+import { openSystem } from "./native.ts";
 import { isWails } from "./lib/wails.ts";
 import "./shell.css";
 
@@ -58,30 +55,6 @@ const NAV_ITEMS = [
 
 const isNativeMac = () => isWails() && /Mac/i.test(navigator.platform);
 
-const TYPE_LABEL: Record<ItemType, string> = { document: "document", note: "note", link: "link", pr: "PR", file: "file", dir: "directory", task: "task" };
-const ALL_ADDABLE_TYPES: ItemType[] = ["task", "note", "link", "pr", "file", "dir", "document"];
-type PickerKind = "file" | "dir";
-
-const URL_SCHEME_RE = /^https?:\/\//i;
-const DOMAIN_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+(\/\S*)?$/i;
-
-/** True when the whole trimmed text is a link: it has an http(s) scheme, or looks like a bare
- * domain (example.com, github.com/foo/bar). A domain inside a longer sentence does not count. */
-function isLinkish(text: string): boolean {
-  return URL_SCHEME_RE.test(text) || DOMAIN_RE.test(text);
-}
-
-/** Prefixes a bare domain with https:// so detect()/quickAdd() see a real URL — detect() only
- * recognizes URLs that already carry a scheme (see packages/core/src/detect.ts). */
-function linkContent(text: string): string {
-  return URL_SCHEME_RE.test(text) ? text : `https://${text}`;
-}
-
-/** The content to actually send for a given kind: link/PR text gets the https:// treatment above. */
-function contentFor(type: ItemType, text: string): string {
-  return (type === "link" || type === "pr") && isLinkish(text) ? linkContent(text) : text;
-}
-
 function browserUrlForLocation(pathname: string, search: string): string {
   if (!isWails()) return window.location.href;
   return `http://127.0.0.1:4388/app/#${pathname}${search}`;
@@ -107,9 +80,6 @@ function TopBar() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [browserBusy, setBrowserBusy] = useState(false);
   const [browserError, setBrowserError] = useState("");
-  const [paletteQuery, setPaletteQuery] = useState("");
-  const [detection, setDetection] = useState<Detection | null>(null);
-  const [browseKind, setBrowseKind] = useState<PickerKind | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addModalInitial, setAddModalInitial] = useState("");
   const [rowActions, setRowActions] = useState<RowActionsDetail | null>(null);
@@ -141,43 +111,6 @@ function TopBar() {
     };
   }, [navigate]);
 
-  // Detect what the palette text is (URL, path, or text) the same way the Library quick-add does.
-  // A bare domain (no scheme) is prefixed with https:// first, since detect() only recognizes
-  // URLs that already carry a scheme.
-  useEffect(() => {
-    if (!paletteQuery) { setDetection(null); return; }
-    const probe = isLinkish(paletteQuery) ? linkContent(paletteQuery) : paletteQuery;
-    let live = true;
-    const id = setTimeout(() => {
-      detect(probe)
-        .then(result => { if (live) setDetection(result); })
-        .catch(() => { if (live) setDetection(null); });
-    }, 250);
-    return () => { live = false; clearTimeout(id); };
-  }, [paletteQuery]);
-
-  const report = (err: unknown, fallback: string) => setBrowserError(err instanceof Error ? err.message : fallback);
-
-  const addItem = useCallback((content: string, type?: ItemType) => {
-    setBrowserError("");
-    return quickAdd(content, type ? { type } : {})
-      .then(result => navigate(`/items/${result.id}`))
-      .catch(err => report(err, "Could not add the item."));
-  }, [navigate]);
-
-  const addTask = useCallback((title: string) => {
-    setBrowserError("");
-    return createTask({ title })
-      .then(result => navigate(`/tasks/${result.id}`))
-      .catch(err => report(err, "Could not add the task."));
-  }, [navigate]);
-
-  const addPath = useCallback(async (kind: PickerKind) => {
-    if (!isWails()) { setBrowseKind(kind); return; }
-    const picked = kind === "dir" ? await pickDirectory("Add a directory to the library", await home()) : await pickFile("Add a file to the library", await home());
-    if (picked) await addItem(picked, kind);
-  }, [addItem]);
-
   const commands = useMemo<Command[]>(() => {
     const nav: Command[] = NAV_ITEMS.map(item => ({
       id: `go-${item.to}`,
@@ -186,31 +119,6 @@ function TopBar() {
       run: () => navigate(item.to),
     }));
 
-    // Adding what was typed: the detected kind first, then every other addable kind.
-    const add: Command[] = [];
-    const text = paletteQuery;
-    if (text) {
-      const detectedType = detection?.type;
-      const hintFor = (type: ItemType) =>
-        type === "task" ? "A task titled with the palette text"
-        : type === "document" ? "Import the file as a rendered document"
-        : `Add the palette text as a ${TYPE_LABEL[type]}`;
-      const addAs = (type: ItemType, hint: string): Command => ({
-        id: `add-as-${type}`,
-        label: `Add ${TYPE_LABEL[type]}`,
-        hint,
-        always: true,
-        run: query => { const content = contentFor(type, query); void (type === "task" ? addTask(content) : addItem(content, type)); },
-      });
-      if (detection && detectedType) {
-        add.push({ ...addAs(detectedType, `Detected · ${detection.title}`), id: "add-detected" });
-      }
-      for (const type of ALL_ADDABLE_TYPES) {
-        if (type === detectedType) continue;
-        add.push(addAs(type, hintFor(type)));
-      }
-    }
-
     const openAdd: Command = {
       id: "open-add-modal",
       label: "Add…",
@@ -218,11 +126,6 @@ function TopBar() {
       always: true,
       run: query => { setAddModalInitial(query); setAddModalOpen(true); },
     };
-
-    const pickers: Command[] = [
-      { id: "pick-file", label: "Add file…", hint: "Pick a file to add to the library", always: true, run: () => { void addPath("file"); } },
-      { id: "pick-dir", label: "Add directory…", hint: "Pick a directory to add to the library", always: true, run: () => { void addPath("dir"); } },
-    ];
 
     const search: Command = {
       id: "search-library",
@@ -233,8 +136,8 @@ function TopBar() {
     };
 
     // Keep navigation ahead of the broad text-query command so "library" selects Go to Library.
-    return text ? [...add, openAdd, ...pickers, ...nav, search] : [openAdd, ...nav, ...pickers, search];
-  }, [addItem, addPath, addTask, detection, navigate, paletteQuery]);
+    return [openAdd, ...nav, search];
+  }, [navigate]);
 
   const openPalette = (trigger: HTMLElement | null) => {
     if (trigger?.closest(".command-palette")) return;
@@ -307,13 +210,9 @@ function TopBar() {
         open={paletteOpen}
         onOpenChange={setPaletteOpen}
         returnFocusRef={returnFocusRef}
-        onQueryChange={setPaletteQuery}
         label={rowActions ? `Actions for ${rowActions.label}` : undefined}
         placeholder={rowActions ? `Actions for ${rowActions.label}…` : undefined}
       />
-      {browseKind ? (
-        <BrowsePicker kind={browseKind} onClose={() => setBrowseKind(null)} onPick={path => { setBrowseKind(null); void addItem(path, browseKind); }} />
-      ) : null}
       <AddModal
         open={addModalOpen}
         initialContent={addModalInitial}
