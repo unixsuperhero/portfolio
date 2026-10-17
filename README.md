@@ -79,14 +79,14 @@ Use `mdoc` to add one Markdown file to Portfolio:
 mdoc guide.md --no-open
 ```
 
-Pass more than one Markdown file, or `-r`, to build one chunked HTML site and save one library item for its `index.html`. `-r` includes local `.md` and `.markdown` files linked from the roots. Pandoc rewrites a cross-file link only when the path text matches an input path, so `mdoc` copies the files into a fresh temporary directory and runs `pandoc --file-scope` from there. A link without an anchor is aimed at the target file's first heading. The site directory must not already exist. Pages other than the index stay on disk beside it. Opening the item serves `/items/<id>/`, and `/items/<id>/<path>` is any file in that directory. `mdoc` leaves the build directory in place.
+Pass more than one Markdown file, or `-r`, to build one standalone HTML file and save it as one library item. Roots appear in argument order, followed by recursively discovered files; repeated inputs appear once. `-r` follows local `.md` and `.markdown` links. Links between included documents point to scoped anchors in the combined file, and images and styles are embedded so the HTML can be moved and opened without the source files. `--out` names a new HTML file and refuses an existing path. Without `--out`, the command prints the retained temporary HTML path.
 
 ```bash
 mdoc guide.md notes.md --no-open
-mdoc -r docs/overview.md --title "Overview" --out ./site
+mdoc -r docs/overview.md --title "Overview" --out ./overview.html
 ```
 
-For a single file, the title and description apply to that document. `mdoc` returns and opens the saved item. It ignores external links, anchor links, images, links written in code, and raw HTML anchors. It reports a missing linked Markdown file before it uploads any document or builds a site. Paths use their lexical absolute spelling, so two symlink spellings identify different tracked sources.
+For a single file, the title and description apply to that document. `mdoc` returns and opens the saved item. Recursive discovery ignores external links, anchor-only links, images, links written in code, and raw HTML anchors. Missing linked Markdown files are reported before rendering or uploading. Paths use their lexical absolute spelling, so two symlink spellings identify different tracked sources.
 
 Pipe one nonrecursive document with `-`:
 

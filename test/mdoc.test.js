@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -44,19 +44,6 @@ function labeledPath(stdout, label) {
   return line.slice(`mdoc: ${label} `.length);
 }
 
-async function unresolvedHrefs(site) {
-  const bad = [];
-  for (const name of (await readdir(site)).filter(name => name.endsWith(".html"))) {
-    const text = await readFile(join(site, name), "utf8");
-    for (const match of text.matchAll(/href="([^"]*)"/g)) {
-      const href = match[1];
-      if (href.includes("index.html") || href.includes(".html")) continue;
-      if (href.startsWith("http://") || href.startsWith("https://") || href.startsWith("mailto:")) continue;
-      bad.push(`${name} ${href}`);
-    }
-  }
-  return bad;
-}
 
 beforeAll(async () => {
   await mkdir(join(fixture, "templates"), { recursive: true });
@@ -88,53 +75,46 @@ afterAll(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
-test("builds a chunked site for recursive Markdown and resolves cross-file links", async () => {
+test("combines recursive Markdown into standalone HTML with working cross-file links", async () => {
   const docs = join(directory, "docs");
   const alpha = join(docs, "alpha.md");
   const beta = join(docs, "sub", "Beta, file;name.md");
   const gamma = join(docs, "sub", "gamma.markdown");
   const other = join(docs, "other.md");
-  const alphaContent = "# Alpha\n\n[beta](sub/Beta%2C%20file%3Bname.md?mode=full#part)\n\n[other](other.md)\n\n[gamma][g]\n\n![image](sub/image.md)\n\n<https://example.com/a.md>\n\n`[fake](sub/nope.md)`\n\n[g]: sub/gamma.markdown#section\n";
   await mkdir(join(docs, "sub"), { recursive: true });
-  await writeFile(alpha, alphaContent);
+  await writeFile(alpha, "# Alpha\n\n[beta](sub/Beta%2C%20file%3Bname.md?mode=full#part)\n\n[other](other.md)\n\n[gamma][g]\n\n![image](sub/image.png)\n\n<https://example.com/a.md>\n\n`[fake](sub/nope.md)`\n\n[g]: sub/gamma.markdown#section\n");
   await writeFile(beta, "# Beta\n\n[alpha](../alpha.md#top)\n\n## Part\n\nText.\n");
   await writeFile(gamma, "# Gamma\n");
-  await writeFile(join(docs, "sub", "image.md"), "image\n");
+  const image = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=";
+  await writeFile(join(docs, "sub", "image.png"), Buffer.from(image, "base64"));
   await writeFile(other, "# Other\n");
-
-  const first = mdoc(["-r", alpha, other, alpha, "--no-open"]);
-  expect(first.exitCode).toBe(0);
+  const out = join(directory, "recursive.html");
+  const count = (await items()).length;
+  const first = mdoc(["-r", alpha, other, alpha, "--out", out, "--no-open"]);
   expect(first.stderr.toString()).toBe("");
-  const site = labeledPath(first.stdout.toString(), "site");
-  const build = labeledPath(first.stdout.toString(), "build");
-  expect(await unresolvedHrefs(site)).toEqual([]);
-  expect((await readdir(build)).includes("src")).toBe(true);
-  const pages = (await Promise.all((await readdir(site)).filter(name => name.endsWith(".html")).map(async name => readFile(join(site, name), "utf8")))).join("\n");
-  expect(pages).toContain('href="https://example.com/a.md"');
-  expect(pages).toContain('src="sub/image.md"');
-  expect(pages).toMatch(/href="[^"]*beta-file[^"]*\.html/);
-  expect(pages).toMatch(/href="[^"]*other\.md__other\.html"/);
-  expect(pages).not.toContain('href="#other.md"');
-  expect(pages).not.toContain("../alpha.md");
-  const saved = first.stdout.toString().split("\n").find(line => line.startsWith("mdoc: saved "));
-  expect(saved.endsWith("/")).toBe(true);
-  const id = saved.match(/\/items\/(\d+)\//)[1];
-  expect((await items())).toHaveLength(1);
-  const chunk = (await readdir(site)).find(name => name.endsWith(".html") && name !== "index.html");
-  const served = await fetch(`${serverUrl}/items/${id}/${chunk}`);
+  expect(first.exitCode).toBe(0);
+  const html = await readFile(out, "utf8");
+  expect(html).toContain('href="https://example.com/a.md"');
+  expect(html).toContain('src="data:image/png;base64,' + image + '"');
+  expect(html).toContain('href="#mdoc-3-part"');
+  expect(html).toContain('href="#mdoc-2-other"');
+  expect(html).toContain('href="#mdoc-1-alpha"');
+  expect(html).toContain('href="#mdoc-4-gamma"');
+  expect(html.match(/<h1\b[^>]*>[^<]*<\/h1>/g)).toEqual([
+    '<h1 id="mdoc-1-alpha">Alpha</h1>', '<h1 id="mdoc-2-other">Other</h1>',
+    '<h1 id="mdoc-3-beta">Beta</h1>', '<h1 id="mdoc-4-gamma">Gamma</h1>',
+  ]);
+  expect((await items())).toHaveLength(count + 1);
+  const saved = first.stdout.toString().split("\n").find(line => line.startsWith("mdoc: saved ")).slice(12);
+  const served = await fetch(saved, { redirect: "manual" });
   expect(served.status).toBe(200);
-  expect(await served.text()).toBe(await readFile(join(site, chunk), "utf8"));
-  expect((await fetch(`${serverUrl}/items/${id}/%2e%2e/secret`)).status).toBe(404);
-  const root = await fetch(`${serverUrl}/items/${id}`, { redirect: "manual" });
-  expect(root.status).toBe(302);
-  expect(root.headers.get("location")).toBe(`/items/${id}/`);
-
-  const occupied = join(directory, "occupied-site");
-  await mkdir(occupied);
-  const refused = mdoc(["-r", alpha, "--out", occupied, "--no-open"]);
+  expect(await served.text()).toContain('<h1 id="mdoc-4-gamma">Gamma</h1>');
+  expect((await itemFor(out)).rendered_html).toBe(html);
+  const refused = mdoc(["-r", alpha, "--out", out, "--no-open"]);
   expect(refused.exitCode).not.toBe(0);
-  expect(refused.stderr.toString()).toContain("output directory already exists");
-  expect((await items())).toHaveLength(1);
+  expect(refused.stderr.toString()).toContain("output file already exists");
+  expect(await readFile(out, "utf8")).toBe(html);
+  expect((await items())).toHaveLength(count + 1);
 });
 
 test("fails a recursive batch before it uploads missing linked Markdown", async () => {
@@ -147,20 +127,36 @@ test("fails a recursive batch before it uploads missing linked Markdown", async 
   expect((await items())).toHaveLength(count);
 });
 
-test("builds a chunked site for several Markdown files without -r", async () => {
-  const one = join(directory, "docs", "plain-one.md");
-  const two = join(directory, "docs", "plain-two.md");
-  await writeFile(one, "# One\n\n[two](plain-two.md)\n\n[Two setup](plain-two.md#Setup)\n");
-  await writeFile(two, "# Two\n\n## Setup\n\nText.\n");
+test("combines inputs in argument order with scoped headings, images, and stdin", async () => {
+  const one = join(directory, "docs", "z-one.md");
+  const two = join(directory, "docs", "sub", "a-two.md");
+  await writeFile(one, "# Shared\n\nFIRST\n\n[two](sub/a-two.md)\n\n[Two setup](sub/a-two.md#Setup)\n\n[self](#shared)\n\n![first](sub/image.png)\n");
+  await writeFile(two, "# Shared\n\nSECOND\n\n## Setup\n\n![second](image.png)\n");
   const count = (await items()).length;
   const result = mdoc([one, two, "--no-open"]);
+  expect(result.stderr.toString()).toBe("");
   expect(result.exitCode).toBe(0);
-  const site = labeledPath(result.stdout.toString(), "site");
-  expect(await unresolvedHrefs(site)).toEqual([]);
-  const pages = (await Promise.all((await readdir(site)).filter(name => name.endsWith(".html")).map(async name => readFile(join(site, name), "utf8")))).join("\n");
-  expect(pages).toMatch(/href="[^"]*plain-two\.md__two\.html"/);
-  expect(pages).toMatch(/href="[^"]*plain-two\.md__two\.html#plain-two\.md__setup"/);
+  const output = labeledPath(result.stdout.toString(), "html");
+  const html = await readFile(output, "utf8");
+  expect(html).toContain('href="#mdoc-2-shared"');
+  expect(html).toContain('href="#mdoc-2-setup"');
+  expect(html).toContain('href="#mdoc-1-shared"');
+  expect(html.indexOf("FIRST")).toBeLessThan(html.indexOf("SECOND"));
+  expect(html.match(/<h1\b[^>]*>[^<]*<\/h1>/g)).toEqual([
+    '<h1 id="mdoc-1-shared">Shared</h1>', '<h1 id="mdoc-2-shared">Shared</h1>',
+  ]);
+  expect(html).toContain('id="TOC"');
+  expect([...html.matchAll(/<img\b[^>]*src="([^"]*)"/g)].map(match => match[1].startsWith("data:image/png;base64,"))).toEqual([true, true]);
   expect((await items())).toHaveLength(count + 1);
+  const piped = mdoc([one, "-", "--no-toc", "--no-open"], "# Piped second\n\nFROM-STDIN\n");
+  expect(piped.exitCode).toBe(0);
+  const pipedOutput = labeledPath(piped.stdout.toString(), "html");
+  const pipedHtml = await readFile(pipedOutput, "utf8");
+  expect(pipedHtml).toContain("FROM-STDIN");
+  expect(pipedHtml.indexOf("FIRST")).toBeLessThan(pipedHtml.indexOf("FROM-STDIN"));
+  expect(pipedHtml).not.toContain('id="TOC"');
+  await rm(output);
+  await rm(pipedOutput);
 });
 
 test("rolls back a server document when Pandoc cannot render it", async () => {
