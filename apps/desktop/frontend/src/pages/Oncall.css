@@ -1,0 +1,69 @@
+/* /oncall: a master list of Slack/PR items on the left, the selected item's context on the right. */
+.oncall-page { max-width: 92rem; }
+.oncall-intro { color: var(--text2); margin: .4rem 0 0; font-size: .9rem; }
+.oncall-summary { margin: 0 0 .9rem; }
+.oncall-polling-controls { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem .75rem; margin: .8rem 0 .35rem; }
+.oncall-polling-controls .operational-status, .oncall-polling-controls .operational-error { margin: 0; }
+.oncall-poll-hint { margin: 0 0 .9rem; }
+.oncall-layout { display: grid; grid-template-columns: minmax(17rem, 21rem) minmax(0, 1fr); gap: 1.1rem; align-items: start; }
+.oncall-items {
+  list-style: none; margin: 0; padding: 0; max-height: 36rem; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.oncall-group + .oncall-group { border-top: 1px solid var(--border); }
+.oncall-group > ul { list-style: none; margin: 0; padding: 0; }
+.oncall-group-heading { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; padding: .55rem .8rem; background: var(--surface2); }
+.oncall-group-heading h2 { margin: 0; min-width: 0; font-size: .78rem; font-weight: 600; overflow-wrap: anywhere; }
+.oncall-group-heading .oncall-group-time { color: var(--text2); font-size: .72rem; font-weight: 400; }
+.oncall-group-heading span { flex: none; color: var(--text2); font-size: .72rem; }
+.oncall-item { border-bottom: 1px solid var(--border); }
+.oncall-item:last-child { border-bottom: 0; }
+/* Selection is a ring so the j/k pseudo-focus background (shell.css) still shows through. */
+.oncall-item.is-selected { outline: 2px solid var(--accent); outline-offset: -2px; }
+.oncall-item-button {
+  display: grid; gap: .25rem; width: 100%; padding: .7rem .8rem;
+  background: none; border: 0; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.oncall-item-button:hover { background: var(--surface2); }
+.oncall-item-top { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+.oncall-item-title { font-size: .9rem; font-weight: 600; overflow-wrap: anywhere; }
+.oncall-empty { padding: 1rem; }
+.oncall-empty .empty { padding: 1.5rem .5rem; }
+.oncall-detail {
+  min-width: 0; padding: 1rem 1.1rem 1.2rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.oncall-detail-head h2 { margin: 0 0 .4rem; font-size: 1.15rem; overflow-wrap: anywhere; }
+.oncall-detail-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; margin: 0 0 .9rem; }
+.oncall-status-editor {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem;
+  padding: .7rem 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+}
+.oncall-status-editor > label { color: var(--text2); font-size: .8rem; }
+.oncall-status-editor select {
+  padding: .35rem .5rem; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: var(--radius); font: inherit; font-size: .85rem;
+}
+.oncall-prompts, .oncall-runs { margin-top: 1.7rem; }
+.oncall-section-head h2 { margin: 0 0 .2rem; font-size: 1.05rem; }
+.oncall-section-head p { margin: 0; }
+.oncall-prompt-list { list-style: none; margin: .8rem 0 0; padding: 0; display: grid; gap: .8rem; }
+.oncall-prompt { padding: .85rem 1rem 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.oncall-prompt-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
+.oncall-prompt-head h3 { margin: 0; font-size: .98rem; }
+.oncall-prompt-dir { margin: .45rem 0 0; font-family: var(--mono); overflow-wrap: anywhere; }
+.oncall-prompt-body {
+  margin: .6rem 0 0; padding: .6rem .7rem; max-height: 12rem; overflow: auto;
+  color: var(--text2); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  font: .78rem/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.oncall-run { margin-top: .7rem; }
+.oncall-run-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: 0 0 .3rem; font-size: .82rem; }
+.oncall-run-list { list-style: none; margin: .6rem 0 0; padding: 0; display: grid; gap: .8rem; }
+.oncall-run-list > li { padding-top: .7rem; border-top: 1px solid var(--border); }
+.oncall-runs > details > summary { cursor: pointer; font-weight: 600; }
+.oncall-runs .oncall-output { max-height: 18rem; }
+@media (max-width: 1000px) {
+  .oncall-layout { grid-template-columns: minmax(0, 1fr); }
+  .oncall-items { max-height: 24rem; }
+}

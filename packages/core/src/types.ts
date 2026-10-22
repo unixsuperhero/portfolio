@@ -342,3 +342,34 @@ export interface PrStatus {
   gh_ok: boolean;
   login: string | null;
 }
+
+export type OncallStatus = "open" | "working" | "blocked" | "done" | "dismissed";
+
+export interface OncallItem {
+  id: number;
+  kind: "slack" | "pr";
+  title: string;
+  body: string;
+  thread_context: string;
+  suggested_status: OncallStatus;
+  manual_status: OncallStatus | null;
+  status: OncallStatus;
+  slack_channel: string | null;
+  slack_channel_url: string | null;
+  slack_message_url: string | null;
+  slack_thread_url: string | null;
+  author: string | null;
+  pr_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OncallPrompt { id: string; title: string; directory: string; body: string }
+export interface OncallPromptRun {
+  id: number;
+  prompt_id: string;
+  status: "running" | "completed" | "failed";
+  output: string;
+  started_at: string;
+  finished_at: string | null;
+}

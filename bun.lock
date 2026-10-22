@@ -101,6 +101,10 @@
         "ajv": "^8.17.1",
       },
     },
+    "packages/oncall-mcp": {
+      "name": "@portfolio/oncall-mcp",
+      "version": "0.1.0",
+    },
     "packages/ports": {
       "name": "@portfolio/ports",
       "version": "0.1.0",
@@ -159,6 +163,8 @@
     "@portfolio/github": ["@portfolio/github@workspace:packages/github"],
 
     "@portfolio/herdr": ["@portfolio/herdr@workspace:packages/herdr"],
+
+    "@portfolio/oncall-mcp": ["@portfolio/oncall-mcp@workspace:packages/oncall-mcp"],
 
     "@portfolio/ports": ["@portfolio/ports@workspace:packages/ports"],
 

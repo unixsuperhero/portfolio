@@ -147,6 +147,7 @@ export function migrateGithubIgnoredChecks(db: Database): void {
 /** Opens (and creates) a Portfolio database and applies the schema. ":memory:" works for tests. */
 export function openDatabase(path: string = defaultDatabasePath(), options: OpenOptions = {}): Database {
   const db = options.readonly ? new Database(path, { readonly: true }) : new Database(path, { create: options.create ?? true, readwrite: true });
+  db.exec("PRAGMA busy_timeout = 5000");
   migratePortfolioScopeColumns(db);
   const schema = options.schema ?? readSchema();
   if (options.migrate ?? true) migrateItemKinds(db, path, schema, options.log);

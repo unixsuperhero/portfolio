@@ -1,6 +1,17 @@
 import type { GithubIgnoredCheckRule, Pr } from "../types.ts";
 
 export const lifecycle = (pr: Pick<Pr, "state" | "is_draft">) => pr.state === "open" && pr.is_draft ? "draft" : pr.state;
+
+/**
+ * A stable identity for a pull request URL: `owner/repo#number` when it is a GitHub pull
+ * request link, otherwise the trimmed, lower-cased URL. GitHub's own `html_url` and a link
+ * pasted into Slack then compare equal even with different casing or a trailing slash.
+ */
+export function prIdentity(url: string): string {
+  const match = url.trim().match(/^https?:\/\/(?:www\.)?github\.com\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)/i);
+  return match ? `${match[1]}/${match[2]}#${match[3]}`.toLowerCase() : url.trim().replace(/\/+$/, "").toLowerCase();
+}
+
 export const ignoredCheckRuleRepos = (
   prs: readonly Pick<Pr, "owner" | "repo" | "checks">[],
   rules: readonly Pick<GithubIgnoredCheckRule, "repo">[],

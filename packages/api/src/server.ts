@@ -4,6 +4,8 @@ import { createPrPoller, ghAuth, ghGraphql } from "@portfolio/github";
 import { renderMarkdown } from "@portfolio/render";
 import { DirectoryWatcher } from "@portfolio/watch";
 import { createApi } from "./index.ts";
+import { createOncallPoller } from "./oncall-poller.ts";
+import { createOncallPromptRunner } from "./oncall-prompts.ts";
 
 const CORS_HEADERS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS", "Access-Control-Allow-Headers": "content-type" };
 
@@ -52,12 +54,17 @@ const prPoller = auth.ok
   : undefined;
 if (prPoller) prPoller.start();
 else console.log("prs: gh auth failed, PR polling disabled");
+const oncallPoller = createOncallPoller(store, message => console.log(message), auth.login);
+const oncallPromptRunner = createOncallPromptRunner(store.db, message => console.log(message));
+oncallPoller.start();
 
 const api = createApi(store, {
   render: async (markdown, options) => renderMarkdown(markdown, options),
   log: message => console.log(message),
   watcher,
   prPoller,
+  oncallPoller,
+  oncallPromptRunner,
 });
 
 // Bun drops any request that runs longer than idleTimeout (default 10s) with an empty reply,
@@ -82,5 +89,5 @@ const server = Bun.serve({
 
 console.log(`@portfolio/api listening on http://${server.hostname}:${server.port}`);
 
-process.on("SIGTERM", () => { prPoller?.stop(); watcher.close(); store.close(); process.exit(0); });
-process.on("SIGINT", () => { prPoller?.stop(); watcher.close(); store.close(); process.exit(0); });
+process.on("SIGTERM", () => { oncallPoller.stop(); oncallPromptRunner.stop(); prPoller?.stop(); watcher.close(); store.close(); process.exit(0); });
+process.on("SIGINT", () => { oncallPoller.stop(); oncallPromptRunner.stop(); prPoller?.stop(); watcher.close(); store.close(); process.exit(0); });

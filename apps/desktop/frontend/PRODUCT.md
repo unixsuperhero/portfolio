@@ -31,10 +31,10 @@ Everything is local and belongs to the user: one SQLite file, source files at re
 ## Operating Context
 
 - Runs as `Portfolio.app` on macOS, built with Wails v3 beta. Started from the `.app` bundle, not the bare binary.
-- The frontend never touches SQLite. Every read and write goes through `@portfolio/api`, a Bun sidecar on port 4388, proxied by Go because the page is a secure `wails://` origin.
-- The older HTML server (`app.js` on 4387) still exists and is untouched.
-- The user also drives the same data from the terminal with `pf` and fifteen `pf-*` tools, and from the `h-pf` entry in the hiiro toolset.
-- Pull requests come from the `gh` CLI, polled on a schedule; checks can be watched or ignored per PR.
+- The frontend never touches SQLite. Every read and write goes through `@portfolio/api`, a Bun service on port 4388 that Wails proxies because its page uses a secure `wails://` origin. The per-user LaunchAgent keeps polling when the desktop app is closed.
+- The HTML server (`app.js` on 4387) shows the same oncall actions and renders `~/hub/oncall.md` on each request.
+- The user also drives the same data from the terminal with `pf-*` and `pf-oncall`, and from the `h-pf` entry in the hiiro toolset.
+- Pull requests come from the `gh` CLI. Direct Slack requests for Joshua Toyota or oncall are linked in the personal review section; generic automated team requests are excluded.
 - Watched directories discover projects; each project carries its services (runner, scripts) and the TCP listeners in its directory.
 - Contract for all four parts of the desktop app (Go, terminal, React shell, backend) lives at `apps/desktop/CONTRACT.md`. Change it there first.
 

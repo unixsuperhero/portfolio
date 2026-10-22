@@ -4,6 +4,8 @@ import type { PortsSnapshot } from "@portfolio/ports";
 import { scanPorts as scanPortsDefault } from "@portfolio/ports";
 import type { RenderOptions } from "@portfolio/render";
 import type { DirectoryWatcher } from "@portfolio/watch";
+import type { OncallPoller } from "./oncall-poller.ts";
+import type { OncallPromptRunner } from "./oncall-prompts.ts";
 
 export interface ApiOptions {
   /** Renders Markdown to a standalone HTML page. Defaults to @portfolio/render's renderMarkdown through Pandoc. */
@@ -18,6 +20,8 @@ export interface ApiOptions {
   scanPorts?: () => PortsSnapshot;
   /** When set, the /api/prs routes poll GitHub through it. Unset: empty lists, status.polling/gh_ok false. */
   prPoller?: PrPoller;
+  oncallPoller?: OncallPoller;
+  oncallPromptRunner?: OncallPromptRunner;
 }
 
 export interface Ctx {
@@ -29,6 +33,8 @@ export interface Ctx {
   watcher?: DirectoryWatcher;
   scanPorts: () => PortsSnapshot;
   prPoller?: PrPoller;
+  oncallPoller?: OncallPoller;
+  oncallPromptRunner?: OncallPromptRunner;
 }
 
 export function createContext(store: Store, options: ApiOptions = {}): Ctx {
@@ -41,6 +47,8 @@ export function createContext(store: Store, options: ApiOptions = {}): Ctx {
     watcher: options.watcher,
     scanPorts: options.scanPorts ?? scanPortsDefault,
     prPoller: options.prPoller,
+    oncallPoller: options.oncallPoller,
+    oncallPromptRunner: options.oncallPromptRunner,
   };
 }
 

@@ -1,0 +1,49 @@
+/* Oncall badges and the "Direct Slack requests" area. Shared by pages/Oncall.tsx and the
+   PR page's Slack-request section, so the two read as one feature. */
+
+:root {
+  --oncall-done: #72e4a1;
+  --oncall-dismissed: #bcc5d4;
+}
+:root[data-theme="light"] {
+  --oncall-done: #166534;
+  --oncall-dismissed: #475569;
+}
+
+.oncall-tone-open { --oncall-tone: var(--accent); }
+.oncall-tone-working, .oncall-tone-running { --oncall-tone: var(--gold); }
+.oncall-tone-blocked, .oncall-tone-failed { --oncall-tone: var(--danger); }
+.oncall-tone-done, .oncall-tone-completed { --oncall-tone: var(--oncall-done); }
+.oncall-tone-dismissed { --oncall-tone: var(--oncall-dismissed); }
+.oncall-tone-slack { --oncall-tone: var(--accent2); }
+.oncall-tone-pr { --oncall-tone: var(--gold); }
+
+.oncall-badge {
+  display: inline-flex; align-items: center; gap: .35rem; width: fit-content;
+  color: var(--oncall-tone, var(--text2));
+  background: color-mix(in srgb, var(--oncall-tone, var(--text2)) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--oncall-tone, var(--text2)) 48%, var(--border));
+  border-radius: .35rem; padding: .15rem .45rem; font-size: .74rem; font-weight: 600; line-height: 1.5;
+  white-space: nowrap;
+}
+.oncall-tone-dismissed { border-style: dashed; }
+.oncall-muted { color: var(--text2); font-size: .8rem; }
+.oncall-links { display: flex; flex-wrap: wrap; gap: .4rem .9rem; margin: .5rem 0; }
+.oncall-links a { font-size: .82rem; }
+.oncall-thread { margin: .6rem 0 0; }
+.oncall-thread summary { color: var(--text2); font-size: .82rem; cursor: pointer; }
+.oncall-thread pre, .oncall-output {
+  margin: .5rem 0 0; padding: .6rem .7rem; max-height: 22rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); font: .8rem/1.5 var(--mono); color: var(--text);
+}
+
+/* PR page: reviews asked for directly on Slack, which GitHub's review_requested may not list. */
+.oncall-slack-requests { margin: 1.2rem 0 1.4rem; padding: .9rem 1rem 1rem; border: 1px solid var(--border2); border-radius: var(--radius); background: var(--surface); }
+.oncall-slack-requests > h2 { margin: 0; font-size: 1rem; }
+.oncall-slack-hint { color: var(--text2); font-size: .82rem; margin: .35rem 0 .8rem; }
+.oncall-slack-list { list-style: none; margin: 0; padding: 0; }
+.oncall-slack-list > li { padding: .7rem 0; border-top: 1px solid var(--border); }
+.oncall-slack-list > li:first-child { border-top: 0; }
+.oncall-slack-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; }
+.oncall-slack-head h3 { margin: 0; font-size: .92rem; }
+.oncall-slack-list .oncall-thread pre { max-height: 16rem; }

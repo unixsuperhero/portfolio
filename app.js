@@ -11,6 +11,8 @@ const DB_PATH = process.env.PORTFOLIO_DB ?? join(ROOT, "portfolio.sqlite");
 const TEMPLATE = join(ROOT, "templates", "document.html");
 const EXTERNAL_IMAGES_FILTER = join(ROOT, "templates", "external-images.lua");
 const LEGACY_ROOT = resolve(process.env.PORTFOLIO_LEGACY_ROOT ?? join(process.env.HOME, "claude", "docs"));
+const ONCALL_PATH = join(process.env.HOME, "hub", "oncall.md");
+const ONCALL_API_BASE = process.env.ONCALL_API_BASE ?? "http://127.0.0.1:4388";
 const PORT = Number(process.env.PORT ?? 4387);
 const HOST = process.env.HOST ?? "127.0.0.1";
 const PORTS_SCAN_BIN = process.env.PORTS_SCAN_BIN ?? join(ROOT, "bin", "ports-scan");
@@ -121,8 +123,8 @@ function upsertItem(item) {
 
 function itemHref(item) {
   if (item.type === "document" && !item.content && item.source_path?.toLowerCase().endsWith(".html")) {
-    const candidate = resolve(LEGACY_ROOT, basename(item.source_path));
-    if (candidate.startsWith(LEGACY_ROOT + sep) && existsSync(candidate)) return `/legacy/${encodeURIComponent(basename(item.source_path))}`;
+    const source = resolve(item.source_path);
+    if (dirname(source) === LEGACY_ROOT && existsSync(source)) return `/legacy/${encodeURIComponent(basename(source))}`;
   }
   if ((item.type === "link" || item.type === "pr") && item.url) return item.url;
   return `/items/${item.id}`;
@@ -590,7 +592,7 @@ function railSection(title, type) {
 
 
 function shell(title, body, active = "all") {
-  const nav = [["all", "/", "Library"], ["tasks", "/tasks", "Tasks"], ["starred", "/starred", "Starred"], ["tags", "/tags", "Tags"], ["portfolios", "/portfolios", "Portfolios"], ["categories", "/categories", "Categories"], ["ports", "/ports", "Ports"], ["new", "/new", "Add"], ["settings", "/settings", "Settings"]];
+  const nav = [["all", "/", "Library"], ["tasks", "/tasks", "Tasks"], ["oncall", "/oncall", "Oncall"], ["starred", "/starred", "Starred"], ["tags", "/tags", "Tags"], ["portfolios", "/portfolios", "Portfolios"], ["categories", "/categories", "Categories"], ["ports", "/ports", "Ports"], ["new", "/new", "Add"], ["settings", "/settings", "Settings"]];
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} · Portfolios</title><link rel="stylesheet" href="/assets/app.css"></head><body>
     <header class="topbar"><a class="brand" href="/">丸の中で</a><nav>${nav.map(([key, href, label]) => `<a class="${active === key ? "active" : ""}" href="${href}">${label}</a>`).join("")}</nav></header>
     <div class="add-bar"><button type="button" class="add-open" data-add-type="" aria-label="Add an item">+ Add</button><span>Paste a URL, a path, or Markdown. The type is detected as you type.</span></div>
@@ -1360,6 +1362,202 @@ function tasksPage(taskId = null) {
     ${tasks.length ? render(selected ? [selected] : children.get(null) ?? []) : "<p>No tasks yet.</p>"}`, "tasks");
 }
 
+const ONCALL_SCRIPT = `(function(){
+const root=document.querySelector('[data-oncall]');
+if(!root)return;
+const api=root.dataset.apiBase;
+const statuses=['open','working','blocked','done','dismissed'];
+const poll=root.querySelector('[data-oncall-poll]');
+const errorEl=root.querySelector('[data-oncall-error]');
+const itemsEl=root.querySelector('[data-oncall-items]');
+const countEl=root.querySelector('[data-oncall-count]');
+const promptsEl=root.querySelector('[data-oncall-prompts]');
+const runsEl=root.querySelector('[data-oncall-runs]');
+const pollingState=root.querySelector('[data-oncall-polling-state]');
+const pollingToggle=root.querySelector('[data-oncall-toggle-polling]');
+const pollingErrorEl=root.querySelector('[data-oncall-polling-error]');
+let pollingPaused=null;
+let pollingPending=false;
+let pollingVersion=0;
+const make=(tag,props,kids)=>{const element=document.createElement(tag);if(props)for(const key in props){const value=props[key];if(value===null||value===undefined)continue;if(key==='class')element.className=value;else if(key==='text')element.textContent=value;else if(key==='hidden')element.hidden=value;else if(key==='disabled')element.disabled=value;else element.setAttribute(key,value);}(kids||[]).forEach(kid=>{if(kid)element.append(kid)});return element;};
+const syncPolling=()=>{
+pollingState.textContent=pollingPaused===null?'Polling status unavailable':pollingPaused?'Polling paused':'Polling active';
+pollingState.dataset.state=pollingPaused===null?'unknown':pollingPaused?'paused':'active';
+pollingToggle.disabled=pollingPending||pollingPaused===null;
+pollingToggle.textContent=pollingPending?(pollingPaused?'Resuming…':'Pausing…'):pollingPaused===null?'Loading…':pollingPaused?'Resume polling':'Pause polling';
+};
+const external=(href,label,cls)=>make('a',{href:href,class:cls,target:'_blank',rel:'noreferrer',text:label});
+const groupItems=items=>{
+const groups=new Map();
+for(const item of items){
+let key='other';let thread=null;
+const link=item.slack_thread_url||item.slack_message_url;
+if(link)try{
+const url=new URL(link);
+const match=url.pathname.match(/^\\/archives\\/([^/]+)\\/p(\\d{16})\\/?$/);
+if(match){
+const threadTs=url.searchParams.get('thread_ts');
+const messageId=threadTs&&/^\\d+\\.\\d{6}$/.test(threadTs)?threadTs.replace('.',''):match[2];
+key='thread:'+match[1]+':'+messageId;
+if(!groups.has(key))thread={url:url.origin+'/archives/'+match[1]+'/p'+messageId,channel:item.slack_channel,startedAt:new Date(Number(messageId)/1000).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'})};
+}
+}catch{}
+if(!groups.has(key))groups.set(key,{thread:thread,items:[]});
+groups.get(key).items.push(item);
+}
+return [...groups.values()];
+};
+const statusClass=status=>'oncall-status-badge'+(status?' is-'+status:'');
+const renderItem=item=>{
+const card=make('article',{class:'oncall-item'});
+card.append(make('div',{class:'oncall-item-head'},[make('span',{class:'oncall-kind',text:item.kind||'item'}),make('h4',{class:'oncall-item-title',text:item.title||'(untitled)'})]));
+const meta=make('div',{class:'oncall-meta'});
+if(item.slack_channel){const channel=item.slack_channel.startsWith('#')?item.slack_channel:'#'+item.slack_channel;meta.append(item.slack_channel_url?external(item.slack_channel_url,channel,'oncall-chip'):make('span',{class:'oncall-chip',text:channel}));}
+if(item.author)meta.append(make('span',{class:'oncall-chip',text:item.author}));
+if(item.created_at)meta.append(make('time',{class:'oncall-chip',text:item.created_at}));
+if(meta.childNodes.length)card.append(meta);
+if(item.body)card.append(make('p',{class:'oncall-body',text:item.body}));
+if(item.thread_context)card.append(make('details',{class:'oncall-thread'},[make('summary',{text:'Thread context'}),make('pre',{class:'oncall-thread-body',text:item.thread_context})]));
+const links=make('div',{class:'oncall-links'});
+if(item.slack_message_url)links.append(external(item.slack_message_url,'Slack message','oncall-link'));
+if(item.slack_thread_url)links.append(external(item.slack_thread_url,'Slack thread','oncall-link'));
+if(item.pr_url)links.append(external(item.pr_url,'Pull request','oncall-link'));
+if(links.childNodes.length)card.append(links);
+const badge=make('span',{class:'oncall-status-badge',text:item.status||'no status'});
+badge.className=statusClass(item.status);
+const select=make('select',{class:'oncall-status-select','aria-label':'Status for '+(item.title||'action item')});
+select.append(make('option',{value:'',text:'No status'}));
+statuses.forEach(value=>select.append(make('option',{value:value,text:value})));
+select.value=item.status&&statuses.indexOf(item.status)>-1?item.status:'';
+select.addEventListener('change',async()=>{
+const next=select.value||null;
+select.disabled=true;
+try{
+const response=await fetch(api+'/api/oncall/items/'+item.id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({status:next})});
+if(!response.ok)throw new Error(await response.text()||('HTTP '+response.status));
+const updated=await response.json();
+item.status=updated&&updated.status!==undefined?updated.status:next;
+badge.textContent=item.status||'no status';
+badge.className=statusClass(item.status);
+}catch(error){select.value=item.status&&statuses.indexOf(item.status)>-1?item.status:'';alert(String(error&&error.message||error));}
+finally{select.disabled=false;}
+});
+const controls=make('div',{class:'oncall-status'},[select,badge]);
+if(item.suggested_status&&item.suggested_status!==item.status)controls.append(make('span',{class:'oncall-suggested',text:'suggested: '+item.suggested_status}));
+card.append(controls);
+return card;
+};
+const renderGroup=group=>{
+const section=make('section',{class:'oncall-group'});
+const head=make('header',{class:'oncall-group-head'},[make('h3',{text:group.thread?(group.thread.channel?'#'+group.thread.channel:'Slack thread'):'Other actions'}),...(group.thread?[make('span',{text:group.thread.startedAt})]:[]),make('span',{text:group.items.length+(group.items.length===1?' item':' items')})]);
+if(group.thread)head.append(external(group.thread.url,'Open thread','oncall-link'));
+section.append(head,make('div',{class:'oncall-group-items'},group.items.map(renderItem)));
+return section;
+};
+const renderPrompt=prompt=>{
+const card=make('article',{class:'oncall-prompt'});
+card.append(make('h3',{class:'oncall-prompt-title',text:prompt.title||prompt.id}));
+if(prompt.directory)card.append(make('code',{class:'oncall-prompt-dir',text:prompt.directory}));
+if(prompt.body)card.append(make('p',{class:'oncall-prompt-body',text:prompt.body}));
+const output=make('pre',{class:'oncall-run-output',hidden:true});
+const button=make('button',{type:'button',class:'oncall-run-button',text:'Run prompt'});
+button.addEventListener('click',async()=>{
+button.disabled=true;
+button.textContent='Running…';
+try{
+const response=await fetch(api+'/api/oncall/prompts/'+encodeURIComponent(prompt.id)+'/run',{method:'POST'});
+if(!response.ok)throw new Error(await response.text()||('HTTP '+response.status));
+let run=(await response.json()).run;
+output.hidden=false;
+output.textContent='Running in '+prompt.directory+'…';
+while(run.status==='running'){
+await new Promise(resolve=>setTimeout(resolve,2000));
+const result=await fetch(api+'/api/oncall/prompts/runs/'+run.id);
+if(!result.ok)throw new Error(await result.text()||('HTTP '+result.status));
+run=(await result.json()).run;
+}
+output.textContent=run.output||'(no output captured)';
+await load();
+}catch(error){output.hidden=false;output.textContent='Run failed: '+String(error&&error.message||error);}
+finally{button.disabled=false;button.textContent='Run prompt';}
+});
+card.append(make('div',{class:'oncall-prompt-actions'},[button]));
+card.append(output);
+return card;
+};
+const renderRun=run=>{
+const card=make('article',{class:'oncall-run'});
+card.append(make('div',{class:'oncall-run-head'},[make('span',{class:'oncall-run-status is-'+(run.status||'running'),text:run.status||'running'}),make('code',{class:'oncall-run-prompt',text:run.prompt_id||''}),make('time',{class:'oncall-run-time',text:run.finished_at||run.started_at||''})]));
+card.append(make('pre',{class:'oncall-run-output',text:run.output||''}));
+return card;
+};
+const render=(data,version)=>{
+const items=Array.isArray(data.items)?data.items:[];
+const prompts=Array.isArray(data.prompts)?data.prompts:[];
+const runs=Array.isArray(data.runs)?data.runs:[];
+itemsEl.replaceChildren(...(items.length?groupItems(items).map(renderGroup):[make('p',{class:'oncall-empty',text:'No action items.'})]));
+countEl.textContent=items.length===1?'1 item':items.length+' items';
+promptsEl.replaceChildren(...(prompts.length?prompts.map(renderPrompt):[make('p',{class:'oncall-empty',text:'No prompts configured.'})]));
+runsEl.replaceChildren(...(runs.length?runs.map(renderRun):[make('p',{class:'oncall-empty',text:'No prompt runs yet.'})]));
+if(version===pollingVersion&&!pollingPending&&typeof data.polling_paused==='boolean'){pollingPaused=data.polling_paused;syncPolling();}
+if(data.polling_error){poll.textContent='Poll error: '+data.polling_error;poll.dataset.state='error';}
+else if(data.last_polled_at){poll.textContent='Last polled '+data.last_polled_at;poll.dataset.state='ok';}
+else{poll.textContent='Not polled yet';poll.dataset.state='idle';}
+};
+const load=async()=>{
+const version=pollingVersion;
+try{
+const response=await fetch(api+'/api/oncall',{headers:{accept:'application/json'}});
+if(!response.ok)throw new Error('HTTP '+response.status);
+render(await response.json(),version);
+errorEl.hidden=true;
+}catch(error){
+errorEl.hidden=false;
+errorEl.textContent='Oncall API unreachable at '+api+' — '+String(error&&error.message||error);
+}
+};
+pollingToggle.addEventListener('click',async()=>{
+if(pollingPending||pollingPaused===null)return;
+const next=!pollingPaused;
+pollingPending=true;
+pollingErrorEl.hidden=true;
+syncPolling();
+try{
+const response=await fetch(api+'/api/oncall/polling',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({paused:next})});
+if(!response.ok)throw new Error(await response.text()||('HTTP '+response.status));
+const updated=await response.json();
+if(typeof updated.polling_paused!=='boolean')throw new Error('Invalid polling response');
+pollingPaused=updated.polling_paused;
+pollingVersion++;
+}catch(error){pollingErrorEl.textContent='Unable to change polling: '+String(error&&error.message||error);pollingErrorEl.hidden=false;}
+finally{pollingPending=false;syncPolling();}
+});
+const refresh=root.querySelector('[data-oncall-refresh]');
+if(refresh)refresh.addEventListener('click',load);
+setInterval(()=>{if(!root.contains(document.activeElement))load();},60000);
+load();
+})();`;
+
+function oncallPage(markdown) {
+  const notes = markdown === null
+    ? `<div class="empty"><strong>No notes yet.</strong><span>Create <code>~/hub/oncall.md</code> to publish your oncall notes here.</span></div>`
+    : `<div class="rendered"><iframe title="Oncall notes" srcdoc="${escapeHtml(renderMarkdown(markdown, "", true, ONCALL_PATH))}" style="display:block;height:calc(100vh - 12rem);min-height:400px"></iframe></div>`;
+  return shell("Oncall", `<section class="page-head"><h1>Oncall</h1><p>Slack and PR action items, prompts, and the current rotation notes.</p></section>
+    <div class="oncall-shell">
+      <section class="oncall-dashboard" data-oncall data-api-base="${escapeHtml(ONCALL_API_BASE)}">
+        <div class="oncall-statusbar"><span class="oncall-poll" data-oncall-poll data-state="idle">Loading…</span><span class="oncall-polling-state" data-oncall-polling-state data-state="unknown" role="status">Loading polling status…</span><button type="button" class="oncall-refresh" data-oncall-toggle-polling disabled>Loading…</button><button type="button" class="oncall-refresh" data-oncall-refresh>Refresh</button></div>
+        <p class="oncall-polling-hint">An in-flight poll may finish after pausing. Resuming waits for the next scheduled six-minute check.</p>
+        <p class="oncall-error" data-oncall-polling-error role="alert" hidden></p>
+        <p class="oncall-error" data-oncall-error role="alert" hidden></p>
+        <section class="oncall-section"><header><h2>Action items</h2><span data-oncall-count>—</span></header><div class="oncall-items" data-oncall-items><p class="oncall-empty">Loading action items…</p></div></section>
+        <section class="oncall-section"><header><h2>Prompts</h2></header><div class="oncall-prompts" data-oncall-prompts><p class="oncall-empty">Loading prompts…</p></div></section>
+        <section class="oncall-section"><header><h2>Recent prompt runs</h2></header><div class="oncall-runs" data-oncall-runs><p class="oncall-empty">Loading runs…</p></div></section>
+      </section>
+      <section class="oncall-notes"><header class="oncall-notes-head"><h2>Notes</h2><code>~/hub/oncall.md</code></header>${notes}</section>
+    </div>
+    <script>${ONCALL_SCRIPT}</script>`, "oncall");
+}
+
 await reloadWatchedDirectories();
 scanProjects().catch(error => console.error(error));
 
@@ -1371,6 +1569,17 @@ const server = Bun.serve({
     try {
       if (url.pathname === "/health") return Response.json({ ok: true, items: db.query("SELECT count(*) count FROM items").get().count });
       if (url.pathname === "/assets/app.css") return new Response(Bun.file(join(ROOT, "public", "app.css")), { headers: { "content-type": "text/css; charset=utf-8" } });
+      if (request.method === "GET" && url.pathname === "/oncall") {
+        let markdown = null;
+        try {
+          markdown = await Bun.file(ONCALL_PATH).text();
+        } catch (error) {
+          if (error.code !== "ENOENT") throw error;
+        }
+        const response = html(oncallPage(markdown));
+        response.headers.set("Cache-Control", "no-store");
+        return response;
+      }
       if (request.method === "GET" && url.pathname === "/tasks") return html(tasksPage(Number(url.searchParams.get("parent")) || null));
       if (request.method === "POST" && url.pathname === "/tasks") {
         const form = await request.formData();

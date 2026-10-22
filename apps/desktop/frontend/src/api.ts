@@ -6,6 +6,10 @@ import type {
   Detection,
   DueReminder,
   ItemDetail,
+  OncallItem,
+  OncallPromptRun,
+  OncallResponse,
+  OncallStatus,
   PortfolioSummary,
   PortfolioView,
   PortsSnapshot,
@@ -222,3 +226,18 @@ export const getPrEvents = (since: number) =>
 
 export const markPrEventsSeen = (ids: number[]) =>
   api.request<{ ok: true }>("/api/prs/events/seen", { method: "POST", json: { ids } });
+
+// -- Oncall ---------------------------------------------------------------
+
+export const getOncall = () => api.request<OncallResponse>("/api/oncall");
+
+export const patchOncallItem = (id: number, status: OncallStatus | null) =>
+  api.request<OncallItem>(`/api/oncall/items/${id}`, { method: "PATCH", json: { status } });
+
+export const patchOncallPolling = (paused: boolean) =>
+  api.request<{ polling_paused: boolean }>("/api/oncall/polling", { method: "PATCH", json: { paused } });
+
+export const runOncallPrompt = (id: string) =>
+  api.request<{ run: OncallPromptRun }>(`/api/oncall/prompts/${encodeURIComponent(id)}/run`, { method: "POST" });
+
+export const listOncallPromptRuns = () => api.request<{ runs: OncallPromptRun[] }>("/api/oncall/prompts/runs");

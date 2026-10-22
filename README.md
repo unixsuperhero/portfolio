@@ -1,6 +1,6 @@
 # Portfolio setup
 
-Portfolio is a local document server for macOS. It uses Bun, SQLite, Pandoc, and a per-user LaunchAgent.
+Portfolio is a local document server and desktop workspace for macOS. It uses Bun, SQLite, Pandoc, and per-user LaunchAgents.
 
 ## Install on another Mac
 
@@ -35,11 +35,11 @@ Portfolio is a local document server for macOS. It uses Bun, SQLite, Pandoc, and
 
 The installer performs these actions:
 
-- Installs `h-docs` and `mdoc` in `~/bin`.
-- Creates `~/Library/LaunchAgents/com.$USER.portfolio.plist`.
-- Starts the service on `127.0.0.1:4387`.
+- Installs `h-docs`, `mdoc`, and `pf-oncall` in `~/bin`.
+- Creates `~/Library/LaunchAgents/com.$USER.portfolio.plist` and `com.$USER.portfolio-api.plist`. It removes another portfolio LaunchAgent only when it points to this app on the same port.
+- Starts the HTML server on `127.0.0.1:4387` and the API with six-minute oncall polling on `127.0.0.1:4388`.
 - Imports `~/claude/index.json` when no Portfolio database exists.
-- Verifies the `/health` endpoint.
+- Verifies that both LaunchAgents own running processes and answer `/health`.
 
 If `~/bin` is not on your `PATH`, add it to your shell configuration:
 
@@ -69,7 +69,25 @@ The service logs are:
 ```text
 ~/proj/portfolio/logs/stdout.log
 ~/proj/portfolio/logs/stderr.log
+~/proj/portfolio/logs/oncall-api-stdout.log
+~/proj/portfolio/logs/oncall-api-stderr.log
 ```
+
+## Oncall page
+
+Portfolio reads `~/hub/oncall.md` on each request to [the web Oncall page](http://127.0.0.1:4387/oncall). Edit the Markdown file to update the notes; no import or restart is needed. The [desktop Oncall page](http://127.0.0.1:4388/app/#/oncall) shows the same action items, prompt runs, and source links.
+
+Both Oncall pages group actions by Slack thread. A thread heading links to its root message. Actions without a Slack link, including direct GitHub reviews, appear under Other actions. Search, sort, and status filters on the desktop page apply before grouping.
+
+The API LaunchAgent checks `#eng-retailer-app`, `#retailer-app-support`, `#team-insights-portal`, `#rpp-bot-notifications`, `#team-sfp-onboarding-working-grp`, `#team-retailer-app-eng`, `#retailer-onboarding-critical`, and `#askspansions` every six minutes through the authenticated local Slack MCP proxy. It reads replies to older threads and records the author, channel, original message, thread context, and direct links. It also reads GitHub review requests sent directly to `instajosh` when `gh` is authenticated as that account. Only PR requests addressed to Joshua Toyota or oncall in Slack enter the PR review section; generic team requests do not.
+
+Slack search results with a bot sender ID but no display name show "Bot". Results missing a channel, sender ID, timestamp, text field, or permalink still fail the channel poll.
+
+Either Oncall page can pause automatic intake and resume it. Pause is stored in SQLite (`oncall_state.polling_paused`), so it survives an API restart and a desktop relaunch. While paused the poller searches no Slack channels, runs no GitHub review intake, and leaves its per-channel `slack_since` checkpoints untouched; a poll that is already running finishes and records its result. Resume takes effect on the next six-minute tick, which then sees everything since the last successful poll. Manual work stays available while paused: adding an action, changing a status, and running a prompt. `GET /api/oncall` reports `polling_paused`; `PATCH /api/oncall/polling` with `{ "paused": true | false }` sets it.
+
+Choose a status on either page. A manual status takes precedence over the poller's suggestion until you clear it. The supplied prompts show their workspace directories and save responses or failure text in SQLite. Triage and follow-up receive the latest 20 board items and run without tools. PR review and handoff can use OMP's read-only `read`, `grep`, `glob`, and `web_search` tools. OMP and Codex use `bun ~/proj/portfolio/bin/pf-oncall-mcp` as their `portfolio-oncall` stdio MCP server; its tools list and create actions, change statuses, list prompts, and run or read prompt results. The Slack proxy must be authenticated at `127.0.0.1:15245`; the dashboard displays poll failures rather than silently reporting success.
+
+`pf-oncall list`, `pf-oncall add "Title" "Context"`, `pf-oncall status ID done`, `pf-oncall prompts`, and `pf-oncall run PROMPT_ID` use the same API. `pf-oncall status ID auto` clears a manual status.
 
 ## Add Markdown with `mdoc`
 
@@ -87,6 +105,8 @@ mdoc -r docs/overview.md --title "Overview" --out ./site
 ```
 
 For a single file, the title and description apply to that document. `mdoc` returns and opens the saved item. It ignores external links, anchor links, images, links written in code, and raw HTML anchors. It reports a missing linked Markdown file before it uploads any document or builds a site. Paths use their lexical absolute spelling, so two symlink spellings identify different tracked sources.
+
+Imported HTML opens from its exact tracked file. A different file with the same name under `~/claude/docs` does not replace it.
 
 Pipe one nonrecursive document with `-`:
 

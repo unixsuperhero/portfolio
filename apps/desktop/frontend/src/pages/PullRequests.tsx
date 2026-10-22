@@ -4,10 +4,11 @@ import { PortfolioApiError } from "@portfolio/client";
 import type { GithubIgnoredCheckRule, GithubPrView, Pr, SettingsView } from "../types.ts";
 import { getSettings, patchPr, patchSettings, watchPr } from "../api.ts";
 import { PrRow, confirmIgnorePr, confirmIgnoreRepo, ignoreRepo } from "../components/PrRow.tsx";
+import { OncallSlackRequests } from "../components/OncallSlackRequests.tsx";
 import { PrStatusIcon } from "../components/PrStatus.tsx";
 import { CollectionToolbar, SelectionBar, useSelection } from "@portfolio/ui/collections";
 import { useConfirm } from "../components/ConfirmDialog.tsx";
-import { BUILTIN_PR_VIEWS, CHECK_FILTERS, defaultPrDirection, ignoredCheckRuleRepos, lifecycle, matchesPr, normalizePrViewQuery, PR_COLLECTIONS, PR_FILTER_KEYS, PR_FILTERS, PR_SORTS, sortPrs } from "../lib/pr-collection.ts";
+import { BUILTIN_PR_VIEWS, CHECK_FILTERS, defaultPrDirection, ignoredCheckRuleRepos, lifecycle, matchesPr, normalizePrViewQuery, PR_COLLECTIONS, PR_FILTER_KEYS, PR_FILTERS, PR_SORTS, prIdentity, sortPrs } from "../lib/pr-collection.ts";
 import type { PrFilter } from "../lib/pr-collection.ts";
 import { usePrData } from "../hooks/usePrData.tsx";
 import "../operational.css";
@@ -82,6 +83,9 @@ export default function PullRequests() {
       .catch(error => setRefreshError(errorMessage(error))).finally(() => setRefreshing(false));
   };
   const allPrs = useMemo(() => [...new Map([...data.mine, ...data.review_requested, ...data.watched, ...data.ignored].map(pr => [pr.id, pr])).values()], [data]);
+  // URLs the GitHub lists already know about, so the Slack-request area can say whether a
+  // request is also a tracked PR without inventing a list membership for it.
+  const trackedPrUrls = useMemo(() => new Set(allPrs.map(pr => prIdentity(pr.url))), [allPrs]);
   const hiddenIds = useMemo(() => new Set(data.ignored.map(pr => pr.id)), [data.ignored]);
   const visiblePrs = sortPrs(allPrs.filter(pr => matchesPr(pr, params, hiddenIds.has(pr.id))), sort, direction);
   const selection = useSelection(visiblePrs.map(pr => pr.id));
@@ -197,6 +201,7 @@ export default function PullRequests() {
       <button type="button" className="pr-tone-watched" aria-pressed={params.get("collection") === "watched"} onClick={toggleWatching}><PrStatusIcon kind="watched" />Watching <span>{watchingCandidates.length}</span></button>
       {settings?.github_pr_views.map(view => <button type="button" key={view.id} aria-pressed={currentViewQuery === normalizePrViewQuery(view.query)} onClick={() => applyView(view)}>{view.label}</button>)}
     </div>
+    <OncallSlackRequests trackedUrls={trackedPrUrls} />
     <form className="pr-save-view" onSubmit={event => { event.preventDefault(); saveCurrentView(); }}>
       <label>Save current filters as a shortcut<input value={viewName} onChange={event => setViewName(event.target.value)} placeholder="View name" /></label>
       <button type="submit" className="secondary" disabled={!viewName.trim()}>Save view</button>

@@ -20,9 +20,9 @@ workspace member, so `@portfolio/ui`, `@portfolio/core`, `@portfolio/client` res
 
 ```js
 const processes = {
-  "app.js":            { port: 4387, note: "the old HTML server, untouched, may or may not be running" },
+  "app.js":            { port: 4387, note: "the HTML server, including /oncall and the canonical Markdown notes" },
   "@portfolio/api":    { port: 4388, env: "PORTFOLIO_API_PORT", cmd: "bun run REPO/packages/api/src/server.ts" },
-  "wails desktop":     { spawns: "@portfolio/api as a sidecar, kills it on quit" },
+  "wails desktop":     { adopts: "@portfolio/api when its launchd service is healthy; otherwise starts a sidecar" },
   "vite dev":          { port: 9245, note: "only under `wails3 dev`" },
 };
 ```
@@ -134,6 +134,23 @@ POST   /api/reminders/:id/uncomplete { on?: "YYYY-MM-DD" } → ReminderView
 GET    /api/reminders/due?minutes=60            → { due: DueReminder[] }
 GET    /api/reminders/today                     → { reminders: ReminderView[] }
 ```
+
+### Oncall
+
+The launchd-managed API at `127.0.0.1:4388` checks eight configured Slack channels every six minutes through the authenticated local Slack MCP proxy. Search includes replies in older threads. It stores source text, author, channel and thread links, and a separate manually chosen status. Direct GitHub requests come from `review-requested:@me` only when `gh` is authenticated as `instajosh`. Slack PR review requests require an explicit mention of Joshua Toyota or oncall; generic team and automated review notifications stay out of the personal PR list.
+
+```text
+GET    /api/oncall                          → { items: OncallItem[], prompts: OncallPrompt[], runs: OncallPromptRun[], last_polled_at, polling_error, polling_paused }
+PATCH  /api/oncall/polling  { paused }      → { polling_paused } (persisted; true stops automatic intake)
+POST   /api/oncall/items                    → OncallItem (title required; optional body, kind, source links, status)
+PATCH  /api/oncall/items/:id  { status }    → OncallItem (status null clears the manual override)
+GET    /api/oncall/prompts/runs             → { runs: OncallPromptRun[] }
+GET    /api/oncall/prompts/runs/:id         → { run: OncallPromptRun }
+POST   /api/oncall/prompts/:id/run          → { run: OncallPromptRun } (202; poll the run endpoint for output)
+```
+
+`OncallItem.status` is `manual_status ?? suggested_status`. Polling can update the suggestion but never the manual choice. Statuses are `open`, `working`, `blocked`, `done`, and `dismissed`. Either Oncall page pauses and resumes automatic intake through `PATCH /api/oncall/polling`: the intent is stored in `oncall_state` (`polling_paused`), survives restarts, stops Slack searches, GitHub review intake, and checkpoint writes, lets an in-flight poll finish, and resumes on the next six-minute tick. Manual actions stay available while paused. Each curated prompt has a fixed workspace directory and receives the latest 20 board items. Triage and follow-up run without tools; PR review and handoff can use OMP's read-only `read`, `grep`, `glob`, and `web_search` tools. The response and failure text remain in SQLite. The stdio MCP server at `bin/pf-oncall-mcp` exposes the same API to OMP and Codex. All oncall routes reject browser requests from remote origins.
+
 
 ### Shapes (additions to `@portfolio/core` types)
 

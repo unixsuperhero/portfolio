@@ -218,3 +218,35 @@ CREATE TABLE IF NOT EXISTS github_pr_events (
 );
 
 CREATE INDEX IF NOT EXISTS github_pr_events_pr ON github_pr_events(pr_id);
+
+CREATE TABLE IF NOT EXISTS oncall_items (
+  id INTEGER PRIMARY KEY,
+  source_key TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL CHECK (kind IN ('slack', 'pr')),
+  title TEXT NOT NULL,
+  body TEXT NOT NULL DEFAULT '',
+  thread_context TEXT NOT NULL DEFAULT '',
+  suggested_status TEXT NOT NULL DEFAULT 'open' CHECK (suggested_status IN ('open', 'working', 'blocked', 'done', 'dismissed')),
+  manual_status TEXT CHECK (manual_status IN ('open', 'working', 'blocked', 'done', 'dismissed')),
+  slack_channel TEXT,
+  slack_channel_url TEXT,
+  slack_message_url TEXT,
+  slack_thread_url TEXT,
+  author TEXT,
+  pr_url TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS oncall_items_status ON oncall_items(manual_status, suggested_status, created_at);
+
+CREATE TABLE IF NOT EXISTS oncall_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
+CREATE TABLE IF NOT EXISTS oncall_prompt_runs (
+  id INTEGER PRIMARY KEY,
+  prompt_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed')),
+  output TEXT NOT NULL DEFAULT '',
+  started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  finished_at TEXT
+);

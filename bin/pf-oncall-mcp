@@ -1,0 +1,9 @@
+#!/usr/bin/env bun
+// pf-oncall-mcp — stdio Model Context Protocol server for the Portfolio oncall board.
+// Codex (~/.codex/config.toml) / OMP:
+//   [mcp_servers.portfolio-oncall]
+//   command = "bun"
+//   args = ["/Users/josh/proj/portfolio/bin/pf-oncall-mcp"]
+import { main } from "../packages/oncall-mcp/src/index.ts";
+
+process.exitCode = await main();

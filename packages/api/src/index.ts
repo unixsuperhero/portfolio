@@ -19,6 +19,7 @@ import {
 import { getPortsRoute, killPortRoute } from "./ports.ts";
 import { herdrRoute } from "./herdr.ts";
 import { listPrEventsRoute, listPrsRoute, markPrEventsSeenRoute, patchPrRoute, refreshPrsRoute, watchPrRoute } from "./prs.ts";
+import { oncallRoute } from "./oncall.ts";
 import {
   addProjectParentRoute, getProjectRoute, listProjectParentsRoute, listProjectsRoute, removeProjectParentRoute,
   scanProjectsRoute,
@@ -87,6 +88,14 @@ const ROUTES: [string, string, (ctx: ReturnType<typeof createContext>, request: 
   ["GET", "/api/herdr/catalog", herdrRoute],
   ["POST", "/api/herdr/command", herdrRoute],
   ["POST", "/api/herdr/session", herdrRoute],
+
+  ["GET", "/api/oncall", oncallRoute],
+  ["POST", "/api/oncall/items", oncallRoute],
+  ["PATCH", "/api/oncall/items/:id", oncallRoute],
+  ["PATCH", "/api/oncall/polling", oncallRoute],
+  ["GET", "/api/oncall/prompts/runs", oncallRoute],
+  ["GET", "/api/oncall/prompts/runs/:id", oncallRoute],
+  ["POST", "/api/oncall/prompts/:id/run", oncallRoute],
 
   ["GET", "/api/prs", listPrsRoute],
   ["POST", "/api/prs/refresh", refreshPrsRoute],

@@ -2,7 +2,7 @@
 // Most are already defined in @portfolio/core (TaskView, TaskInput, ProjectView,
 // Settings, ResolvedSlot, Card/CardSpec with kind + config) and are re-exported here so callers
 // only need to import from "./types.ts".
-import type { Card, ItemType, ItemView, Portfolio, ProjectView, Recurrence, ResolvedSlot, Settings } from "@portfolio/core";
+import type { Card, ItemType, ItemView, OncallItem, OncallPrompt, Portfolio, ProjectView, Recurrence, ResolvedSlot, Settings } from "@portfolio/core";
 import type { PortEntry } from "@portfolio/ports";
 
 export type {
@@ -16,6 +16,10 @@ export type {
   GithubPrView,
   ItemType,
   ItemView,
+  OncallItem,
+  OncallPrompt,
+  OncallPromptRun,
+  OncallStatus,
   Portfolio,
   ProjectServices,
   ProjectView,
@@ -156,3 +160,14 @@ export interface PrsResponse {
 }
 
 export type SettingsView = Settings;
+
+// -- Oncall (added 2026-10-22) -----------------------------------------------
+
+/** GET /api/oncall. The route also returns `runs`; the page loads those from their own route. */
+export interface OncallResponse {
+  items: OncallItem[];
+  prompts: OncallPrompt[];
+  last_polled_at: string | null;
+  polling_paused: boolean;
+  polling_error: string | null;
+}

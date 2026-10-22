@@ -35,6 +35,7 @@ const Herdr = lazy(() => import("./pages/Herdr.tsx"));
 const Reminders = lazy(() => import("./pages/Reminders.tsx"));
 const Tasks = lazy(() => import("./pages/Tasks.tsx"));
 const PullRequests = lazy(() => import("./pages/PullRequests.tsx"));
+const Oncall = lazy(() => import("./pages/Oncall.tsx"));
 const Settings = lazy(() => import("./pages/Settings.tsx"));
 const Notifications = lazy(() => import("./pages/Notifications.tsx"));
 
@@ -49,6 +50,7 @@ const NAV_ITEMS = [
   { to: "/tasks", label: "Tasks" },
   { to: "/reminders", label: "Reminders" },
   { to: "/prs", label: "PRs" },
+  { to: "/oncall", label: "Oncall" },
   { to: "/notifications", label: "Notifications" },
   { to: "/settings", label: "Settings" },
 ] as const;
@@ -310,6 +312,7 @@ const router = createHashRouter([
       { path: "/tasks/:taskId", element: <Tasks /> },
       { path: "/reminders", element: <Reminders /> },
       { path: "/prs", element: <PullRequests /> },
+      { path: "/oncall", element: <Oncall /> },
       { path: "/notifications", element: <Notifications /> },
       { path: "/settings", element: <Settings /> },
       { path: "*", element: <Link to="/">Back home</Link> },
